@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // 🛑 REMEMBER TO UPDATE THIS IP ADDRESS!
 const API_URL ="https://sabarishhh14-dailytrack-v2.hf.space/api";
@@ -16,6 +16,52 @@ export default function InvestScreen() {
   const [tokenStr, setTokenStr] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [syncingSheets, setSyncingSheets] = useState(false);
+
+  // --- Filter & Sorting Engine ---
+  const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterMonth, setFilterMonth] = useState("All");
+  const [sortBy, setSortBy] = useState<'Date' | 'Returns' | 'Invested'>('Date');
+
+  // Generate available months for the chips
+  const availableMonths = useMemo(() => {
+    const m = new Set(investments.map(inv => {
+      if (!inv.date) return null;
+      const d = new Date(inv.date);
+      return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+    }).filter((month): month is string => month !== null));
+    return ["All", ...Array.from(m)];
+  }, [investments]);
+
+  // Apply filters and sorting
+  const processedInvestments = useMemo(() => {
+    let data = [...investments];
+
+    // Filter
+    if (filterMonth !== "All") {
+      data = data.filter(inv => {
+        if (!inv.date) return false;
+        const d = new Date(inv.date);
+        return `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` === filterMonth;
+      });
+    }
+
+    // Sort
+    data.sort((a, b) => {
+      if (sortBy === 'Date') {
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      } else if (sortBy === 'Returns') {
+        const retA = parseFloat(a.total_curr || 0) - parseFloat(a.total_inv || 0);
+        const retB = parseFloat(b.total_curr || 0) - parseFloat(b.total_inv || 0);
+        return retB - retA; // Highest returns first
+      } else if (sortBy === 'Invested') {
+        return parseFloat(b.total_inv || 0) - parseFloat(a.total_inv || 0);
+      }
+      return 0;
+    });
+
+    return data;
+  }, [investments, filterMonth, sortBy]);
 
   const fetchInvestments = async () => {
     try {
@@ -95,38 +141,55 @@ export default function InvestScreen() {
     }
   };
 
-  // --- RENDER CARD ---
+  // --- RENDER PREMIUM CARD ---
   const renderInvestment = ({ item }: { item: any }) => {
     const retAmount = parseFloat(item.total_curr || 0) - parseFloat(item.total_inv || 0);
+    const retPct = parseFloat(item.total_ret_pct || 0);
     const isPositive = retAmount >= 0;
+    const trendColor = isPositive ? '#34d399' : '#f87171';
+    const trendBg = isPositive ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)';
 
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, { borderLeftColor: trendColor, borderLeftWidth: 3 }]}>
+        {/* Top Header */}
         <View style={styles.cardHeader}>
-          <Text style={styles.cardDate}>📅 {formatDate(item.date)}</Text>
-          <Text style={{ fontSize: 18 }}>{item.total_status}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="calendar-outline" size={16} color="#94a3b8" />
+            <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
+          </View>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{item.total_status || "Active"}</Text>
+          </View>
         </View>
 
-        <View style={styles.row}>
-          <View>
-            <Text style={styles.label}>Invested</Text>
+        {/* Middle: Invested vs Current */}
+        <View style={styles.comparisonRow}>
+          <View style={styles.metricBlock}>
+            <Text style={styles.label}>INVESTED</Text>
             <Text style={styles.value}>{formatMoney(item.total_inv)}</Text>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={styles.label}>Current Value</Text>
+          
+          <Ionicons name="arrow-forward-outline" size={20} color="#475569" style={{ marginHorizontal: 10 }} />
+          
+          <View style={[styles.metricBlock, { alignItems: 'flex-end' }]}>
+            <Text style={styles.label}>CURRENT VALUE</Text>
             <Text style={styles.value}>{formatMoney(item.total_curr)}</Text>
           </View>
         </View>
 
-        <View style={[styles.row, { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', paddingTop: 12, marginTop: 12 }]}>
-          <Text style={styles.label}>Total Returns</Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[styles.value, { color: isPositive ? '#34d399' : '#f87171' }]}>
+        {/* Bottom: Returns */}
+        <View style={styles.returnsRow}>
+          <Text style={styles.label}>TOTAL RETURNS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.retAmount, { color: trendColor }]}>
               {isPositive ? '+' : ''}{formatMoney(retAmount)}
             </Text>
-            <Text style={[styles.pct, { color: isPositive ? '#34d399' : '#f87171' }]}>
-              {isPositive ? '+' : ''}{parseFloat(item.total_ret_pct).toFixed(2)}%
-            </Text>
+            <View style={[styles.pctBadge, { backgroundColor: trendBg }]}>
+              <Ionicons name={isPositive ? "trending-up" : "trending-down"} size={12} color={trendColor} />
+              <Text style={[styles.pctText, { color: trendColor }]}>
+                {isPositive ? '+' : ''}{retPct.toFixed(2)}%
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -137,47 +200,80 @@ export default function InvestScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* Dynamic Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Investments</Text>
-        <Text style={styles.recordCount}>{investments.length} Records</Text>
+        <TouchableOpacity 
+          onPress={() => setShowFilters(!showFilters)} 
+          style={[styles.filterToggleBadge, showFilters && {backgroundColor: '#6366f1'}]}
+        >
+          <Ionicons name="filter" size={14} color={showFilters ? "#fff" : "#94a3b8"} />
+          <Text style={[styles.filterToggleText, showFilters && {color: '#fff'}]}>
+            {showFilters ? "Close Filters" : "Filters"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* --- SYNC CONTROLS --- */}
-      <View style={styles.controlsCard}>
+      {/* Elegant Filter Card */}
+      {showFilters && (
+        <View style={styles.filtersCard}>
+          <Text style={styles.filterLabel}>SORT BY</Text>
+          <View style={styles.filterRow}>
+            {['Date', 'Returns', 'Invested'].map(s => (
+              <TouchableOpacity key={s} style={[styles.filterChip, sortBy === s && styles.filterChipActive]} onPress={() => setSortBy(s as any)}>
+                <Text style={[styles.filterChipText, sortBy === s && styles.filterChipTextActive]}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={[styles.filterLabel, { marginTop: 10 }]}>MONTH</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
+            {availableMonths.map(m => (
+              <TouchableOpacity key={m} style={[styles.filterChip, filterMonth === m && styles.filterChipActive]} onPress={() => setFilterMonth(m)}>
+                <Text style={[styles.filterChipText, filterMonth === m && styles.filterChipTextActive]}>{m}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* --- SYNC CONTROLS (Refined) --- */}
+      <View style={styles.controlsWrapper}>
         {!showTokenInput ? (
           <View style={styles.btnRow}>
-            <TouchableOpacity style={[styles.syncBtn, { backgroundColor: '#0d9488' }]} onPress={handleSyncToSheets} disabled={syncingSheets}>
-              {syncingSheets ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnText}>📥 Sync Sheets</Text>}
+            <TouchableOpacity style={styles.syncBtnGhost} onPress={handleSyncToSheets} disabled={syncingSheets}>
+              {syncingSheets ? <ActivityIndicator color="#0d9488" size="small" /> : <Text style={styles.btnTextGhost}>📥 Sync Sheets</Text>}
             </TouchableOpacity>
             
-            <TouchableOpacity style={[styles.syncBtn, { backgroundColor: '#dc2626' }]} onPress={() => setShowTokenInput(true)}>
-              <Text style={styles.btnText}>⚡ Kite Sync</Text>
+            <TouchableOpacity style={styles.syncBtnPrimary} onPress={() => setShowTokenInput(true)}>
+              <Text style={styles.btnTextPrimary}>⚡ Kite Sync</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.tokenInputRow}>
-            <TextInput
-              style={styles.input}
-              placeholder="Paste 127.0.0.1 URL here..."
-              placeholderTextColor="#64748b"
-              value={tokenStr}
-              onChangeText={setTokenStr}
-            />
+            <TextInput style={styles.input} placeholder="Paste 127.0.0.1 URL here..." placeholderTextColor="#64748b" value={tokenStr} onChangeText={setTokenStr} />
             <View style={styles.btnRow}>
-              <TouchableOpacity style={[styles.syncBtn, { flex: 1 }]} onPress={handleSubmitToken} disabled={syncing}>
-                {syncing ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnText}>Submit</Text>}
+              <TouchableOpacity style={[styles.syncBtnPrimary, { flex: 1 }]} onPress={handleSubmitToken} disabled={syncing}>
+                {syncing ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnTextPrimary}>Submit</Text>}
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.syncBtn, { flex: 1, backgroundColor: '#1e293b' }]} onPress={() => { setShowTokenInput(false); setTokenStr(""); }}>
-                <Text style={styles.btnText}>Cancel</Text>
+              <TouchableOpacity style={[styles.syncBtnGhost, { flex: 1 }]} onPress={() => { setShowTokenInput(false); setTokenStr(""); }}>
+                <Text style={styles.btnTextGhost}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
       </View>
 
+      {/* --- LIST HEADER (Replaces the ugly line) --- */}
+      <View style={styles.listHeaderRow}>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeText}>{processedInvestments.length} Snapshots</Text>
+        </View>
+      </View>
+
       {/* --- LIST --- */}
       <FlatList
-        data={investments}
+        data={processedInvestments}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderInvestment}
         contentContainerStyle={styles.listContent}
@@ -193,22 +289,53 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, backgroundColor: '#080b12', justifyContent: 'center', alignItems: 'center' },
   header: { marginTop: 60, marginBottom: 15, paddingHorizontal: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#fff' },
-  recordCount: { color: '#64748b', fontSize: 12, fontWeight: 'bold' },
-
+  // --- LIST HEADER STYLES ---
+  listHeaderRow: { marginHorizontal: 20, marginBottom: 15, flexDirection: 'row', justifyContent: 'center' },
+  countBadge: { backgroundColor: 'rgba(255,255,255,0.03)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  countBadgeText: { color: '#64748b', fontSize: 12, fontWeight: 'bold', letterSpacing: 0.5 },
   controlsCard: { marginHorizontal: 20, marginBottom: 15, padding: 15, backgroundColor: '#111827', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  btnRow: { flexDirection: 'row', gap: 10 },
   syncBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
-  
-  tokenInputRow: { gap: 10 },
-  input: { backgroundColor: '#1e293b', color: '#fff', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
 
-  listContent: { paddingHorizontal: 20, paddingBottom: 40 },
-  card: { backgroundColor: '#111827', borderRadius: 16, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  cardDate: { color: '#e2e8f0', fontWeight: 'bold', fontSize: 14 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
-  label: { color: '#64748b', fontSize: 12, fontWeight: '600', marginBottom: 4 },
-  value: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  pct: { fontSize: 12, fontWeight: 'bold', marginTop: 2 }
+  pct: { fontSize: 12, fontWeight: 'bold', marginTop: 2 },
+  // --- HEADER & FILTER STYLES ---
+  filterToggleBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  filterToggleText: { color: '#94a3b8', fontSize: 12, fontWeight: '600', marginLeft: 6 },
+  
+  filtersCard: { backgroundColor: '#0f172a', marginHorizontal: 20, borderRadius: 16, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  filterLabel: { fontSize: 10, color: '#64748b', fontWeight: 'bold', marginBottom: 8, letterSpacing: 0.5 },
+  filterRow: { flexDirection: 'row', gap: 8 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, backgroundColor: '#1e293b', borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)', marginRight: 8 },
+  filterChipActive: { backgroundColor: 'rgba(99,102,241,0.15)', borderColor: '#6366f1' },
+  filterChipText: { color: '#94a3b8', fontSize: 13, fontWeight: '500' },
+  filterChipTextActive: { color: '#a5b4fc', fontWeight: 'bold' },
+
+  // --- SYNC CONTROLS ---
+  controlsWrapper: { marginHorizontal: 20, marginBottom: 10 },
+  btnRow: { flexDirection: 'row', gap: 10 },
+  syncBtnPrimary: { flex: 1, backgroundColor: 'rgba(220,38,38,0.1)', borderColor: '#dc2626', borderWidth: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  btnTextPrimary: { color: '#ef4444', fontWeight: 'bold', fontSize: 14 },
+  syncBtnGhost: { flex: 1, backgroundColor: 'rgba(13,148,136,0.05)', borderColor: 'rgba(13,148,136,0.3)', borderWidth: 1, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  btnTextGhost: { color: '#14b8a6', fontWeight: 'bold', fontSize: 14 },
+  tokenInputRow: { gap: 10 },
+  input: { backgroundColor: '#111827', color: '#fff', padding: 14, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+
+  // --- PREMIUM CARD STYLES ---
+  listContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  card: { backgroundColor: '#111827', borderRadius: 14, padding: 18, marginBottom: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  cardDate: { color: '#cbd5e1', fontWeight: '600', fontSize: 14 },
+  statusBadge: { backgroundColor: '#1e293b', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusText: { color: '#94a3b8', fontSize: 11, fontWeight: 'bold' },
+  
+  comparisonRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, backgroundColor: 'rgba(255,255,255,0.02)', padding: 12, borderRadius: 10 },
+  metricBlock: { flex: 1 },
+  label: { color: '#64748b', fontSize: 11, fontWeight: 'bold', marginBottom: 4, letterSpacing: 0.5 },
+  value: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold', fontFamily: 'System' },
+  
+  returnsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+  retAmount: { fontSize: 17, fontWeight: 'bold', fontFamily: 'System' },
+  pctBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  pctText: { fontSize: 12, fontWeight: 'bold' },
 });

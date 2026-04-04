@@ -40,11 +40,11 @@ export default function TabLayout() {
         tabBarActiveTintColor: '#6366f1', // var(--accent)
         tabBarInactiveTintColor: '#64748b', // var(--text2)
         tabBarStyle: {
-          backgroundColor: '#0d1117', // var(--bg2)
+          backgroundColor: '#0d1117',
           borderTopColor: 'rgba(255,255,255,0.07)',
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          paddingBottom: 12, // Increased from 5 to give text breathing room
+          paddingTop: 8,
+          height: 70, // Increased from 60
         },
         tabBarLabelStyle: {
           fontSize: 10,

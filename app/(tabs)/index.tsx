@@ -37,21 +37,35 @@ export default function HomeScreen() {
   const fetchAllData = async () => {
     try {
       const token = await AsyncStorage.getItem('dt_token');
+      // Print the first 15 chars of the token to make sure it's the right one
+      console.log("Token being sent:", token ? token.substring(0, 15) + "..." : "No token"); 
+      
       const headers = { 'Authorization': `Bearer ${token}` };
 
-      // Fetch all data in parallel!
-      const [accRes, phyRes, invRes] = await Promise.all([
-        fetch(`${API_URL}/accounts`, { headers }),
+      // We'll just test the accounts endpoint first to see the exact error
+      const accRes = await fetch(`${API_URL}/accounts`, { headers });
+      console.log("Backend Status Code:", accRes.status);
+
+      if (accRes.ok) {
+        setAccounts(await accRes.json());
+        console.log("Data fetched successfully!");
+      } else {
+        // This will print the EXACT reason HuggingFace is blocking you
+        const errorText = await accRes.text();
+        console.log("BACKEND ERROR:", errorText); 
+      }
+
+      // Fetch the rest normally
+      const [phyRes, invRes] = await Promise.all([
         fetch(`${API_URL}/physical`, { headers }),
         fetch(`${API_URL}/investments`, { headers })
       ]);
       
-      if (accRes.ok) setAccounts(await accRes.json());
       if (phyRes.ok) setPhysical(await phyRes.json());
       if (invRes.ok) setInvestments(await invRes.json());
 
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      console.error("Network/Fetch error:", error);
     } finally {
       setLoading(false);
       setRefreshing(false);

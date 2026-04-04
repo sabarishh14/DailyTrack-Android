@@ -1,88 +1,23 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
-
-// 1. Import Firebase auth modules
-import { initializeApp } from 'firebase/app';
-import { 
-  initializeAuth, 
-  GoogleAuthProvider, 
-  signInWithCredential 
-} from 'firebase/auth';
-// @ts-ignore - Firebase TS definitions are missing this, but the function exists at runtime
-import { getReactNativePersistence } from 'firebase/auth';
-import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = "https://sabarishhh14-dailytrack-v2.hf.space/api";
-
-// 2. Paste your Firebase Config from your web App.jsx here
-const firebaseConfig = {
-  apiKey: "AIzaSyCUtU8xA7T_jK-sczn82WcTGhzoC-oaawk",
-  authDomain: "dailytrack-629bf.firebaseapp.com",
-  projectId: "dailytrack-629bf",
-  storageBucket: "dailytrack-629bf.firebasestorage.app",
-  messagingSenderId: "68900020784",
-  appId: "68900020784:web:92abd259e8bb6fd87e83f5"
-};
-
-// Initialize Firebase
-const firebaseApp = initializeApp(firebaseConfig);
-// This tells Firebase exactly where to store your session on the S24
-const auth = initializeAuth(firebaseApp, {
-  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
-});
-// 🛑 KEEP YOUR FIREBASE WEB CLIENT ID HERE
-GoogleSignin.configure({
-  webClientId: '68900020784-s98hgjb235573iga5db1bprubs173ghb.apps.googleusercontent.com',
-});
+import React, { useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function LoginScreen() {
+  
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleGoogleLogin = async () => {
+    
     setLoading(true);
-    try {
-      await GoogleSignin.hasPlayServices();
-      
-      // Step A: Get the Google Token
-      const userInfo = await GoogleSignin.signIn();
-      const idToken = (userInfo as any).idToken || (userInfo as any).data?.idToken;
-      if (!idToken) throw new Error("No ID token received from Google.");
-
-      // Step B: Exchange Google Token for a Firebase Credential
-      const credential = GoogleAuthProvider.credential(idToken);
-
-      // Step C: Sign in to Firebase with that credential
-      const firebaseResult = await signInWithCredential(auth, credential);
-
-      // Step D: Extract the FIREBASE ID Token (This is what Flask wants!)
-      const firebaseIdToken = await firebaseResult.user.getIdToken();
-
-      // Step E: Send the Firebase Token to your backend
-      const res = await fetch(`${API_URL}/auth/firebase-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_token: firebaseIdToken }) // <-- Sending the Firebase token
-      });
-
-      const data = await res.json();
-      
-      if (data.success) {
-        await AsyncStorage.setItem('dt_token', data.token);
-        router.replace('/' as any); 
-      } else {
-        Alert.alert("Access Denied", data.message);
-      }
-
-    } catch (error: any) {
-      console.error(error);
-      Alert.alert("Sign-In Error", error.message || "Something went wrong.");
-    } finally {
+    // Simulating a network request delay
+    setTimeout(async () => {
+      // Inside handleGoogleLogin in app/login.tsx
+      await AsyncStorage.setItem('dt_token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzYnNhYmFyaXNoMTRAZ21haWwuY29tIiwiaWF0IjoxNzczODM3MDYwLCJleHAiOjE3NzY0MjkwNjB9.9FQpPYqv6ETSDdpAOWIN4CzJ1m9CZyYkSIH6MwbdvkQ');
       setLoading(false);
-    }
+      router.replace('/' as any);
+    }, 500);
   };
 
   return (
