@@ -1,0 +1,8 @@
+Configuration: Build Credentials 9jLbcBm-pe
+Keystore
+Type                JKS
+Key Alias           db396437dd5fe43b73d3ff9377364436
+MD5 Fingerprint     F6:82:EA:E6:8D:F3:AC:C4:0E:81:72:9B:20:8B:4B:35
+SHA1 Fingerprint    D9:D5:35:0A:E5:C5:04:61:88:32:69:3F:43:4B:F3:3B:F2:6A:0A:BE
+SHA256 Fingerprint  98:82:42:1D:54:55:F3:18:F4:56:44:A2:36:1D:AF:84:B1:65:2D:15:F0:84:96:E9:90:04:FE:E0:C0:50:74:41
+Updated             14 minutes ago
