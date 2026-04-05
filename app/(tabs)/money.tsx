@@ -15,7 +15,66 @@ export default function MoneyScreen() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncingSheets, setSyncingSheets] = useState(false);
 
+  const handleSyncToSheets = async () => {
+    setSyncingSheets(true);
+    try {
+      const token = await AsyncStorage.getItem('dt_token');
+      
+      // 1. Check for unsynced transactions
+      const checkRes = await fetch(`${API_URL}/sync/check-transactions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const checkData = await checkRes.json();
+
+      if (!checkData.success) {
+        Alert.alert("Error", checkData.message);
+        setSyncingSheets(false);
+        return;
+      }
+
+      if (checkData.count === 0) {
+        Alert.alert("All Good! 👍", "No new transactions to sync to Sheets.");
+        setSyncingSheets(false);
+        return;
+      }
+
+      // 2. Native Confirmation Alert
+      Alert.alert(
+        "Sync to Sheets",
+        `You have ${checkData.count} unsynced transaction(s).\nReady to send them to Google Sheets?`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => setSyncingSheets(false) },
+          { 
+            text: "Sync Now", 
+            onPress: async () => {
+              try {
+                const res = await fetch(`${API_URL}/sync/db-to-sheets`, {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                  Alert.alert("Success! ✅", data.message);
+                } else {
+                  Alert.alert("Sync Failed ❌", data.message);
+                }
+              } catch (e: any) {
+                Alert.alert("Network Error", e.message);
+              } finally {
+                setSyncingSheets(false);
+              }
+            }
+          }
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert("Network Error", e.message);
+      setSyncingSheets(false);
+    }
+  };
   // --- Edit/Delete State ---
   const [editingTx, setEditingTx] = useState<any>(null);
   const [editForm, setEditForm] = useState<any>({});
@@ -271,90 +330,38 @@ export default function MoneyScreen() {
       {/* Dynamic Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Transactions</Text>
-        <TouchableOpacity 
-          onPress={() => setShowFilters(!showFilters)} 
-          style={[styles.badge, { flexDirection: 'row', alignItems: 'center' }, showFilters && {backgroundColor: '#6366f1'}]}
-        >
-          <Ionicons name="filter" size={14} color={showFilters ? "#fff" : "#94a3b8"} />
-          <Text style={[styles.badgeText, showFilters && {color: '#fff'}, {marginLeft: 6}]}>
-            {showFilters ? "Close Filters" : "Filters"}
-          </Text>
-        </TouchableOpacity>
+        
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {/* SYNC BUTTON */}
+          <TouchableOpacity 
+            onPress={handleSyncToSheets} 
+            style={[styles.badge, { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(13,148,136,0.1)', borderColor: 'rgba(13,148,136,0.3)' }]}
+            disabled={syncingSheets}
+          >
+            {syncingSheets ? (
+              <ActivityIndicator size="small" color="#14b8a6" />
+            ) : (
+              <>
+                <Ionicons name="cloud-upload" size={14} color="#14b8a6" />
+                <Text style={[styles.badgeText, {color: '#14b8a6', marginLeft: 6}]}>Sync</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* FILTER BUTTON */}
+          <TouchableOpacity 
+            onPress={() => setShowFilters(!showFilters)} 
+            style={[styles.badge, { flexDirection: 'row', alignItems: 'center' }, showFilters && {backgroundColor: '#6366f1'}]}
+          >
+            <Ionicons name="filter" size={14} color={showFilters ? "#fff" : "#94a3b8"} />
+            <Text style={[styles.badgeText, showFilters && {color: '#fff'}, {marginLeft: 6}]}>
+              {showFilters ? "Close" : "Filters"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Elegant Filter Card */}
-      {showFilters && (
-        <View style={styles.filtersCard}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="🔍 Search descriptions or categories..."
-            placeholderTextColor="#64748b"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-
-          {/* DATE RANGE */}
-          <Text style={styles.filterLabel}>DATE RANGE</Text>
-          <View style={styles.dateRow}>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker('from')}>
-              <Text style={filterDateFrom ? styles.dateTextActive : styles.dateText}>
-                {filterDateFrom || "Start Date"}
-              </Text>
-            </TouchableOpacity>
-            <Text style={{color: '#475569'}}>→</Text>
-            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker('to')}>
-              <Text style={filterDateTo ? styles.dateTextActive : styles.dateText}>
-                {filterDateTo || "End Date"}
-              </Text>
-            </TouchableOpacity>
-            {(filterDateFrom || filterDateTo) && (
-              <TouchableOpacity onPress={() => { setFilterDateFrom(""); setFilterDateTo(""); }} style={{padding: 5}}>
-                <Ionicons name="close-circle" size={20} color="#f87171" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* CHIPS */}
-          <Text style={styles.filterLabel}>ACCOUNT</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            {availableAccounts.map(a => (
-              <TouchableOpacity key={a} style={[styles.filterChip, filterAccount === a && styles.filterChipActive]} onPress={() => setFilterAccount(a)}>
-                <Text style={[styles.filterChipText, filterAccount === a && styles.filterChipTextActive]}>{a}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.filterLabel}>TYPE</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            {availableTypes.map(t => (
-              <TouchableOpacity key={t} style={[styles.filterChip, filterType === t && styles.filterChipActive]} onPress={() => setFilterType(t)}>
-                <Text style={[styles.filterChipText, filterType === t && styles.filterChipTextActive]}>{t}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.filterLabel}>MONTH</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            {availableMonths.map(m => (
-              <TouchableOpacity key={m} style={[styles.filterChip, filterMonth === m && styles.filterChipActive]} onPress={() => setFilterMonth(m)}>
-                <Text style={[styles.filterChipText, filterMonth === m && styles.filterChipTextActive]}>{m}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Floating Stats Pill (Creates perfect separation!) */}
-      {filteredTransactions.length > 0 && (
-        <View style={styles.statsWrapper}>
-          <Text style={styles.statsFound}>{filteredTransactions.length} Found</Text>
-          <View style={styles.statsPill}>
-            <Text style={styles.statsText}><Text style={{color: '#34d399'}}>+{formatMoney(inTotal)}</Text> In</Text>
-            <View style={styles.statsDivider} />
-            <Text style={styles.statsText}><Text style={{color: '#f87171'}}>-{formatMoney(outTotal)}</Text> Out</Text>
-          </View>
-        </View>
-      )}
+     
 
       {/* Native Date Picker Overlay */}
       {showDatePicker && (
@@ -368,21 +375,97 @@ export default function MoneyScreen() {
       )}
 
      <FlatList
+        // ADD THIS NEW PROP HERE:
+        ListHeaderComponent={
+          <>
+            {/* Elegant Filter Card */}
+            {showFilters && (
+              <View style={styles.filtersCard}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="🔍 Search descriptions or categories..."
+                  placeholderTextColor="#64748b"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+
+                {/* DATE RANGE */}
+                <Text style={styles.filterLabel}>DATE RANGE</Text>
+                <View style={styles.dateRow}>
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker('from')}>
+                    <Text style={filterDateFrom ? styles.dateTextActive : styles.dateText}>
+                      {filterDateFrom || "Start Date"}
+                    </Text>
+                  </TouchableOpacity>
+                  <Text style={{color: '#475569'}}>→</Text>
+                  <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker('to')}>
+                    <Text style={filterDateTo ? styles.dateTextActive : styles.dateText}>
+                      {filterDateTo || "End Date"}
+                    </Text>
+                  </TouchableOpacity>
+                  {(filterDateFrom || filterDateTo) && (
+                    <TouchableOpacity onPress={() => { setFilterDateFrom(""); setFilterDateTo(""); }} style={{padding: 5}}>
+                      <Ionicons name="close-circle" size={20} color="#f87171" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* CHIPS */}
+                <Text style={styles.filterLabel}>ACCOUNT</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {availableAccounts.map(a => (
+                    <TouchableOpacity key={a} style={[styles.filterChip, filterAccount === a && styles.filterChipActive]} onPress={() => setFilterAccount(a)}>
+                      <Text style={[styles.filterChipText, filterAccount === a && styles.filterChipTextActive]}>{a}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={styles.filterLabel}>TYPE</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {availableTypes.map(t => (
+                    <TouchableOpacity key={t} style={[styles.filterChip, filterType === t && styles.filterChipActive]} onPress={() => setFilterType(t)}>
+                      <Text style={[styles.filterChipText, filterType === t && styles.filterChipTextActive]}>{t}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <Text style={styles.filterLabel}>MONTH</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {availableMonths.map(m => (
+                    <TouchableOpacity key={m} style={[styles.filterChip, filterMonth === m && styles.filterChipActive]} onPress={() => setFilterMonth(m)}>
+                      <Text style={[styles.filterChipText, filterMonth === m && styles.filterChipTextActive]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* Floating Stats Pill */}
+            {filteredTransactions.length > 0 && (
+              <View style={styles.statsWrapper}>
+                <Text style={styles.statsFound}>{filteredTransactions.length} Found</Text>
+                <View style={styles.statsPill}>
+                  <Text style={styles.statsText}><Text style={{color: '#34d399'}}>+{formatMoney(inTotal)}</Text> In</Text>
+                  <View style={styles.statsDivider} />
+                  <Text style={styles.statsText}><Text style={{color: '#f87171'}}>-{formatMoney(outTotal)}</Text> Out</Text>
+                </View>
+              </View>
+            )}
+          </>
+        }
+        // EXISTING PROPS REMAIN THE SAME BELOW:
         data={paginatedData}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderTransaction}
         contentContainerStyle={styles.listContent}
-        
-        // --- ADD THESE 3 LINES ---
         keyboardShouldPersistTaps="handled" 
         keyboardDismissMode="on-drag"
         automaticallyAdjustKeyboardInsets={true} 
-        // -------------------------
-
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#6366f1" />}
         ListEmptyComponent={
           <Text style={styles.emptyText}>📭 No transactions match your filters.</Text>
         }
+        
         ListFooterComponent={
           filteredTransactions.length > 0 ? (
             <View style={styles.paginationContainer}>
@@ -573,7 +656,6 @@ const styles = StyleSheet.create({
   // --- FILTER & PAGINATION STYLES ---
   filtersCard: { 
     backgroundColor: '#0f172a', 
-    marginHorizontal: 20, 
     borderRadius: 16, 
     padding: 16, 
     marginBottom: 20, 
@@ -596,7 +678,7 @@ const styles = StyleSheet.create({
   dateTextActive: { color: '#e2e8f0', fontSize: 14, fontWeight: 'bold' },
 
   // Stats Pill Separation
-  statsWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginBottom: 15 },
+  statsWrapper: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   statsFound: { color: '#64748b', fontSize: 13, fontWeight: '600' },
   statsPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111827', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   statsDivider: { width: 1, height: 12, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 10 },

@@ -171,26 +171,40 @@ export default function HomeScreen() {
 
       {/* --- INVESTMENTS --- */}
       <Text style={styles.sectionTitle}>📊 Investments</Text>
-      <View style={styles.investCard}>
-        <View style={styles.invRow}>
-          <Text style={styles.invLabel}>Invested</Text>
-          <Text style={styles.invVal}>{showBalances ? formatMoney(totalInvested) : '₹ ••••••'}</Text>
-        </View>
-        <View style={styles.invRow}>
-          <Text style={styles.invLabel}>Current Value</Text>
-          <Text style={styles.invVal}>{showBalances ? formatMoney(totalCurrent) : '₹ ••••••'}</Text>
-        </View>
-        <View style={[styles.invRow, { borderBottomWidth: 0, marginTop: 5 }]}>
-          <Text style={styles.invLabel}>Total Returns</Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={[styles.invVal, { color: totalReturn >= 0 ? '#34d399' : '#f87171' }]}>
-              {showBalances ? formatMoney(totalReturn) : '₹ ••••••'}
-            </Text>
-            <Text style={{ color: totalRetPct >= 0 ? '#34d399' : '#f87171', fontSize: 12, fontWeight: 'bold' }}>
-              {showBalances ? `${totalRetPct >= 0 ? '+' : ''}${totalRetPct.toFixed(2)}%` : '••••'}
-            </Text>
+      <View style={[styles.investCard, { padding: 0, overflow: 'hidden' }]}>
+        
+        {/* Top Split: Invested vs Current */}
+        <View style={styles.invComparisonRow}>
+          <View style={styles.invMetricBlock}>
+            <Text style={styles.invLabel}>INVESTED</Text>
+            <Text style={styles.invVal}>{showBalances ? formatMoney(totalInvested) : '₹ ••••••'}</Text>
+          </View>
+          
+          <View style={styles.invDivider} />
+          
+          <View style={[styles.invMetricBlock, { alignItems: 'flex-end' }]}>
+            <Text style={styles.invLabel}>CURRENT VALUE</Text>
+            <Text style={styles.invVal}>{showBalances ? formatMoney(totalCurrent) : '₹ ••••••'}</Text>
           </View>
         </View>
+        
+        {/* Bottom Bar: Returns */}
+        <View style={styles.invReturnsRow}>
+          <Text style={styles.invReturnsLabel}>TOTAL RETURNS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={[styles.invReturnsVal, { color: totalReturn >= 0 ? '#34d399' : '#f87171' }]}>
+              {showBalances ? `${totalReturn >= 0 ? '+' : ''}${formatMoney(totalReturn)}` : '₹ ••••••'}
+            </Text>
+            {showBalances && (
+               <View style={[styles.invPctBadge, { backgroundColor: totalRetPct >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)' }]}>
+                 <Text style={[styles.invPctText, { color: totalRetPct >= 0 ? '#34d399' : '#f87171' }]}>
+                   {totalRetPct >= 0 ? '+' : ''}{totalRetPct.toFixed(2)}%
+                 </Text>
+               </View>
+            )}
+          </View>
+        </View>
+        
       </View>
       
       <View style={{ height: 40 }} /> 
@@ -252,17 +266,35 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.07)',
     borderWidth: 1,
     borderRadius: 16,
-    padding: 20,
     marginBottom: 20,
   },
-  invRow: {
+  invComparisonRow: {
+    flexDirection: 'row',
+    padding: 20,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  invMetricBlock: {
+    flex: 1,
+  },
+  invDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    marginHorizontal: 15,
+  },
+  invLabel: { color: '#64748b', fontSize: 11, fontWeight: 'bold', marginBottom: 6, letterSpacing: 0.5 },
+  invVal: { color: '#f8fafc', fontSize: 17, fontWeight: 'bold', fontFamily: 'System' },
+  
+  invReturnsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    padding: 16,
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.05)',
   },
-  invLabel: { color: '#94a3b8', fontSize: 14, fontWeight: '500' },
-  invVal: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  invReturnsLabel: { color: '#94a3b8', fontSize: 12, fontWeight: 'bold', letterSpacing: 0.5 },
+  invReturnsVal: { fontSize: 18, fontWeight: 'bold', fontFamily: 'System' },
+  invPctBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  invPctText: { fontSize: 12, fontWeight: 'bold' },
 });

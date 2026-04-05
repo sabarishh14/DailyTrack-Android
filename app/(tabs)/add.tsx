@@ -25,6 +25,8 @@ export default function AddScreen() {
   const [loading, setLoading] = useState(false);
 
   // Form State
+  // Draft Queue State
+  const [queue, setQueue] = useState<any[]>([]);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState("Debit");
   const [account, setAccount] = useState("KOTAK");
@@ -95,17 +97,16 @@ export default function AddScreen() {
     c !== heading
   );
 
-  const handleSubmit = async () => {
+  const handleDirectSave = async () => {
     if (!amount || isNaN(Number(amount)) || !heading.trim()) {
-      Alert.alert("Hold up!", "Please enter a valid amount and select a category.");
+      Alert.alert("Hold up!", "Please enter a valid amount and category.");
       return;
     }
 
     setLoading(true);
     try {
       const token = await AsyncStorage.getItem('dt_token');
-      
-      // Your Flask backend expects an array of transaction objects
+      // Single transaction in the array payload
       const payload = [{
         account,
         date,
@@ -125,17 +126,76 @@ export default function AddScreen() {
       });
 
       if (res.ok) {
-        // Reset form
         setAmount("");
         setHeading("");
         setDescription("");
-        
-        Alert.alert("Success!", "Transaction added successfully.", [
+        Alert.alert("Success!", "Transaction saved.", [
+          { text: "Awesome", onPress: () => router.push('/money' as any) }
+        ]);
+      } else {
+        Alert.alert("Error", "Failed to save transaction.");
+      }
+    } catch (error: any) {
+      Alert.alert("Network Error", error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddToQueue = () => {
+    if (!amount || isNaN(Number(amount)) || !heading.trim()) {
+      Alert.alert("Hold up!", "Please enter a valid amount and category.");
+      return;
+    }
+
+    const newItem = {
+      id: Date.now().toString(), // local ID for rendering/deletion
+      account,
+      date,
+      type,
+      heading: heading.trim(),
+      description: description.trim(),
+      amount: parseFloat(amount)
+    };
+
+    setQueue([newItem, ...queue]); // Push to top of the queue
+
+    // Smart Reset: Clear the input, keep the Date & Bank Account
+    setAmount("");
+    setHeading("");
+    setDescription("");
+  };
+
+  const handleRemoveFromQueue = (id: string) => {
+    setQueue(queue.filter(item => item.id !== id));
+  };
+
+  const handleSaveAll = async () => {
+    if (queue.length === 0) return;
+    setLoading(true);
+    
+    try {
+      const token = await AsyncStorage.getItem('dt_token');
+      // Strip out our temporary local 'id' before sending to the backend
+      const payload = queue.map(({ id, ...rest }) => rest);
+
+      const res = await fetch(`${API_URL}/transactions`, {
+        method: "POST",
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` 
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setQueue([]); // Clear queue on success
+        Alert.alert("Success!", `Saved ${payload.length} transactions.`, [
           { text: "Awesome", onPress: () => router.push('/money' as any) }
         ]);
       } else {
         const errText = await res.text();
-        Alert.alert("Error", "Failed to save transaction.");
+        Alert.alert("Error", "Failed to save transactions.");
         console.error(errText);
       }
     } catch (error: any) {
@@ -292,18 +352,63 @@ export default function AddScreen() {
           </View>
         )}
 
-        {/* --- SUBMIT BUTTON --- */}
-        <TouchableOpacity 
-          style={[styles.submitBtn, loading && { opacity: 0.7 }]} 
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitBtnText}>Save Transaction</Text>
-          )}
-        </TouchableOpacity>
+        {/* --- ACTION BUTTONS --- */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity 
+            style={[styles.directSaveBtn, loading && { opacity: 0.7 }]} 
+            onPress={handleDirectSave}
+            disabled={loading}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.directSaveBtnText}>Save Now</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.addNextBtn} 
+            onPress={handleAddToQueue}
+            disabled={loading}
+          >
+            <Text style={styles.addNextBtnText}>+ Queue</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* --- THE DRAFT QUEUE --- */}
+        {queue.length > 0 && (
+          <View style={styles.queueContainer}>
+            <View style={styles.queueHeaderRow}>
+              <Text style={styles.queueTitle}>Draft Queue ({queue.length})</Text>
+            </View>
+
+            {queue.map((item, index) => (
+              <View key={item.id} style={styles.queueCard}>
+                <View style={styles.queueLeft}>
+                  <Text style={styles.queueBank}>{BANK_EMOJIS[item.account]}</Text>
+                  <View>
+                    <Text style={styles.queueHeading}>{item.heading}</Text>
+                    <Text style={styles.queueSub}>{item.type} • {item.date}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.queueRight}>
+                  <Text style={[styles.queueAmount, { color: item.type === 'Debit' ? '#f87171' : (item.type === 'Credit' ? '#34d399' : '#818cf8') }]}>
+                    {item.type === 'Debit' ? '-' : '+'}₹{item.amount}
+                  </Text>
+                  <TouchableOpacity onPress={() => handleRemoveFromQueue(item.id)} style={styles.queueDelete}>
+                    <Text style={{color: '#64748b', fontSize: 16}}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+            
+            {/* --- SAVE ALL BUTTON --- */}
+            <TouchableOpacity 
+              style={[styles.submitBtn, loading && { opacity: 0.7 }]} 
+              onPress={handleSaveAll}
+              disabled={loading}
+            >
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>Save All to DailyTrack</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
 
       </ScrollView>
     </KeyboardAvoidingView>
@@ -366,4 +471,24 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.05)' 
   },
   dropdownText: { color: '#e2e8f0', fontSize: 15, fontWeight: '500' },
+  actionRow: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  
+  directSaveBtn: { flex: 2, backgroundColor: '#6366f1', paddingVertical: 16, borderRadius: 12, alignItems: 'center', shadowColor: '#6366f1', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  directSaveBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  
+  addNextBtn: { flex: 1, backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 1, borderColor: '#6366f1', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  addNextBtnText: { color: '#818cf8', fontSize: 15, fontWeight: 'bold' },
+
+  queueContainer: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)' },
+  queueHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  queueTitle: { color: '#e2e8f0', fontSize: 14, fontWeight: 'bold' },
+  
+  queueCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#111827', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.03)' },
+  queueLeft: { flexDirection: 'row', alignItems: 'center' },
+  queueBank: { fontSize: 18, marginRight: 10 },
+  queueHeading: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  queueSub: { color: '#64748b', fontSize: 11, marginTop: 2 },
+  queueRight: { flexDirection: 'row', alignItems: 'center' },
+  queueAmount: { fontSize: 15, fontWeight: 'bold', marginRight: 12 },
+  queueDelete: { padding: 4 },
 });

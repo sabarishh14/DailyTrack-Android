@@ -149,6 +149,28 @@ export default function InvestScreen() {
     const trendColor = isPositive ? '#34d399' : '#f87171';
     const trendBg = isPositive ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)';
 
+    // --- NEW: Intercept and clean the backend status ---
+    let statusIcon = "radio-button-on";
+    let statusLabel = "Active";
+    let statusColor = "#94a3b8";
+    let statusBg = "#1e293b";
+
+    const rawStatus = item.total_status || "";
+    if (rawStatus.includes('⬆️') || rawStatus.includes('💹')) {
+      statusIcon = "trending-up";
+      statusLabel = "Market Up";
+      statusColor = "#34d399";
+      statusBg = "rgba(52,211,153,0.15)";
+    } else if (rawStatus.includes('⬇️') || rawStatus.includes('📉')) {
+      statusIcon = "trending-down";
+      statusLabel = "Market Down";
+      statusColor = "#f87171";
+      statusBg = "rgba(248,113,113,0.15)";
+    } else if (rawStatus) {
+      // Fallback: Strip out emojis if it's some other random status
+      statusLabel = rawStatus.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim() || "Active";
+    }
+
     return (
       <View style={[styles.card, { borderLeftColor: trendColor, borderLeftWidth: 3 }]}>
         {/* Top Header */}
@@ -157,8 +179,9 @@ export default function InvestScreen() {
             <Ionicons name="calendar-outline" size={16} color="#94a3b8" />
             <Text style={styles.cardDate}>{formatDate(item.date)}</Text>
           </View>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>{item.total_status || "Active"}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusBg, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+            <Ionicons name={statusIcon as any} size={12} color={statusColor} />
+            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
         </View>
 
