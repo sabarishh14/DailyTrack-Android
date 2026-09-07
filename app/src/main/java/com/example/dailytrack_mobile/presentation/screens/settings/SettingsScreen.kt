@@ -741,6 +741,18 @@ private fun PrivacySecuritySettingsSubScreen(
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var showTimeoutDialog by remember { mutableStateOf(false) }
+
+    if (showTimeoutDialog) {
+        AutoLockTimeoutDialog(
+            currentTimeout = state.lockTimeout,
+            onTimeoutSelected = {
+                onAction(SettingsAction.OnLockTimeoutSelected(it))
+                showTimeoutDialog = false
+            },
+            onDismiss = { showTimeoutDialog = false }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -786,10 +798,8 @@ private fun PrivacySecuritySettingsSubScreen(
                             icon = Icons.Default.Lock,
                             title = "App Lock",
                             subtitle = if (state.isAppLockEnabled) {
-                                if (state.lockType == LockType.SYSTEM)
-                                    "Same as screen lock"
-                                else
-                                    "Custom PIN"
+                                val method = if (state.lockType == LockType.SYSTEM) "Screen lock" else "PIN"
+                                "$method • Auto-lock: ${state.lockTimeout.label}"
                             } else {
                                 "Disabled"
                             },
@@ -812,6 +822,16 @@ private fun PrivacySecuritySettingsSubScreen(
                                 title = "Lock options",
                                 subtitle = "Change lock method or PIN",
                                 onClick = { onNavigateToAppLock() }
+                            )
+                            HorizontalDivider(
+                                modifier = Modifier.padding(start = 56.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                            )
+                            SettingsClickItem(
+                                icon = Icons.Default.Timer,
+                                title = "Auto-lock timeout",
+                                subtitle = state.lockTimeout.label,
+                                onClick = { showTimeoutDialog = true }
                             )
                         }
                     }

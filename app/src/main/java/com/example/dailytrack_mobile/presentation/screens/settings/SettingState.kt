@@ -1,6 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.settings
 
 import com.example.dailytrack_mobile.BuildConfig
+import com.example.dailytrack_mobile.data.local.security.LockTimeout
 import com.example.dailytrack_mobile.data.local.security.LockType
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.ThemeMode
@@ -27,6 +28,7 @@ data class SettingsState(
     val developerName: String = "Sabarish SB",
     val isAppLockEnabled: Boolean = false,
     val lockType: LockType = LockType.SYSTEM,
+    val lockTimeout: LockTimeout = LockTimeout.IMMEDIATELY,
     val isBiometricWithPinEnabled: Boolean = true,
     val hasCustomPin: Boolean = false,
     val isDemoModeEnabled: Boolean = false,

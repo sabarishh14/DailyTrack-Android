@@ -142,6 +142,12 @@ class SettingsVM @Inject constructor(
         }
 
         viewModelScope.launch {
+            appLockManager.lockTimeoutFlow.collect { timeout ->
+                _state.update { it.copy(lockTimeout = timeout) }
+            }
+        }
+
+        viewModelScope.launch {
             appLockManager.isBiometricWithPinEnabledFlow.collect { enabled ->
                 _state.update { it.copy(isBiometricWithPinEnabled = enabled) }
             }
@@ -226,6 +232,11 @@ class SettingsVM @Inject constructor(
             is SettingsAction.OnLockTypeSelected -> {
                 viewModelScope.launch {
                     appLockManager.setLockType(action.lockType)
+                }
+            }
+            is SettingsAction.OnLockTimeoutSelected -> {
+                viewModelScope.launch {
+                    appLockManager.setLockTimeout(action.timeout)
                 }
             }
             is SettingsAction.OnSaveCustomPin -> {

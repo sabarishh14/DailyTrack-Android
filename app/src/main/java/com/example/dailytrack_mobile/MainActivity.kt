@@ -17,6 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.dailytrack_mobile.data.local.security.AppLockManager
+import com.example.dailytrack_mobile.data.local.security.LockTimeout
 import com.example.dailytrack_mobile.data.repository.AuthRepository
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.presentation.screens.lock.AppLockScreen
@@ -29,6 +30,7 @@ import com.example.dailytrack_mobile.presentation.screens.settings.SettingsVM
 import com.example.dailytrack_mobile.presentation.theme.DailyTrackTheme
 import com.example.dailytrack_mobile.presentation.util.ProvideAppDimensions
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -44,6 +46,12 @@ class MainActivity : FragmentActivity() {
     private val loginVM: LoginViewModel by viewModels()
 
     private var pendingDeepLinkRoute by mutableStateOf<String?>(null)
+    private var lastInteractionTime = System.currentTimeMillis()
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInteractionTime = System.currentTimeMillis()
+    }
 
     private fun extractDeepLinkRoute(intent: Intent?): String? {
         val uri = intent?.data ?: return null
@@ -95,21 +103,76 @@ class MainActivity : FragmentActivity() {
             // App Lock State
             var isAppLocked by rememberSaveable { mutableStateOf(false) }
             var hasInitializedLock by remember { mutableStateOf(false) }
+            val coroutineScope = rememberCoroutineScope()
 
             // Initial lock check when app lock is loaded
             LaunchedEffect(state.isAppLockEnabled) {
                 if (!hasInitializedLock && state.isAppLockEnabled) {
-                    isAppLocked = true
+                    val timeout = state.lockTimeout
+                    if (timeout == LockTimeout.IMMEDIATELY) {
+                        isAppLocked = true
+                    } else {
+                        val lastBg = appLockManager.getLastBackgroundTimestamp()
+                        if (lastBg == 0L) {
+                            isAppLocked = true
+                        } else {
+                            val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
+                            if (elapsedSeconds >= timeout.seconds) {
+                                isAppLocked = true
+                            }
+                        }
+                    }
                     hasInitializedLock = true
                 }
             }
 
-            // Lock the app when it goes to background (ON_STOP)
+            // In-app idle lock: check periodically if user was inactive while app was left open
+            LaunchedEffect(isAppLocked, state.isAppLockEnabled, state.lockTimeout) {
+                if (!isAppLocked && state.isAppLockEnabled && state.lockTimeout != LockTimeout.IMMEDIATELY && state.lockTimeout.seconds > 0) {
+                    while (true) {
+                        kotlinx.coroutines.delay(2000L)
+                        val idleSeconds = (System.currentTimeMillis() - lastInteractionTime) / 1000
+                        if (idleSeconds >= state.lockTimeout.seconds) {
+                            isAppLocked = true
+                            break
+                        }
+                    }
+                }
+            }
+
+            // Lifecycle observer for background/foreground transitions
             val lifecycleOwner = LocalLifecycleOwner.current
-            DisposableEffect(lifecycleOwner, state.isAppLockEnabled) {
+            DisposableEffect(lifecycleOwner, state.isAppLockEnabled, state.lockTimeout) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_STOP && state.isAppLockEnabled) {
-                        isAppLocked = true
+                    if (state.isAppLockEnabled) {
+                        when (event) {
+                            Lifecycle.Event.ON_STOP -> {
+                                val now = System.currentTimeMillis()
+                                coroutineScope.launch {
+                                    appLockManager.setLastBackgroundTimestamp(now)
+                                }
+                                if (state.lockTimeout == LockTimeout.IMMEDIATELY) {
+                                    isAppLocked = true
+                                }
+                            }
+                            Lifecycle.Event.ON_START -> {
+                                if (hasInitializedLock && !isAppLocked) {
+                                    val timeout = state.lockTimeout
+                                    if (timeout != LockTimeout.IMMEDIATELY) {
+                                        coroutineScope.launch {
+                                            val lastBg = appLockManager.getLastBackgroundTimestamp()
+                                            if (lastBg > 0L) {
+                                                val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
+                                                if (elapsedSeconds >= timeout.seconds) {
+                                                    isAppLocked = true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else -> {}
+                        }
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
@@ -138,7 +201,13 @@ class MainActivity : FragmentActivity() {
                         } else if (isAppLocked && state.isAppLockEnabled) {
                             AppLockScreen(
                                 appLockManager = appLockManager,
-                                onUnlocked = { isAppLocked = false }
+                                onUnlocked = {
+                                    isAppLocked = false
+                                    lastInteractionTime = System.currentTimeMillis()
+                                    coroutineScope.launch {
+                                        appLockManager.clearLastBackgroundTimestamp()
+                                    }
+                                }
                             )
                         } else {
                             if (currentScreen == "Main") {

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.dailytrack_mobile.data.local.security.LockTimeout
 import com.example.dailytrack_mobile.data.local.security.LockType
 import com.example.dailytrack_mobile.presentation.screens.lock.PinSetupScreen
 import com.example.dailytrack_mobile.presentation.util.BiometricHelper
@@ -43,6 +45,18 @@ fun AppLockSettingsScreen(
     val isBiometricSupported = remember { BiometricHelper.isBiometricAvailable(context) }
     var isSettingUpPin by remember { mutableStateOf(false) }
     var isChangingPin by remember { mutableStateOf(false) }
+    var showTimeoutDialog by remember { mutableStateOf(false) }
+
+    if (showTimeoutDialog) {
+        AutoLockTimeoutDialog(
+            currentTimeout = state.lockTimeout,
+            onTimeoutSelected = {
+                onAction(SettingsAction.OnLockTimeoutSelected(it))
+                showTimeoutDialog = false
+            },
+            onDismiss = { showTimeoutDialog = false }
+        )
+    }
 
     if (isSettingUpPin || isChangingPin) {
         PinSetupScreen(
@@ -251,6 +265,73 @@ fun AppLockSettingsScreen(
                     }
                 }
             }
+
+            // Auto-lock timeout section
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "Auto-lock timeout",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Card(
+                    shape = RoundedCornerShape(dims.cardCornerRadius),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showTimeoutDialog = true }
+                            .padding(horizontal = dims.cardInnerPadding, vertical = dims.itemSpacingLarge),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Timer,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(dims.itemSpacingLarge))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Require unlock",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = state.lockTimeout.label,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(dims.iconSizeSmall + 4.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -318,3 +399,117 @@ private fun LockOptionCard(
         }
     }
 }
+
+@Composable
+fun AutoLockTimeoutDialog(
+    currentTimeout: LockTimeout,
+    onTimeoutSelected: (LockTimeout) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val dims = Dimens.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Surface(
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Timer,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(dims.iconSizeMedium)
+                    )
+                }
+            }
+        },
+        title = {
+            Text(
+                text = "Auto-Lock Timeout",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Choose how long before DailyTrack asks for biometric or PIN when inactive or closed:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                LockTimeout.entries.forEach { timeout ->
+                    val isSelected = timeout == currentTimeout
+                    Surface(
+                        onClick = {
+                            onTimeoutSelected(timeout)
+                            onDismiss()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected)
+                            MaterialTheme.colorScheme.surfaceContainerHighest
+                        else
+                            MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = if (isSelected)
+                            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                        else
+                            null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = timeout.label,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isSelected)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = timeout.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    onTimeoutSelected(timeout)
+                                    onDismiss()
+                                },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = MaterialTheme.colorScheme.primary,
+                                    unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(dims.buttonCornerRadius)
+            ) {
+                Text("Cancel", style = MaterialTheme.typography.labelLarge)
+            }
+        },
+        shape = RoundedCornerShape(dims.cardCornerRadius),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    )
+}
+

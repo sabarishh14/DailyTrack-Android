@@ -1,8 +1,15 @@
 package com.example.dailytrack_mobile.presentation.screens.main
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,13 +23,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.presentation.navigation.components.BottomNavBar
 import com.example.dailytrack_mobile.presentation.screens.activities.ActivitiesScreen
 import com.example.dailytrack_mobile.presentation.screens.home.HomeScreen
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestmentsScreen
-import com.example.dailytrack_mobile.presentation.screens.money.MoneyScreen
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyAction
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyCashFlowTab
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyDialogsAndSheets
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyTransactionsTab
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyVM
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoScreen
 import com.example.dailytrack_mobile.presentation.screens.forms.*
 import com.example.dailytrack_mobile.presentation.screens.analytics.AnalyticsScreen
@@ -31,6 +43,32 @@ import com.example.dailytrack_mobile.presentation.screens.main.components.AddAct
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import kotlinx.coroutines.launch
 
+private const val PAGE_HOME = 0
+private const val PAGE_CASH_FLOW = 1
+private const val PAGE_TRANSACTIONS = 2
+private const val PAGE_ACTIVITIES = 3
+private const val PAGE_INVESTMENTS = 4
+private const val PAGE_SABDEKHO = 5
+private const val MAIN_PAGES_COUNT = 6
+
+private fun pageToRoute(page: Int): String = when (page) {
+    PAGE_HOME -> Routes.Home.route
+    PAGE_CASH_FLOW, PAGE_TRANSACTIONS -> Routes.Money.route
+    PAGE_ACTIVITIES -> Routes.Activities.route
+    PAGE_INVESTMENTS -> Routes.Investments.route
+    PAGE_SABDEKHO -> Routes.Sabdekho.route
+    else -> Routes.Home.route
+}
+
+private fun routeToPage(route: String, preferTransactions: Boolean = false): Int? = when (route) {
+    Routes.Home.route -> PAGE_HOME
+    Routes.Money.route -> if (preferTransactions) PAGE_TRANSACTIONS else PAGE_CASH_FLOW
+    Routes.Activities.route -> PAGE_ACTIVITIES
+    Routes.Investments.route -> PAGE_INVESTMENTS
+    Routes.Sabdekho.route -> PAGE_SABDEKHO
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -38,18 +76,65 @@ fun MainScreen(
     targetRoute: String? = null,
     onRouteConsumed: () -> Unit = {}
 ) {
+    val mainTabRoutes = remember {
+        setOf(
+            Routes.Home.route,
+            Routes.Money.route,
+            Routes.Activities.route,
+            Routes.Investments.route,
+            Routes.Sabdekho.route
+        )
+    }
+
+    val initialPageIndex = remember {
+        val target = targetRoute ?: Routes.Home.route
+        routeToPage(target) ?: PAGE_HOME
+    }
+    val pagerState = rememberPagerState(
+        initialPage = initialPageIndex,
+        pageCount = { MAIN_PAGES_COUNT }
+    )
+
     var currentRoute by remember { mutableStateOf(targetRoute ?: Routes.Home.route) }
+    var lastMoneyPage by remember { mutableIntStateOf(PAGE_CASH_FLOW) }
+
+    val moneyViewModel: MoneyVM = hiltViewModel()
+    val moneyState by moneyViewModel.state.collectAsState()
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    val dims = Dimens.current
+
+    // Update currentRoute and sync Money tab selection only when pager has fully settled
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { settledPage ->
+            if (settledPage == PAGE_CASH_FLOW || settledPage == PAGE_TRANSACTIONS) {
+                lastMoneyPage = settledPage
+                moneyViewModel.onAction(MoneyAction.SelectTab(if (settledPage == PAGE_CASH_FLOW) 0 else 1))
+            }
+            val settledRoute = pageToRoute(settledPage)
+            if (currentRoute in mainTabRoutes && currentRoute != settledRoute) {
+                currentRoute = settledRoute
+            }
+        }
+    }
+
+    // Show Money action message in Snackbar
+    LaunchedEffect(moneyState.actionMessage) {
+        moneyState.actionMessage?.let { message ->
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short
+            )
+            moneyViewModel.onAction(MoneyAction.ClearActionMessage)
+        }
+    }
+
     var showAddSheet by remember { mutableStateOf(false) }
     var isCurrentFormDirty by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingRoute by remember { mutableStateOf<String?>(null) }
     var preselectedMediaForAddMovie by remember { mutableStateOf<MediaSearchResultDto?>(null) }
-    var moneyInitialTab by remember { mutableStateOf<Int?>(null) }
-    var isMoneySelectionMode by remember { mutableStateOf(false) }
-
-    val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
-    val dims = Dimens.current
 
     val formRoutes = remember {
         setOf(
@@ -65,21 +150,39 @@ fun MainScreen(
     val isFormScreen = currentRoute in formRoutes
 
     // Centralized safe navigation that checks for unsaved changes
-    fun navigateSafely(targetRoute: String) {
-        if (currentRoute == targetRoute) return
+    fun navigateSafely(targetRoute: String, preferTransactions: Boolean = false) {
+        if (currentRoute == targetRoute && (targetRoute != Routes.Money.route || pagerState.currentPage == (if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage))) return
 
         if (isFormScreen && isCurrentFormDirty) {
             pendingRoute = targetRoute
             showDiscardDialog = true
         } else {
             isCurrentFormDirty = false
+            val tabIdx = if (targetRoute == Routes.Money.route) {
+                if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage
+            } else {
+                routeToPage(targetRoute)
+            }
+            if (tabIdx != null) {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(tabIdx)
+                }
+            }
             currentRoute = targetRoute
         }
     }
 
     LaunchedEffect(targetRoute) {
         if (targetRoute != null) {
-            if (targetRoute != currentRoute) {
+            val tabIdx = if (targetRoute == Routes.Money.route) {
+                lastMoneyPage
+            } else {
+                routeToPage(targetRoute)
+            }
+            if (tabIdx != null) {
+                pagerState.scrollToPage(tabIdx)
+                currentRoute = targetRoute
+            } else if (targetRoute != currentRoute) {
                 navigateSafely(targetRoute)
             }
             onRouteConsumed()
@@ -90,6 +193,19 @@ fun MainScreen(
     fun onFormSaved(message: String, destinationRoute: String = Routes.Home.route) {
         isCurrentFormDirty = false
         preselectedMediaForAddMovie = null
+        val tabIdx = if (destinationRoute == Routes.Money.route) {
+            PAGE_TRANSACTIONS
+        } else {
+            routeToPage(destinationRoute)
+        }
+        if (tabIdx != null) {
+            if (tabIdx == PAGE_TRANSACTIONS || tabIdx == PAGE_CASH_FLOW) {
+                lastMoneyPage = tabIdx
+            }
+            coroutineScope.launch {
+                pagerState.scrollToPage(tabIdx)
+            }
+        }
         currentRoute = destinationRoute
         coroutineScope.launch {
             snackbarHostState.showSnackbar(
@@ -99,9 +215,18 @@ fun MainScreen(
         }
     }
 
-    // Intercept system/hardware back gesture when not on Home screen
-    BackHandler(enabled = currentRoute != Routes.Home.route) {
-        navigateSafely(Routes.Home.route)
+    // Clear transaction selection on back gesture if in selection mode
+    BackHandler(enabled = moneyState.isSelectionMode) {
+        moneyViewModel.onAction(MoneyAction.ClearTransactionSelection)
+    }
+
+    // Intercept system/hardware back gesture when not on Home screen (and not in selection mode)
+    BackHandler(enabled = !moneyState.isSelectionMode && currentRoute != Routes.Home.route) {
+        if (currentRoute in mainTabRoutes) {
+            coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
+        } else {
+            navigateSafely(Routes.Home.route)
+        }
     }
 
     val screenTitle = when (currentRoute) {
@@ -212,7 +337,13 @@ fun MainScreen(
                     TopAppBar(
                         navigationIcon = {
                             if (currentRoute != Routes.Home.route) {
-                                IconButton(onClick = { navigateSafely(Routes.Home.route) }) {
+                                IconButton(onClick = {
+                                    if (currentRoute in mainTabRoutes) {
+                                        coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
+                                    } else {
+                                        navigateSafely(Routes.Home.route)
+                                    }
+                                }) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                         contentDescription = "Back to Home",
@@ -223,13 +354,21 @@ fun MainScreen(
                             }
                         },
                         title = {
-                            Text(
-                                text = screenTitle,
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            AnimatedContent(
+                                targetState = screenTitle,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(120))
+                                },
+                                label = "TopBarTitleAnimation"
+                            ) { titleText ->
+                                Text(
+                                    text = titleText,
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         },
                         actions = {
                             IconButton(onClick = onNavigateToSettings) {
@@ -256,19 +395,34 @@ fun MainScreen(
         },
         bottomBar = {
             if (!isFormScreen) {
+                val displayRoute = if (currentRoute in mainTabRoutes) {
+                    pageToRoute(pagerState.targetPage)
+                } else {
+                    currentRoute
+                }
                 BottomNavBar(
-                    currentRoute = currentRoute,
+                    currentRoute = displayRoute,
                     onNavigate = { targetRoute ->
-                        if (targetRoute == Routes.Money.route && currentRoute != Routes.Money.route) {
-                            moneyInitialTab = null
+                        val targetPage = if (targetRoute == Routes.Money.route) {
+                            if (pagerState.currentPage == PAGE_CASH_FLOW) PAGE_CASH_FLOW
+                            else if (pagerState.currentPage == PAGE_TRANSACTIONS) PAGE_TRANSACTIONS
+                            else lastMoneyPage
+                        } else {
+                            routeToPage(targetRoute)
                         }
-                        navigateSafely(targetRoute)
+                        if (targetPage != null) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(targetPage)
+                            }
+                        } else {
+                            navigateSafely(targetRoute)
+                        }
                     }
                 )
             }
         },
         floatingActionButton = {
-            if (!isFormScreen && !(currentRoute == Routes.Money.route && isMoneySelectionMode)) {
+            if (!isFormScreen && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)) {
                 FloatingActionButton(
                     onClick = { showAddSheet = true },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -298,48 +452,79 @@ fun MainScreen(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
         ) {
-            when (currentRoute) {
-                Routes.Home.route -> HomeScreen()
-                Routes.Analytics.route -> AnalyticsScreen(
-                    onNavigateBack = { navigateSafely(Routes.Home.route) }
-                )
-                Routes.Money.route -> MoneyScreen(
-                    initialTab = moneyInitialTab,
-                    onTabConsumed = { moneyInitialTab = null },
-                    onSelectionModeChange = { isMoneySelectionMode = it }
-                )
-                Routes.Activities.route -> ActivitiesScreen()
-                Routes.Investments.route -> InvestmentsScreen()
-                Routes.Sabdekho.route -> SabdekhoScreen(
-                    onNavigateToAddMovie = { media ->
-                        preselectedMediaForAddMovie = media
-                        navigateSafely(Routes.AddMovie.route)
+            if (currentRoute in mainTabRoutes) {
+                HorizontalPager(
+                    state = pagerState,
+                    userScrollEnabled = !moneyState.isSelectionMode,
+                    beyondViewportPageCount = 1,
+                    modifier = Modifier.fillMaxSize()
+                ) { page ->
+                    when (page) {
+                        PAGE_HOME -> HomeScreen()
+                        PAGE_CASH_FLOW -> MoneyCashFlowTab(
+                            state = moneyState,
+                            onAction = moneyViewModel::onAction,
+                            onNavigateToTransactions = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(PAGE_TRANSACTIONS)
+                                }
+                            }
+                        )
+                        PAGE_TRANSACTIONS -> MoneyTransactionsTab(
+                            state = moneyState,
+                            onAction = moneyViewModel::onAction,
+                            onNavigateToCashFlow = {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(PAGE_CASH_FLOW)
+                                }
+                            }
+                        )
+                        PAGE_ACTIVITIES -> ActivitiesScreen()
+                        PAGE_INVESTMENTS -> InvestmentsScreen()
+                        PAGE_SABDEKHO -> SabdekhoScreen(
+                            onNavigateToAddMovie = { media ->
+                                preselectedMediaForAddMovie = media
+                                navigateSafely(Routes.AddMovie.route)
+                            }
+                        )
                     }
+                }
+
+                // Render Money bottom sheets and dialogs once
+                MoneyDialogsAndSheets(
+                    state = moneyState,
+                    onAction = moneyViewModel::onAction
                 )
-                Routes.AddMoney.route -> AddMoneyScreen(
-                    onDirtyStateChanged = { isCurrentFormDirty = it },
-                    onSaveSuccess = { onFormSaved("Transaction saved successfully!", Routes.Money.route) }
-                )
-                Routes.AddActivity.route -> AddActivityScreen(
-                    onDirtyStateChanged = { isCurrentFormDirty = it },
-                    onSaveSuccess = { onFormSaved("Activity logged successfully!", Routes.Activities.route) }
-                )
-                Routes.AddMovie.route -> AddMovieScreen(
-                    initialMedia = preselectedMediaForAddMovie,
-                    onDirtyStateChanged = { isCurrentFormDirty = it },
-                    onSaveSuccess = { onFormSaved("Title added successfully!", Routes.Sabdekho.route) }
-                )
-                Routes.AddAsset.route -> AddAssetScreen(
-                    onDirtyStateChanged = { isCurrentFormDirty = it },
-                    onSaveSuccess = { onFormSaved("Asset saved successfully!", Routes.Investments.route) }
-                )
-                Routes.AddInvestment.route -> AddInvestmentScreen(
-                    onDirtyStateChanged = { isCurrentFormDirty = it },
-                    onSaveSuccess = { onFormSaved("Investment recorded successfully!", Routes.Investments.route) }
-                )
-                Routes.SyncBroker.route -> SyncBrokerScreen(
-                    onNavigateBack = { navigateSafely(Routes.Home.route) }
-                )
+            } else {
+                when (currentRoute) {
+                    Routes.Analytics.route -> AnalyticsScreen(
+                        onNavigateBack = { navigateSafely(Routes.Home.route) }
+                    )
+                    Routes.AddMoney.route -> AddMoneyScreen(
+                        onDirtyStateChanged = { isCurrentFormDirty = it },
+                        onSaveSuccess = { onFormSaved("Transaction saved successfully!", Routes.Money.route) }
+                    )
+                    Routes.AddActivity.route -> AddActivityScreen(
+                        onDirtyStateChanged = { isCurrentFormDirty = it },
+                        onSaveSuccess = { onFormSaved("Activity logged successfully!", Routes.Activities.route) }
+                    )
+                    Routes.AddMovie.route -> AddMovieScreen(
+                        initialMedia = preselectedMediaForAddMovie,
+                        onDirtyStateChanged = { isCurrentFormDirty = it },
+                        onSaveSuccess = { onFormSaved("Title added successfully!", Routes.Sabdekho.route) }
+                    )
+                    Routes.AddAsset.route -> AddAssetScreen(
+                        onDirtyStateChanged = { isCurrentFormDirty = it },
+                        onSaveSuccess = { onFormSaved("Asset saved successfully!", Routes.Investments.route) }
+                    )
+                    Routes.AddInvestment.route -> AddInvestmentScreen(
+                        onDirtyStateChanged = { isCurrentFormDirty = it },
+                        onSaveSuccess = { onFormSaved("Investment recorded successfully!", Routes.Investments.route) }
+                    )
+                    Routes.SyncBroker.route -> SyncBrokerScreen(
+                        onNavigateBack = { navigateSafely(Routes.Home.route) }
+                    )
+                }
             }
         }
     }

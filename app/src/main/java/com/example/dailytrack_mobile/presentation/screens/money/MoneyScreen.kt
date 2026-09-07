@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,61 +26,35 @@ import com.example.dailytrack_mobile.presentation.screens.money.components.Filte
 import com.example.dailytrack_mobile.presentation.screens.money.components.TransactionDetailBottomSheet
 import com.example.dailytrack_mobile.presentation.screens.money.components.TransactionsTab
 import com.example.dailytrack_mobile.presentation.util.Dimens
+import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main composable
+// Sub-tabs & Dialogs for unified horizontal paging
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-fun MoneyScreen(
-    viewModel: MoneyVM = hiltViewModel(),
-    initialTab: Int? = null,
-    onTabConsumed: () -> Unit = {},
-    onSelectionModeChange: (Boolean) -> Unit = {}
+fun MoneyCashFlowTab(
+    state: MoneyState,
+    onAction: (MoneyAction) -> Unit,
+    onNavigateToTransactions: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val state by viewModel.state.collectAsState()
     val dims = Dimens.current
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    androidx.activity.compose.BackHandler(enabled = state.isSelectionMode) {
-        viewModel.onAction(MoneyAction.ClearTransactionSelection)
-    }
-
-    LaunchedEffect(state.isSelectionMode) {
-        onSelectionModeChange(state.isSelectionMode)
-    }
-
-    LaunchedEffect(initialTab) {
-        if (initialTab != null) {
-            viewModel.onAction(MoneyAction.SelectTab(initialTab))
-            onTabConsumed()
-        }
-    }
-
-    LaunchedEffect(state.actionMessage) {
-        state.actionMessage?.let { message ->
-            snackbarHostState.showSnackbar(message)
-            viewModel.onAction(MoneyAction.ClearActionMessage)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
     DailyTrackPullToRefreshBox(
         isRefreshing = state.isRefreshing,
-        onRefresh = { viewModel.onAction(MoneyAction.Refresh) },
-        modifier = Modifier.fillMaxSize()
+        onRefresh = { onAction(MoneyAction.Refresh) },
+        modifier = modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            // Custom pill tab bar
             PillTabBar(
-                selectedIndex = state.selectedTab,
+                selectedIndex = 0,
                 tabs = listOf("Cash Flow", "Transactions"),
-                onTabSelected = { viewModel.onAction(MoneyAction.SelectTab(it)) },
+                onTabSelected = { targetIndex ->
+                    if (targetIndex == 1) {
+                        onNavigateToTransactions()
+                    }
+                },
                 modifier = Modifier.padding(
                     start = dims.screenHorizontalPadding,
                     end = dims.screenHorizontalPadding,
@@ -87,50 +63,71 @@ fun MoneyScreen(
                 )
             )
 
-            // Tab content with crossfade
-            AnimatedContent(
-                targetState = state.selectedTab,
-                transitionSpec = {
-                    fadeIn() + slideInHorizontally(
-                        initialOffsetX = { if (targetState > initialState) it / 4 else -it / 4 }
-                    ) togetherWith fadeOut() + slideOutHorizontally(
-                        targetOffsetX = { if (targetState > initialState) -it / 4 else it / 4 }
-                    )
-                },
-                label = "MoneyTabContent"
-            ) { tabIndex ->
-                when (tabIndex) {
-                    0 -> AnalysisTab(
-                        state = state,
-                        onAction = viewModel::onAction
-                    )
-                    1 -> TransactionsTab(
-                        state = state,
-                        onAction = viewModel::onAction
-                    )
-                }
-            }
+            AnalysisTab(
+                state = state,
+                onAction = onAction
+            )
         }
     }
+}
 
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
-        )
+@Composable
+fun MoneyTransactionsTab(
+    state: MoneyState,
+    onAction: (MoneyAction) -> Unit,
+    onNavigateToCashFlow: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dims = Dimens.current
+    DailyTrackPullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = { onAction(MoneyAction.Refresh) },
+        modifier = modifier.fillMaxSize()
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            PillTabBar(
+                selectedIndex = 1,
+                tabs = listOf("Cash Flow", "Transactions"),
+                onTabSelected = { targetIndex ->
+                    if (targetIndex == 0) {
+                        onNavigateToCashFlow()
+                    }
+                },
+                modifier = Modifier.padding(
+                    start = dims.screenHorizontalPadding,
+                    end = dims.screenHorizontalPadding,
+                    top = dims.itemSpacingMedium,
+                    bottom = dims.itemSpacingSmall
+                )
+            )
+
+            TransactionsTab(
+                state = state,
+                onAction = onAction
+            )
+        }
     }
+}
 
+@Composable
+fun MoneyDialogsAndSheets(
+    state: MoneyState,
+    onAction: (MoneyAction) -> Unit
+) {
     // Transaction Detail Bottom Sheet
     state.detailTransaction?.let { tx ->
         TransactionDetailBottomSheet(
             transaction = tx,
             onEdit = { transactionToEdit ->
-                viewModel.onAction(MoneyAction.ShowEditDialog(transactionToEdit))
+                onAction(MoneyAction.ShowEditDialog(transactionToEdit))
             },
             onDelete = { transactionToDelete ->
-                viewModel.onAction(MoneyAction.ShowDeleteConfirmation(transactionToDelete))
+                onAction(MoneyAction.ShowDeleteConfirmation(transactionToDelete))
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.DismissDialogs)
+                onAction(MoneyAction.DismissDialogs)
             }
         )
     }
@@ -161,7 +158,7 @@ fun MoneyScreen(
             descriptionsByCategory = descriptionsByCategory,
             isUpdating = state.isUpdating,
             onSave = { id, type, category, amount, note, accountName, date, excludeAnalytics ->
-                viewModel.onAction(
+                onAction(
                     MoneyAction.UpdateTransaction(
                         id = id,
                         type = type,
@@ -175,10 +172,10 @@ fun MoneyScreen(
                 )
             },
             onDelete = { transactionToDelete ->
-                viewModel.onAction(MoneyAction.ShowDeleteConfirmation(transactionToDelete))
+                onAction(MoneyAction.ShowDeleteConfirmation(transactionToDelete))
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.DismissDialogs)
+                onAction(MoneyAction.DismissDialogs)
             }
         )
     }
@@ -189,10 +186,10 @@ fun MoneyScreen(
             transaction = tx,
             isDeleting = state.isDeleting,
             onConfirm = {
-                viewModel.onAction(MoneyAction.DeleteTransaction(tx.id))
+                onAction(MoneyAction.DeleteTransaction(tx.id))
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.DismissDialogs)
+                onAction(MoneyAction.DismissDialogs)
             }
         )
     }
@@ -204,10 +201,10 @@ fun MoneyScreen(
             allCategories = state.mostUsedCategories,
             allAccounts = state.allAvailableAccounts,
             onApply = { updatedFilters ->
-                viewModel.onAction(MoneyAction.ApplyAnalysisFilters(updatedFilters))
+                onAction(MoneyAction.ApplyAnalysisFilters(updatedFilters))
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.SetFilterSheetVisible(false))
+                onAction(MoneyAction.SetFilterSheetVisible(false))
             }
         )
     }
@@ -222,10 +219,10 @@ fun MoneyScreen(
             recentDescriptions = allDescriptions,
             isUpdating = state.isBulkUpdating,
             onSave = { updates ->
-                viewModel.onAction(MoneyAction.ExecuteBulkEdit(updates))
+                onAction(MoneyAction.ExecuteBulkEdit(updates))
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.ShowBulkEditSheet(false))
+                onAction(MoneyAction.ShowBulkEditSheet(false))
             }
         )
     }
@@ -236,11 +233,85 @@ fun MoneyScreen(
             selectedCount = state.selectedTransactionIds.size,
             isDeleting = state.isBulkDeleting,
             onConfirm = {
-                viewModel.onAction(MoneyAction.ExecuteBulkDelete)
+                onAction(MoneyAction.ExecuteBulkDelete)
             },
             onDismiss = {
-                viewModel.onAction(MoneyAction.ShowBulkDeleteConfirmation(false))
+                onAction(MoneyAction.ShowBulkDeleteConfirmation(false))
             }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Standalone Money composable (backward compatibility & standalone screens)
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun MoneyScreen(
+    viewModel: MoneyVM = hiltViewModel(),
+    initialTab: Int? = null,
+    onTabConsumed: () -> Unit = {},
+    onSelectionModeChange: (Boolean) -> Unit = {}
+) {
+    val state by viewModel.state.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var selectedTab by remember { mutableIntStateOf(state.selectedTab.coerceIn(0, 1)) }
+
+    androidx.activity.compose.BackHandler(enabled = state.isSelectionMode) {
+        viewModel.onAction(MoneyAction.ClearTransactionSelection)
+    }
+
+    LaunchedEffect(state.isSelectionMode) {
+        onSelectionModeChange(state.isSelectionMode)
+    }
+
+    LaunchedEffect(initialTab) {
+        if (initialTab != null) {
+            selectedTab = initialTab.coerceIn(0, 1)
+            viewModel.onAction(MoneyAction.SelectTab(selectedTab))
+            onTabConsumed()
+        }
+    }
+
+    LaunchedEffect(state.actionMessage) {
+        state.actionMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            viewModel.onAction(MoneyAction.ClearActionMessage)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        if (selectedTab == 0) {
+            MoneyCashFlowTab(
+                state = state,
+                onAction = viewModel::onAction,
+                onNavigateToTransactions = {
+                    selectedTab = 1
+                    viewModel.onAction(MoneyAction.SelectTab(1))
+                }
+            )
+        } else {
+            MoneyTransactionsTab(
+                state = state,
+                onAction = viewModel::onAction,
+                onNavigateToCashFlow = {
+                    selectedTab = 0
+                    viewModel.onAction(MoneyAction.SelectTab(0))
+                }
+            )
+        }
+
+        MoneyDialogsAndSheets(
+            state = state,
+            onAction = viewModel::onAction
+        )
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
         )
     }
 }
