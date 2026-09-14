@@ -44,16 +44,79 @@ class AppLockManager(private val context: Context) {
         private const val SALT = "DailyTrack_Secure_Salt_#2026"
     }
 
+    // Synchronous SharedPreferences cache to eliminate race conditions on cold start and resume
+    private val syncPrefs by lazy {
+        context.getSharedPreferences("app_lock_sync_cache", Context.MODE_PRIVATE)
+    }
+
     // In-memory cache for fast lock verification without disk I/O latency
     @Volatile
     private var lastBackgroundTimestampMemory: Long = 0L
 
+    init {
+        // Fast sync cache initialization from DataStore on very first run if not already present
+        if (!syncPrefs.contains("app_lock_enabled")) {
+            try {
+                kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                    val prefs = context.dataStore.data.first()
+                    val enabled = prefs[KEY_APP_LOCK_ENABLED] ?: false
+                    val timeoutStr = prefs[KEY_LOCK_TIMEOUT] ?: LockTimeout.IMMEDIATELY.name
+                    val lastBg = prefs[KEY_LAST_BACKGROUND_TIMESTAMP] ?: 0L
+                    syncPrefs.edit()
+                        .putBoolean("app_lock_enabled", enabled)
+                        .putString("app_lock_timeout", timeoutStr)
+                        .putLong("app_lock_last_bg", lastBg)
+                        .apply()
+                }
+            } catch (e: Exception) {
+                // Ignore fallback
+            }
+        }
+        lastBackgroundTimestampMemory = syncPrefs.getLong("app_lock_last_bg", 0L)
+    }
+
+    fun isAppLockEnabledSync(): Boolean {
+        return syncPrefs.getBoolean("app_lock_enabled", false)
+    }
+
+    fun getLockTimeoutSync(): LockTimeout {
+        val timeoutStr = syncPrefs.getString("app_lock_timeout", LockTimeout.IMMEDIATELY.name)
+        return LockTimeout.fromString(timeoutStr)
+    }
+
+    fun getLastBackgroundTimestampSync(): Long {
+        if (lastBackgroundTimestampMemory != 0L) return lastBackgroundTimestampMemory
+        return syncPrefs.getLong("app_lock_last_bg", 0L)
+    }
+
+    fun shouldLockOnColdStart(): Boolean {
+        if (!isAppLockEnabledSync()) return false
+        val timeout = getLockTimeoutSync()
+        if (timeout == LockTimeout.IMMEDIATELY) return true
+        val lastBg = getLastBackgroundTimestampSync()
+        if (lastBg == 0L) return true
+        val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
+        return elapsedSeconds >= timeout.seconds
+    }
+
+    fun shouldLockOnResume(timeout: LockTimeout): Boolean {
+        if (!isAppLockEnabledSync()) return false
+        if (timeout == LockTimeout.IMMEDIATELY) return true
+        val lastBg = getLastBackgroundTimestampSync()
+        if (lastBg == 0L) return false
+        val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
+        return elapsedSeconds >= timeout.seconds
+    }
+
     val isAppLockEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_APP_LOCK_ENABLED] ?: false
+        val enabled = preferences[KEY_APP_LOCK_ENABLED] ?: false
+        syncPrefs.edit().putBoolean("app_lock_enabled", enabled).apply()
+        enabled
     }
 
     val lockTimeoutFlow: Flow<LockTimeout> = context.dataStore.data.map { preferences ->
         val timeoutStr = preferences[KEY_LOCK_TIMEOUT] ?: LockTimeout.IMMEDIATELY.name
+        syncPrefs.edit().putString("app_lock_timeout", timeoutStr).apply()
         LockTimeout.fromString(timeoutStr)
     }
 
@@ -75,12 +138,14 @@ class AppLockManager(private val context: Context) {
     }
 
     suspend fun setAppLockEnabled(enabled: Boolean) {
+        syncPrefs.edit().putBoolean("app_lock_enabled", enabled).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_APP_LOCK_ENABLED] = enabled
         }
     }
 
     suspend fun setLockTimeout(timeout: LockTimeout) {
+        syncPrefs.edit().putString("app_lock_timeout", timeout.name).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_LOCK_TIMEOUT] = timeout.name
         }
@@ -94,6 +159,7 @@ class AppLockManager(private val context: Context) {
 
     suspend fun setLastBackgroundTimestamp(timestamp: Long) {
         lastBackgroundTimestampMemory = timestamp
+        syncPrefs.edit().putLong("app_lock_last_bg", timestamp).apply()
         context.dataStore.edit { preferences ->
             preferences[KEY_LAST_BACKGROUND_TIMESTAMP] = timestamp
         }
@@ -101,14 +167,20 @@ class AppLockManager(private val context: Context) {
 
     suspend fun getLastBackgroundTimestamp(): Long {
         if (lastBackgroundTimestampMemory != 0L) return lastBackgroundTimestampMemory
+        val stored = syncPrefs.getLong("app_lock_last_bg", 0L)
+        if (stored != 0L) {
+            lastBackgroundTimestampMemory = stored
+            return stored
+        }
         val preferences = context.dataStore.data.first()
-        val stored = preferences[KEY_LAST_BACKGROUND_TIMESTAMP] ?: 0L
-        lastBackgroundTimestampMemory = stored
-        return stored
+        val fromDs = preferences[KEY_LAST_BACKGROUND_TIMESTAMP] ?: 0L
+        lastBackgroundTimestampMemory = fromDs
+        return fromDs
     }
 
     suspend fun clearLastBackgroundTimestamp() {
         lastBackgroundTimestampMemory = 0L
+        syncPrefs.edit().remove("app_lock_last_bg").apply()
         context.dataStore.edit { preferences ->
             preferences.remove(KEY_LAST_BACKGROUND_TIMESTAMP)
         }

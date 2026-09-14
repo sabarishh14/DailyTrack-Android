@@ -28,6 +28,11 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideInvestPreferencesManager(@ApplicationContext context: Context): com.example.dailytrack_mobile.data.local.datastore.InvestPreferencesManager =
+        com.example.dailytrack_mobile.data.local.datastore.InvestPreferencesManager(context)
+
+    @Provides
+    @Singleton
     fun provideAppLockManager(@ApplicationContext context: Context): AppLockManager =
         AppLockManager(context)
 

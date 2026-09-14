@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.di
 
+import com.example.dailytrack_mobile.BuildConfig
 import com.example.dailytrack_mobile.data.remote.api.ApiConfig
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.squareup.moshi.Moshi
@@ -29,8 +30,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(authManager: com.example.dailytrack_mobile.data.local.auth.AuthManager): OkHttpClient {
+        // BODY-level logging prints request/response headers (including the auth Bearer
+        // token) and full payloads to Logcat. Only safe in debug builds.
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
         }
 
         val authInterceptor = Interceptor { chain ->

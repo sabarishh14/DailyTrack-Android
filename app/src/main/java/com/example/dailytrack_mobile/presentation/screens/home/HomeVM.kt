@@ -3,8 +3,11 @@ package com.example.dailytrack_mobile.presentation.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.datastore.DemoModeManager
+import com.example.dailytrack_mobile.data.local.datastore.InvestPreferencesManager
+import com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
+import com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory
 import com.example.dailytrack_mobile.presentation.screens.money.AccountInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,11 +21,18 @@ import javax.inject.Inject
 class HomeVM @Inject constructor(
     private val repository: MoneyRepository,
     private val investmentsRepository: InvestmentsRepository,
-    private val demoModeManager: DemoModeManager
+    private val demoModeManager: DemoModeManager,
+    private val investPreferencesManager: InvestPreferencesManager
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(HomeState())
+    private val _state = MutableStateFlow(
+        HomeState(
+            hiddenInvestCategories = investPreferencesManager.getInitialHiddenCategories()
+        )
+    )
     val state: StateFlow<HomeState> = _state.asStateFlow()
+
+    private var cachedLatestSnapshot: PortfolioSnapshotDto? = null
 
     init {
         viewModelScope.launch {
@@ -35,6 +45,48 @@ class HomeVM @Inject constructor(
                 loadAccountsAndTransactions()
             }
         }
+        viewModelScope.launch {
+            investPreferencesManager.hiddenCategoriesFlow.collect { hidden ->
+                val (inv, curr) = calculateFilteredInvestments(cachedLatestSnapshot, hidden)
+                _state.update {
+                    it.copy(
+                        hiddenInvestCategories = hidden,
+                        investmentTotalInvested = inv,
+                        investmentTotalCurrent = curr
+                    )
+                }
+            }
+        }
+    }
+
+    private fun calculateFilteredInvestments(
+        snapshot: PortfolioSnapshotDto?,
+        hidden: Set<InvestCategory>
+    ): Pair<Double, Double> {
+        if (snapshot == null) return Pair(0.0, 0.0)
+        var inv = 0.0
+        var curr = 0.0
+        if (InvestCategory.STOCKS !in hidden) {
+            inv += snapshot.invStocks ?: 0.0
+            curr += snapshot.currStocks ?: 0.0
+        }
+        if (InvestCategory.MUTUAL_FUNDS !in hidden) {
+            inv += snapshot.invMf ?: 0.0
+            curr += snapshot.currMf ?: 0.0
+        }
+        if (InvestCategory.RETIREMENT !in hidden) {
+            inv += snapshot.invProv ?: 0.0
+            curr += snapshot.currProv ?: 0.0
+        }
+        if (InvestCategory.FD !in hidden) {
+            inv += snapshot.invFixed ?: 0.0
+            curr += snapshot.currFixed ?: 0.0
+        }
+        if (InvestCategory.GOLD !in hidden) {
+            inv += snapshot.invGold ?: 0.0
+            curr += snapshot.currGold ?: 0.0
+        }
+        return Pair(inv, curr)
     }
 
     private fun loadAccountsAndTransactions(forceRefresh: Boolean = false) {
@@ -78,8 +130,8 @@ class HomeVM @Inject constructor(
                 
                 val portfolioData = investmentsResult.getOrNull()
                 val latestSnapshot = portfolioData?.snapshots?.firstOrNull()
-                val totalInvested = latestSnapshot?.grandTotalInv ?: 0.0
-                val totalCurrent = latestSnapshot?.grandTotalCurr ?: 0.0
+                cachedLatestSnapshot = latestSnapshot
+                val (totalInvested, totalCurrent) = calculateFilteredInvestments(latestSnapshot, _state.value.hiddenInvestCategories)
                 
                 _state.update {
                     it.copy(

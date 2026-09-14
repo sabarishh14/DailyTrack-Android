@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.data.repository
 
+import com.example.dailytrack_mobile.data.local.datastore.PrefsStringListCache
 import com.example.dailytrack_mobile.data.local.demo.DemoDataManager
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
@@ -19,11 +20,19 @@ class MoneyRepository @Inject constructor(
     private val demoDataManager: DemoDataManager,
     @ApplicationContext private val context: Context
 ) {
+    companion object {
+        private const val KEY_MOST_USED_EXPENSE = "cached_most_used_expense"
+        private const val KEY_MOST_USED_INCOME = "cached_most_used_income"
+        private const val KEY_ACCOUNTS = "cached_accounts"
+        private const val KEY_CATEGORIES = "cached_categories"
+    }
+
     val dataUpdateFlow: SharedFlow<Unit> get() = demoDataManager.dataUpdateFlow
 
     private val prefs by lazy {
         context.getSharedPreferences("money_repo_cache", Context.MODE_PRIVATE)
     }
+    private val listCache by lazy { PrefsStringListCache(prefs) }
 
     private var cachedAccounts: List<AccountDto>? = null
     private var cachedAccountNames = mutableListOf<String>()
@@ -37,22 +46,10 @@ class MoneyRepository @Inject constructor(
 
     init {
         try {
-            val expStr = prefs.getString("cached_most_used_expense", null)
-            if (!expStr.isNullOrBlank()) {
-                inMemoryMostUsedExpense = expStr.split("|||").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-            }
-            val incStr = prefs.getString("cached_most_used_income", null)
-            if (!incStr.isNullOrBlank()) {
-                inMemoryMostUsedIncome = incStr.split("|||").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-            }
-            val accStr = prefs.getString("cached_accounts", null)
-            if (!accStr.isNullOrBlank()) {
-                cachedAccountNames = accStr.split("|||").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
-            }
-            val catStr = prefs.getString("cached_categories", null)
-            if (!catStr.isNullOrBlank()) {
-                cachedCategories = catStr.split("|||").map { it.trim() }.filter { it.isNotEmpty() }
-            }
+            inMemoryMostUsedExpense = listCache.read(KEY_MOST_USED_EXPENSE).toMutableList()
+            inMemoryMostUsedIncome = listCache.read(KEY_MOST_USED_INCOME).toMutableList()
+            cachedAccountNames = listCache.read(KEY_ACCOUNTS).toMutableList()
+            listCache.read(KEY_CATEGORIES).takeIf { it.isNotEmpty() }?.let { cachedCategories = it }
         } catch (_: Exception) { }
     }
 
@@ -65,11 +62,11 @@ class MoneyRepository @Inject constructor(
         synchronized(this) {
             if (expenses.isNotEmpty()) {
                 inMemoryMostUsedExpense = expenses.toMutableList()
-                prefs.edit().putString("cached_most_used_expense", expenses.joinToString("|||")).apply()
+                listCache.write(KEY_MOST_USED_EXPENSE, expenses)
             }
             if (income.isNotEmpty()) {
                 inMemoryMostUsedIncome = income.toMutableList()
-                prefs.edit().putString("cached_most_used_income", income.joinToString("|||")).apply()
+                listCache.write(KEY_MOST_USED_INCOME, income)
             }
         }
     }
@@ -160,7 +157,7 @@ class MoneyRepository @Inject constructor(
             } else {
                 api.getAccounts().also {
                     cachedAccounts = it
-                    try { prefs.edit().putString("cached_accounts", it.map { a -> a.account }.joinToString("|||")).apply() } catch (_: Exception) {}
+                    try { listCache.write(KEY_ACCOUNTS, it.map { a -> a.account }) } catch (_: Exception) {}
                 }
             }
         }
@@ -200,7 +197,7 @@ class MoneyRepository @Inject constructor(
             } else {
                 api.getCategories().categories.also {
                     cachedCategories = it
-                    try { prefs.edit().putString("cached_categories", it.joinToString("|||")).apply() } catch (_: Exception) {}
+                    try { listCache.write(KEY_CATEGORIES, it) } catch (_: Exception) {}
                 }
             }
         }

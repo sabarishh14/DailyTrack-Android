@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -54,12 +56,32 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun extractDeepLinkRoute(intent: Intent?): String? {
-        val uri = intent?.data ?: return null
-        return when {
-            (uri.scheme == "dailytrack" && uri.host == "add_money") ||
-            (uri.scheme == "myapp" && uri.host == "input_form") -> Routes.AddMoney.route
-            else -> null
+        if (intent == null) return null
+        val uri = intent.data
+        if (uri != null) {
+            val uriStr = uri.toString().lowercase()
+            if (uriStr.contains("add_money") || uriStr.contains("input_form")) {
+                return Routes.AddMoney.route
+            }
         }
+        val shortcutId = intent.getStringExtra("android.intent.extra.shortcut.ID")
+            ?: intent.getStringExtra("shortcut_id")
+            ?: intent.getStringExtra("shortcutId")
+        if (shortcutId != null && (shortcutId == "open_input_form" || shortcutId.contains("add_money") || shortcutId.contains("input_form"))) {
+            return Routes.AddMoney.route
+        }
+        val extraRoute = intent.getStringExtra("route")
+        if (!extraRoute.isNullOrBlank()) {
+            if (extraRoute.contains("add_money") || extraRoute.contains("input_form")) {
+                return Routes.AddMoney.route
+            }
+            return extraRoute
+        }
+        val action = intent.action
+        if (action != null && (action.contains("ADD_MONEY") || action.contains("INPUT_FORM") || action.contains("open_input_form"))) {
+            return Routes.AddMoney.route
+        }
+        return null
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -100,29 +122,17 @@ class MainActivity : FragmentActivity() {
                 }
             }
 
-            // App Lock State
-            var isAppLocked by rememberSaveable { mutableStateOf(false) }
-            var hasInitializedLock by remember { mutableStateOf(false) }
+            // App Lock State - initialized synchronously from fast cache to eliminate cold start race conditions
+            val shouldInitiallyLock = remember { appLockManager.shouldLockOnColdStart() }
+            var isAppLocked by rememberSaveable { mutableStateOf(shouldInitiallyLock) }
             val coroutineScope = rememberCoroutineScope()
 
-            // Initial lock check when app lock is loaded
-            LaunchedEffect(state.isAppLockEnabled) {
-                if (!hasInitializedLock && state.isAppLockEnabled) {
-                    val timeout = state.lockTimeout
-                    if (timeout == LockTimeout.IMMEDIATELY) {
+            // Runtime lock check when app lock toggle or timeout setting changes
+            LaunchedEffect(state.isAppLockEnabled, state.lockTimeout) {
+                if (state.isAppLockEnabled && !isAppLocked) {
+                    if (appLockManager.shouldLockOnColdStart()) {
                         isAppLocked = true
-                    } else {
-                        val lastBg = appLockManager.getLastBackgroundTimestamp()
-                        if (lastBg == 0L) {
-                            isAppLocked = true
-                        } else {
-                            val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
-                            if (elapsedSeconds >= timeout.seconds) {
-                                isAppLocked = true
-                            }
-                        }
                     }
-                    hasInitializedLock = true
                 }
             }
 
@@ -156,19 +166,8 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
                             Lifecycle.Event.ON_START -> {
-                                if (hasInitializedLock && !isAppLocked) {
-                                    val timeout = state.lockTimeout
-                                    if (timeout != LockTimeout.IMMEDIATELY) {
-                                        coroutineScope.launch {
-                                            val lastBg = appLockManager.getLastBackgroundTimestamp()
-                                            if (lastBg > 0L) {
-                                                val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
-                                                if (elapsedSeconds >= timeout.seconds) {
-                                                    isAppLocked = true
-                                                }
-                                            }
-                                        }
-                                    }
+                                if (appLockManager.shouldLockOnResume(state.lockTimeout)) {
+                                    isAppLocked = true
                                 }
                             }
                             else -> {}
@@ -213,7 +212,7 @@ class MainActivity : FragmentActivity() {
                             if (currentScreen == "Main") {
                                 MainScreen(
                                     onNavigateToSettings = { currentScreen = "Settings" },
-                                    targetRoute = pendingDeepLinkRoute,
+                                    targetRoute = if (!isAppLocked) pendingDeepLinkRoute else null,
                                     onRouteConsumed = { pendingDeepLinkRoute = null }
                                 )
                             } else {

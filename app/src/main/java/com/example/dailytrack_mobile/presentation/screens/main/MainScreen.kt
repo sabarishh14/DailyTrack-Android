@@ -130,6 +130,17 @@ fun MainScreen(
         }
     }
 
+    // React when ViewModel selects a Money tab (e.g. from AnalysisTab "View Filtered Transactions")
+    LaunchedEffect(moneyState.selectedTab) {
+        val targetPage = if (moneyState.selectedTab == 0) PAGE_CASH_FLOW else PAGE_TRANSACTIONS
+        if (pagerState.currentPage in listOf(PAGE_CASH_FLOW, PAGE_TRANSACTIONS) &&
+            pagerState.currentPage != targetPage &&
+            pagerState.targetPage != targetPage
+        ) {
+            pagerState.animateScrollToPage(targetPage)
+        }
+    }
+
     var showAddSheet by remember { mutableStateOf(false) }
     var isCurrentFormDirty by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
@@ -182,7 +193,7 @@ fun MainScreen(
             if (tabIdx != null) {
                 pagerState.scrollToPage(tabIdx)
                 currentRoute = targetRoute
-            } else if (targetRoute != currentRoute) {
+            } else {
                 navigateSafely(targetRoute)
             }
             onRouteConsumed()

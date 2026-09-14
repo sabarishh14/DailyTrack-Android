@@ -65,7 +65,8 @@ fun MoneyCashFlowTab(
 
             AnalysisTab(
                 state = state,
-                onAction = onAction
+                onAction = onAction,
+                onNavigateToTransactions = onNavigateToTransactions
             )
         }
     }

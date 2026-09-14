@@ -10,7 +10,10 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="com.example.dailytrack_mobile"
             android:targetClass="com.example.dailytrack_mobile.MainActivity"
-            android:data="dailytrack://add_money" />
-        <categories android:name="android.shortcut.conversation" />
+            android:data="dailytrack://add_money">
+            <extra
+                android:name="route"
+                android:value="add_money" />
+        </intent>
     </shortcut>
 </shortcuts>

@@ -165,7 +165,10 @@ fun HomeScreen(
                     totalBankBalance = apiBankBalance,
                     totalNetWorth = totalNetWorth,
                     accountCount = apiAccounts.size,
-                    isLoading = homeState.isLoading
+                    isLoading = homeState.isLoading,
+                    isInvestFiltered = homeState.isInvestFiltered,
+                    visibleInvestCount = homeState.visibleInvestCategoriesCount,
+                    totalInvestCount = homeState.totalInvestCategoriesCount
                 )
             }
             item {
@@ -179,7 +182,10 @@ fun HomeScreen(
                 InvestmentPortfolioSection(
                     totalInvested = homeState.investmentTotalInvested,
                     totalCurrent  = homeState.investmentTotalCurrent,
-                    isLoading     = homeState.isLoading
+                    isLoading     = homeState.isLoading,
+                    isFiltered    = homeState.isInvestFiltered,
+                    visibleCount  = homeState.visibleInvestCategoriesCount,
+                    totalCount    = homeState.totalInvestCategoriesCount
                 ) 
             }
             item {
@@ -218,7 +224,10 @@ private fun NetWorthSection(
     totalBankBalance: Double,
     totalNetWorth: Double,
     accountCount: Int,
-    isLoading: Boolean
+    isLoading: Boolean,
+    isInvestFiltered: Boolean = false,
+    visibleInvestCount: Int = 0,
+    totalInvestCount: Int = 0
 ) {
     val dims = Dimens.current
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
@@ -300,7 +309,29 @@ private fun NetWorthSection(
                         verticalAlignment     = Alignment.CenterVertically
                     ) {
                         Spacer(modifier = Modifier.size(20.dp))
-                        SectionLabel(text = "NET WORTH")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            SectionLabel(text = "NET WORTH")
+                            if (isInvestFiltered) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = "$visibleInvestCount/$totalInvestCount",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.5.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
                         Icon(
                             imageVector        = if (isBalanceVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
                             contentDescription = if (isBalanceVisible) "Hide balance" else "Show balance",
@@ -338,7 +369,7 @@ private fun NetWorthSection(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text  = "Banks · Cash · Investments",
+                            text  = if (isInvestFiltered) "Banks · Cash · Investments ($visibleInvestCount/$totalInvestCount)" else "Banks · Cash · Investments",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -648,7 +679,10 @@ private fun BankAccountCard(
 private fun InvestmentPortfolioSection(
     totalInvested: Double,
     totalCurrent: Double,
-    isLoading: Boolean = false
+    isLoading: Boolean = false,
+    isFiltered: Boolean = false,
+    visibleCount: Int = 0,
+    totalCount: Int = 0
 ) {
     val dims = Dimens.current
     val totalReturns = totalCurrent - totalInvested
@@ -664,11 +698,33 @@ private fun InvestmentPortfolioSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment     = Alignment.CenterVertically
             ) {
-                SectionLabel(
-                    text       = "INVESTMENT PORTFOLIO",
-                    isExpanded = isExpanded,
-                    onClick    = { isExpanded = !isExpanded }
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    SectionLabel(
+                        text       = "INVESTMENT PORTFOLIO",
+                        isExpanded = isExpanded,
+                        onClick    = { isExpanded = !isExpanded }
+                    )
+                    if (isFiltered) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                        ) {
+                            Text(
+                                text = "$visibleCount/$totalCount",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
             }
 
             AnimatedVisibility(

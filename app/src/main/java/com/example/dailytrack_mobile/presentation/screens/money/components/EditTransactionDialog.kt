@@ -57,8 +57,6 @@ private val defaultCategories = listOf(
     "Freelance", "Investment", "Gift", "Other"
 )
 
-private val defaultAccounts = DEFAULT_CANONICAL_ACCOUNTS
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditTransactionDialog(

@@ -14,8 +14,13 @@ data class HomeState(
     val incomeByCategory: Map<String, Double> = emptyMap(),
     val expenseByCategory: Map<String, Double> = emptyMap(),
     val investmentTotalInvested: Double = 0.0,
-    val investmentTotalCurrent: Double = 0.0
+    val investmentTotalCurrent: Double = 0.0,
+    val hiddenInvestCategories: Set<com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory> = emptySet()
 ) {
+    val isInvestFiltered: Boolean get() = hiddenInvestCategories.isNotEmpty()
+    val visibleInvestCategoriesCount: Int get() = com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory.entries.size - hiddenInvestCategories.size
+    val totalInvestCategoriesCount: Int get() = com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory.entries.size
+
     val totalBankBalance: Double
         get() = accounts
             .filter { it.balanceTracked }

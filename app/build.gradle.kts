@@ -35,10 +35,19 @@ android {
 
     buildTypes {
         release {
+            // NOTE: still signed with the debug key intentionally — this app isn't
+            // distributed via Play Store, and switching to a new release keystore
+            // would break in-place updates for the already-installed app (Android
+            // refuses to install an update signed with a different key). Revisit
+            // if/when this ever needs a real release signing identity.
             signingConfig = signingConfigs.getByName("debug")
             optimization {
-                enable = false
+                enable = true
             }
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
     compileOptions {
@@ -78,8 +87,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
-    implementation(libs.androidx.room.ktx)
-    implementation(libs.androidx.room.runtime)
     implementation(libs.coil.compose)
     implementation(libs.converter.moshi)
     implementation(libs.kotlinx.coroutines.android)
@@ -110,7 +117,6 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.play.services.auth)
-    "ksp"(libs.androidx.room.compiler)
     "ksp"(libs.moshi.kotlin.codegen)
     "ksp"(libs.hilt.android.compiler)
 }

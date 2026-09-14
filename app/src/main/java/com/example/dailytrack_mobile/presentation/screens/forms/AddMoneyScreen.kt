@@ -56,6 +56,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.dailytrack_mobile.presentation.screens.forms.components.AccountSearchDialog
+import com.example.dailytrack_mobile.presentation.screens.forms.components.CategorySearchDialog
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.LocalAppTheme
 import com.example.dailytrack_mobile.presentation.util.Dimens
@@ -255,150 +257,19 @@ fun AddMoneyScreen(
 
     // Category Search & Custom Creation Dialog
     if (categorySearchDialogOpen) {
-        val query = categorySearchQuery.trim()
-        val filteredCategories = remember(query, currentCategoryList) {
-            if (query.isBlank()) {
-                currentCategoryList
-            } else {
-                currentCategoryList.filter { it.contains(query, ignoreCase = true) }
-            }
-        }
-        val isExactMatch = currentCategoryList.any { it.equals(query, ignoreCase = true) }
-
-        AlertDialog(
-            onDismissRequest = {
+        CategorySearchDialog(
+            searchQuery = categorySearchQuery,
+            onSearchQueryChange = { categorySearchQuery = it },
+            categoryList = currentCategoryList,
+            selectedCategory = categoryInput,
+            onCategorySelected = { selected ->
+                categoryInput = selected
                 categorySearchDialogOpen = false
                 categorySearchQuery = ""
             },
-            title = {
-                Text(
-                    text = "Select Category",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = categorySearchQuery,
-                        onValueChange = { categorySearchQuery = it },
-                        placeholder = { Text("Search or type category...", style = MaterialTheme.typography.bodyMedium) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (categorySearchQuery.isNotEmpty()) {
-                                IconButton(onClick = { categorySearchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Create custom category button if no exact match
-                        if (query.isNotBlank() && !isExactMatch) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        categoryInput = query
-                                        categorySearchDialogOpen = false
-                                        categorySearchQuery = ""
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Add",
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "Add \"$query\"",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        // Flow of categories
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            filteredCategories.forEach { category ->
-                                val isSelected = categoryInput.equals(category, ignoreCase = true)
-                                val chipBg = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
-                                val chipTextColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                val chipBorder = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(chipBg)
-                                        .border(1.dp, chipBorder, RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            categoryInput = category
-                                            categorySearchDialogOpen = false
-                                            categorySearchQuery = ""
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = category,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                        ),
-                                        color = chipTextColor
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    categorySearchDialogOpen = false
-                    categorySearchQuery = ""
-                }) {
-                    Text("Close")
-                }
+            onDismiss = {
+                categorySearchDialogOpen = false
+                categorySearchQuery = ""
             }
         )
     }
@@ -1112,166 +983,19 @@ fun AddMoneyScreen(
 
     // Account Search & Selection Dialog (FlowRow pills matching Category dialog)
     if (accountSearchDialogOpen) {
-        val query = accountSearchQuery.trim()
-        val filteredAccounts = remember(query, accountsList) {
-            if (query.isBlank()) accountsList
-            else accountsList.filter { it.contains(query, ignoreCase = true) }
-        }
-        val isExactMatch = accountsList.any { it.equals(query, ignoreCase = true) }
-
-        AlertDialog(
-            onDismissRequest = {
+        AccountSearchDialog(
+            searchQuery = accountSearchQuery,
+            onSearchQueryChange = { accountSearchQuery = it },
+            accountList = accountsList,
+            selectedAccount = selectedAccount,
+            onAccountSelected = { selected ->
+                selectedAccount = selected
                 accountSearchDialogOpen = false
                 accountSearchQuery = ""
             },
-            title = {
-                Text(
-                    text = "Select Account",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 380.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = accountSearchQuery,
-                        onValueChange = { accountSearchQuery = it },
-                        placeholder = { Text("Search or type account...", style = MaterialTheme.typography.bodyMedium) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (accountSearchQuery.isNotEmpty()) {
-                                IconButton(onClick = { accountSearchQuery = "" }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // Create custom account button if no exact match
-                        if (query.isNotBlank() && !isExactMatch) {
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        selectedAccount = query
-                                        accountSearchDialogOpen = false
-                                        accountSearchQuery = ""
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Add",
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = "Add \"$query\"",
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        // Flow of accounts
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            filteredAccounts.forEach { account ->
-                                val isSelected = selectedAccount.equals(account, ignoreCase = true)
-                                val chipBg = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh
-                                val chipTextColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                val chipBorder = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(chipBg)
-                                        .border(1.dp, chipBorder, RoundedCornerShape(16.dp))
-                                        .clickable {
-                                            selectedAccount = account
-                                            accountSearchDialogOpen = false
-                                            accountSearchQuery = ""
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.AccountBalance,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = account,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                            ),
-                                            color = chipTextColor
-                                        )
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Selected",
-                                                modifier = Modifier.size(14.dp),
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    accountSearchDialogOpen = false
-                    accountSearchQuery = ""
-                }) {
-                    Text("Close")
-                }
+            onDismiss = {
+                accountSearchDialogOpen = false
+                accountSearchQuery = ""
             }
         )
     }

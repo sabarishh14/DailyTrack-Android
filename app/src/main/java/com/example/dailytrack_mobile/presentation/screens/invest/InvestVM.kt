@@ -3,6 +3,7 @@ package com.example.dailytrack_mobile.presentation.screens.invest
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.datastore.DemoModeManager
+import com.example.dailytrack_mobile.data.local.datastore.InvestPreferencesManager
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,10 +16,16 @@ import javax.inject.Inject
 @HiltViewModel
 class InvestVM @Inject constructor(
     private val repository: InvestmentsRepository,
-    private val demoModeManager: DemoModeManager
+    private val demoModeManager: DemoModeManager,
+    private val investPreferencesManager: InvestPreferencesManager
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(InvestState(isLoading = true))
+    private val _state = MutableStateFlow(
+        InvestState(
+            isLoading = true,
+            hiddenCategories = investPreferencesManager.getInitialHiddenCategories()
+        )
+    )
     val state: StateFlow<InvestState> = _state.asStateFlow()
 
     init {
@@ -32,6 +39,21 @@ class InvestVM @Inject constructor(
                 loadInvestments()
             }
         }
+        viewModelScope.launch {
+            investPreferencesManager.hiddenCategoriesFlow.collect { hidden ->
+                _state.update { current ->
+                    current.copy(
+                        hiddenCategories = hidden,
+                        chartPoints = getFilteredPoints(
+                            snapshots = current.historicalSnapshots,
+                            range = current.selectedTimeRange,
+                            tab = current.selectedTab,
+                            hiddenCategories = hidden
+                        )
+                    )
+                }
+            }
+        }
     }
 
     fun onAction(action: InvestAction) {
@@ -39,16 +61,29 @@ class InvestVM @Inject constructor(
             is InvestAction.SelectTab -> _state.update {
                 it.copy(
                     selectedTab = action.tab,
-                    chartPoints = getFilteredPoints(it.historicalSnapshots, it.selectedTimeRange, action.tab)
+                    chartPoints = getFilteredPoints(it.historicalSnapshots, it.selectedTimeRange, action.tab, it.hiddenCategories)
                 )
             }
             is InvestAction.SelectTimeRange -> _state.update {
                 it.copy(
                     selectedTimeRange = action.range,
-                    chartPoints = getFilteredPoints(it.historicalSnapshots, action.range, it.selectedTab)
+                    chartPoints = getFilteredPoints(it.historicalSnapshots, action.range, it.selectedTab, it.hiddenCategories)
                 )
             }
             is InvestAction.Refresh -> loadInvestments(forceRefresh = true)
+            is InvestAction.ToggleCategoryVisibility -> {
+                viewModelScope.launch {
+                    investPreferencesManager.toggleCategory(action.category)
+                }
+            }
+            is InvestAction.SetAllCategoriesVisibility -> {
+                viewModelScope.launch {
+                    investPreferencesManager.setAllCategoriesVisibility(action.showAll)
+                }
+            }
+            is InvestAction.SetCategorySettingsOpen -> {
+                _state.update { it.copy(isCategorySettingsOpen = action.isOpen) }
+            }
         }
     }
 
@@ -117,7 +152,7 @@ class InvestVM @Inject constructor(
                             isLoading = false,
                             isRefreshing = false
                         )
-                        nextState.copy(chartPoints = getFilteredPoints(nextState.historicalSnapshots, nextState.selectedTimeRange, nextState.selectedTab))
+                        nextState.copy(chartPoints = getFilteredPoints(nextState.historicalSnapshots, nextState.selectedTimeRange, nextState.selectedTab, nextState.hiddenCategories))
                     }
                 }
             } else {
@@ -129,7 +164,8 @@ class InvestVM @Inject constructor(
     private fun getFilteredPoints(
         snapshots: List<com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto>, 
         range: ChartTimeRange,
-        tab: InvestTab
+        tab: InvestTab,
+        hiddenCategories: Set<InvestCategory>
     ): List<ChartPoint> {
         if (snapshots.isEmpty()) return emptyList()
         
@@ -160,7 +196,15 @@ class InvestVM @Inject constructor(
             }
             .mapNotNull { snapshot ->
                 val curr = when (tab) {
-                    InvestTab.OVERVIEW -> snapshot.grandTotalCurr
+                    InvestTab.OVERVIEW -> {
+                        var sum = 0.0
+                        if (InvestCategory.STOCKS !in hiddenCategories) sum += (snapshot.currStocks ?: 0.0)
+                        if (InvestCategory.MUTUAL_FUNDS !in hiddenCategories) sum += (snapshot.currMf ?: 0.0)
+                        if (InvestCategory.RETIREMENT !in hiddenCategories) sum += (snapshot.currProv ?: 0.0)
+                        if (InvestCategory.FD !in hiddenCategories) sum += (snapshot.currFixed ?: 0.0)
+                        if (InvestCategory.GOLD !in hiddenCategories) sum += (snapshot.currGold ?: 0.0)
+                        sum
+                    }
                     InvestTab.STOCKS -> snapshot.currStocks
                     InvestTab.MUTUAL_FUNDS -> snapshot.currMf
                     InvestTab.RETIREMENT -> snapshot.currProv
@@ -170,7 +214,15 @@ class InvestVM @Inject constructor(
                 }?.toFloat()
                 
                 val inv = when (tab) {
-                    InvestTab.OVERVIEW -> snapshot.grandTotalInv
+                    InvestTab.OVERVIEW -> {
+                        var sum = 0.0
+                        if (InvestCategory.STOCKS !in hiddenCategories) sum += (snapshot.invStocks ?: 0.0)
+                        if (InvestCategory.MUTUAL_FUNDS !in hiddenCategories) sum += (snapshot.invMf ?: 0.0)
+                        if (InvestCategory.RETIREMENT !in hiddenCategories) sum += (snapshot.invProv ?: 0.0)
+                        if (InvestCategory.FD !in hiddenCategories) sum += (snapshot.invFixed ?: 0.0)
+                        if (InvestCategory.GOLD !in hiddenCategories) sum += (snapshot.invGold ?: 0.0)
+                        sum
+                    }
                     InvestTab.STOCKS -> snapshot.invStocks
                     InvestTab.MUTUAL_FUNDS -> snapshot.invMf
                     InvestTab.RETIREMENT -> snapshot.invProv

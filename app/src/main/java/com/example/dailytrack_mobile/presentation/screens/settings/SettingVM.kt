@@ -86,7 +86,9 @@ class SettingsVM @Inject constructor(
         SettingsState(
             selectedTheme = themeManager.getInitialTheme(),
             themeMode = themeManager.getInitialThemeMode(),
-            withAmoled = themeManager.getInitialAmoled()
+            withAmoled = themeManager.getInitialAmoled(),
+            isAppLockEnabled = appLockManager.isAppLockEnabledSync(),
+            lockTimeout = appLockManager.getLockTimeoutSync()
         )
     )
     val state = _state.asStateFlow()
