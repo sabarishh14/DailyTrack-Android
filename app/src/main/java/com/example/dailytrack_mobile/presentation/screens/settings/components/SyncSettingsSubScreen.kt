@@ -5,6 +5,7 @@ import com.example.dailytrack_mobile.presentation.screens.settings.previewColors
 import com.example.dailytrack_mobile.presentation.screens.settings.AutoLockTimeoutDialog
 import com.example.dailytrack_mobile.presentation.screens.settings.SettingsAction
 import com.example.dailytrack_mobile.presentation.screens.settings.SettingsState
+import com.example.dailytrack_mobile.presentation.screens.settings.SyncTaskState
 import com.example.dailytrack_mobile.presentation.screens.settings.UpdateStatus
 
 import androidx.activity.compose.BackHandler
@@ -28,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -43,6 +45,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +80,10 @@ internal fun SyncSettingsSubScreen(
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    // Checking the Sheets queue is a network call, so it waits until the screen
+    // that shows it is actually open.
+    LaunchedEffect(Unit) { onAction(SettingsAction.OnSyncScreenOpened) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -176,7 +183,171 @@ internal fun SyncSettingsSubScreen(
                     }
                 }
             }
+
+            // -----------------------------------------------------------------
+            // Push to Google Sheets
+            //
+            // "Force Sync" above pulls the server's data down; these push the
+            // app's data outward, which is a different enough intent to warrant
+            // its own heading rather than more rows in the same card.
+            // -----------------------------------------------------------------
+            item {
+                Spacer(Modifier.height(8.dp))
+                SettingsSectionLabel("Push to Sheets")
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val pendingCount = state.pendingSheetSyncCount
+                    SettingsCard {
+                        SyncActionItem(
+                            icon = Icons.Default.UploadFile,
+                            title = "Transactions",
+                            idleSubtitle = when {
+                                pendingCount == null -> "Send new transactions to your sheet"
+                                pendingCount == 0 -> "Nothing pending"
+                                else -> "$pendingCount waiting to be pushed"
+                            },
+                            task = state.sheetTransactionSync,
+                            onClick = { onAction(SettingsAction.OnPushTransactionsToSheets) }
+                        )
+                    }
+                    SettingsCard {
+                        SyncActionItem(
+                            icon = Icons.Default.ShowChart,
+                            title = "Investments",
+                            idleSubtitle = "Send new portfolio snapshots to your sheet",
+                            task = state.sheetInvestmentSync,
+                            onClick = { onAction(SettingsAction.OnPushInvestmentsToSheets) }
+                        )
+                    }
+                }
+            }
+
+            // -----------------------------------------------------------------
+            // Imports & reconciliation
+            // -----------------------------------------------------------------
+            item {
+                Spacer(Modifier.height(8.dp))
+                SettingsSectionLabel("Import & reconcile")
+            }
+
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsCard {
+                        SyncActionItem(
+                            icon = Icons.Default.Balance,
+                            title = "Reconcile Balances",
+                            idleSubtitle = "Read balances from UPI screenshots in Drive",
+                            task = state.balanceReconcile,
+                            onClick = { onAction(SettingsAction.OnReconcileBalances) }
+                        )
+                    }
+                    SettingsCard {
+                        SyncActionItem(
+                            icon = Icons.Default.Movie,
+                            title = "Import from Letterboxd",
+                            idleSubtitle = state.letterboxdUsername.takeIf { it.isNotBlank() }
+                                ?.let { "Pull recent logs for @$it" }
+                                ?: "Pull your recent film logs",
+                            task = state.letterboxdSync,
+                            onClick = { onAction(SettingsAction.OnLetterboxdDialogVisible(true)) }
+                        )
+                    }
+                }
+            }
         }
     }
+
+    if (state.isLetterboxdDialogVisible) {
+        LetterboxdUsernameDialog(
+            initialUsername = state.letterboxdUsername,
+            onConfirm = { onAction(SettingsAction.OnLetterboxdSyncStarted(it)) },
+            onDismiss = { onAction(SettingsAction.OnLetterboxdDialogVisible(false)) }
+        )
+    }
+}
+
+// -----------------------------------------------------------------------------
+// One manual sync row: idle copy while nothing is happening, live progress while
+// it runs, and the outcome in success/error colour once it finishes.
+// -----------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun SyncActionItem(
+    icon: ImageVector,
+    title: String,
+    idleSubtitle: String,
+    task: SyncTaskState,
+    onClick: () -> Unit
+) {
+    val subtitle = task.message ?: idleSubtitle
+    val subtitleColor = when {
+        task.isRunning -> MaterialTheme.colorScheme.primary
+        task.isSuccess == true -> Color(0xFF2ECC71)
+        task.isSuccess == false -> MaterialTheme.colorScheme.error
+        else -> null
+    }
+
+    SettingsClickItem(
+        icon = icon,
+        title = title,
+        subtitle = subtitle,
+        subtitleColor = subtitleColor,
+        enabled = !task.isRunning,
+        trailing = {
+            if (task.isRunning) {
+                LoadingIndicator(modifier = Modifier.size(22.dp))
+            }
+        },
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun LetterboxdUsernameDialog(
+    initialUsername: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var username by remember { mutableStateOf(initialUsername) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.Movie, contentDescription = null) },
+        title = { Text("Import from Letterboxd", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(
+                    text = "Reads your public RSS feed and adds anything not already logged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(14.dp))
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it.trim() },
+                    label = { Text("Username") },
+                    prefix = { Text("@") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(username) },
+                enabled = username.isNotBlank()
+            ) {
+                Text("Import", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 

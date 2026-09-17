@@ -8,6 +8,12 @@ import com.example.dailytrack_mobile.data.remote.dto.AddMovieDiaryRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddMovieRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTransactionRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
+import com.example.dailytrack_mobile.data.remote.dto.BudgetDto
+import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionsResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.BudgetsResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.LetterboxdSyncRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.PendingSheetSyncDto
+import com.example.dailytrack_mobile.data.remote.dto.SheetsSyncResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTvDiaryRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTvShowRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.ApiResponseDto
@@ -29,6 +35,7 @@ import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface DailyTrackApi {
 
@@ -71,6 +78,20 @@ interface DailyTrackApi {
     @GET("/api/transactions/categories")
     suspend fun getCategories(): CategoriesResponseDto
 
+    // ── Budgets ──────────────────────────────────────────────────────────────
+
+    @GET("/api/budgets")
+    suspend fun getBudgets(): BudgetsResponseDto
+
+    /** Upserts every budget in one call; a limit of 0 or less deletes that budget. */
+    @PUT("/api/budgets/bulk")
+    suspend fun updateBudgetsBulk(
+        @Body budgets: List<BudgetDto>
+    ): ApiResponseDto
+
+    @GET("/api/budgets/suggestions")
+    suspend fun getBudgetSuggestions(): BudgetSuggestionsResponseDto
+
     @GET("/api/physical")
     suspend fun getPhysicalActivities(): List<PhysicalActivityDto>
 
@@ -87,6 +108,9 @@ interface DailyTrackApi {
 
     @GET("/api/investments/{date}/holdings")
     suspend fun getMutualFundHoldings(@Path("date") date: String): List<MutualFundHoldingDto>
+
+    @GET("/api/investments/{date}/equity_holdings")
+    suspend fun getEquityHoldingsForDate(@Path("date") date: String): List<EquityHoldingDto>
 
     @GET("/api/manual_assets")
     suspend fun getManualAssets(): List<ManualAssetDto>
@@ -205,6 +229,29 @@ interface DailyTrackApi {
         @Path("id") id: Int,
         @Body request: com.example.dailytrack_mobile.data.remote.dto.RematchMediaRequestDto
     ): ApiResponseDto
+
+    // ── Outbound syncs & reconciliation ──────────────────────────────────────
+
+    @GET("/api/sync/check-transactions")
+    suspend fun getPendingSheetSyncCount(): PendingSheetSyncDto
+
+    /** Pushes one batch of unsynced transactions; repeat while `hasMore` is true. */
+    @POST("/api/sync/db-to-sheets")
+    suspend fun syncTransactionsToSheets(): SheetsSyncResponseDto
+
+    @POST("/api/sync/investments-to-sheets")
+    suspend fun syncInvestmentsToSheets(): ApiResponseDto
+
+    /** Runs OCR over screenshots in Drive and writes back verified balances. Slow. */
+    @POST("/api/sync/ocr-balances")
+    suspend fun reconcileBalancesFromScreenshots(): ApiResponseDto
+
+    /** Streams newline-delimited JSON progress events; the last line is the summary. */
+    @Streaming
+    @POST("/api/movies/sync/rss")
+    suspend fun syncLetterboxdRss(
+        @Body request: LetterboxdSyncRequestDto
+    ): Response<ResponseBody>
 
     @GET("/")
     suspend fun checkHealth(): Response<ResponseBody>

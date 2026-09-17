@@ -105,6 +105,21 @@ internal fun previewColorsFor(theme: AppTheme): ThemePreviewColors = when (theme
         bottomLeft = Color(0xFF06B6D4),
         bottomRight = Color(0xFF8B5CF6)
     )
+    AppTheme.MILES_MORALES -> ThemePreviewColors(
+        top = Color(0xFFFF2E4D),
+        bottomLeft = Color(0xFF0B0A0C),
+        bottomRight = Color(0xFF9D6BFF)
+    )
+    AppTheme.SYNTHWAVE -> ThemePreviewColors(
+        top = Color(0xFFFF3EA5),
+        bottomLeft = Color(0xFF2DE2E6),
+        bottomRight = Color(0xFFFFB03A)
+    )
+    AppTheme.CATPPUCCIN_MOCHA -> ThemePreviewColors(
+        top = Color(0xFFCBA6F7),
+        bottomLeft = Color(0xFF89B4FA),
+        bottomRight = Color(0xFFF5C2E7)
+    )
 }
 
 
@@ -167,8 +182,13 @@ fun SettingsScreen(
                 id = "Sync",
                 icon = Icons.Default.Sync,
                 title = "Sync",
-                subtitle = "Force sync, server status",
-                keywords = listOf("sync", "server", "cloud", "api", "refresh", "status", "hydrate")
+                subtitle = "Force sync, Sheets, reconcile, imports",
+                keywords = listOf(
+                    "sync", "server", "cloud", "api", "refresh", "status", "hydrate",
+                    "sheets", "google sheets", "push", "export", "upload",
+                    "reconcile", "balance", "balances", "ocr", "screenshot", "upi",
+                    "letterboxd", "import", "movies", "films"
+                )
             ),
             SettingsCategoryItem(
                 id = "Updates",

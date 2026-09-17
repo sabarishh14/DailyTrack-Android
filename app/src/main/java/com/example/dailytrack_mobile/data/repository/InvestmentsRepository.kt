@@ -28,9 +28,13 @@ class InvestmentsRepository @Inject constructor(
     val dataUpdateFlow: SharedFlow<Unit> get() = demoDataManager.dataUpdateFlow
 
     private var cachedPortfolio: FullPortfolioData? = null
+    private val cachedEquityByDate = mutableMapOf<String, List<EquityHoldingDto>>()
+    private val cachedMutualFundsByDate = mutableMapOf<String, List<MutualFundHoldingDto>>()
 
     fun clearCache() {
         cachedPortfolio = null
+        cachedEquityByDate.clear()
+        cachedMutualFundsByDate.clear()
     }
 
     suspend fun getFullPortfolio(forceRefresh: Boolean = false): Result<FullPortfolioData> = coroutineScope {
@@ -75,6 +79,31 @@ class InvestmentsRepository @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Equity holdings as they stood on [date]. Snapshots are immutable once
+     * written, so a fetched date is cached for the life of the session.
+     */
+    suspend fun getEquityHoldingsForDate(date: String): Result<List<EquityHoldingDto>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            demoDataManager.getFullPortfolio().equityHoldings
+        } else {
+            cachedEquityByDate[date] ?: api.getEquityHoldingsForDate(date).also {
+                cachedEquityByDate[date] = it
+            }
+        }
+    }
+
+    /** Mutual fund holdings as they stood on [date]. See [getEquityHoldingsForDate]. */
+    suspend fun getMutualFundHoldingsForDate(date: String): Result<List<MutualFundHoldingDto>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            demoDataManager.getFullPortfolio().mutualFundHoldings
+        } else {
+            cachedMutualFundsByDate[date] ?: api.getMutualFundHoldings(date).also {
+                cachedMutualFundsByDate[date] = it
+            }
         }
     }
 

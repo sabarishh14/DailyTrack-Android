@@ -20,6 +20,17 @@ enum class UpdateStatus {
     ERROR
 }
 
+/**
+ * Progress of one manual sync action. Each row on the Sync screen owns one of
+ * these so a running action can report itself without four near-identical
+ * triples of fields on [SettingsState].
+ */
+data class SyncTaskState(
+    val isRunning: Boolean = false,
+    val message: String? = null,
+    val isSuccess: Boolean? = null
+)
+
 data class SettingsState(
     val selectedTheme: AppTheme = AppTheme.YELLOW,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -36,6 +47,14 @@ data class SettingsState(
     val syncStatusMessage: String? = null,
     val isLastSyncSuccess: Boolean? = null,
     val syncStepDescription: String? = null,
+    val sheetTransactionSync: SyncTaskState = SyncTaskState(),
+    val sheetInvestmentSync: SyncTaskState = SyncTaskState(),
+    val balanceReconcile: SyncTaskState = SyncTaskState(),
+    val letterboxdSync: SyncTaskState = SyncTaskState(),
+    /** Transactions still queued for Sheets, or null before it has been checked. */
+    val pendingSheetSyncCount: Int? = null,
+    val isLetterboxdDialogVisible: Boolean = false,
+    val letterboxdUsername: String = "",
     val isRefreshingServerStatus: Boolean = false,
     val serverStatusResult: Boolean? = null,
     val isReminderEnabled: Boolean = false,

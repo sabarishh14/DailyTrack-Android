@@ -197,7 +197,7 @@ internal fun ThemeSectionInCard(
     selectedTheme: AppTheme,
     onThemeSelected: (AppTheme) -> Unit
 ) {
-    val moreThemes = remember { listOf(AppTheme.DT_OG) }
+    val moreThemes = remember { MORE_THEMES.map { it.first } }
     var selectedTab by remember {
         mutableIntStateOf(if (selectedTheme in moreThemes) 1 else 0)
     }
@@ -304,8 +304,16 @@ internal fun WallpaperColorsContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// More themes tab – shows custom/additional themes like DT_OG
+// More themes tab – curated, hand-tuned themes (DT_OG and friends), each
+// faithful to its source palette rather than auto-generated from one hue.
 // ─────────────────────────────────────────────────────────────────────────────
+
+internal val MORE_THEMES: List<Pair<AppTheme, String>> = listOf(
+    AppTheme.DT_OG to "DT OG",
+    AppTheme.MILES_MORALES to "Miles",
+    AppTheme.SYNTHWAVE to "Synthwave",
+    AppTheme.CATPPUCCIN_MOCHA to "Catppuccin",
+)
 
 @Composable
 internal fun MoreThemesContent(
@@ -313,7 +321,6 @@ internal fun MoreThemesContent(
     onThemeSelected: (AppTheme) -> Unit
 ) {
     val dims = Dimens.current
-    val moreThemes = listOf(AppTheme.DT_OG)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -321,7 +328,7 @@ internal fun MoreThemesContent(
         horizontalArrangement = Arrangement.spacedBy(dims.themeCircleSpacing, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        moreThemes.forEach { theme ->
+        MORE_THEMES.forEach { (theme, label) ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -332,7 +339,7 @@ internal fun MoreThemesContent(
                     onClick = { onThemeSelected(theme) }
                 )
                 Text(
-                    text = "DT_OG",
+                    text = label,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = if (selectedTheme == theme) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (selectedTheme == theme)

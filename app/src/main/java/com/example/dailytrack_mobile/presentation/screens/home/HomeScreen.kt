@@ -31,10 +31,12 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Money
+import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -54,7 +56,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.presentation.screens.money.AccountInfo
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyState
+import com.example.dailytrack_mobile.presentation.screens.money.MoneyVM
+import com.example.dailytrack_mobile.presentation.screens.money.components.formatShortened
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.Month
 import java.time.format.TextStyle
@@ -110,9 +116,15 @@ private fun formatCurrencyFull(amount: Double): String {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun HomeScreen(
-    viewModel: HomeVM = hiltViewModel()
+    viewModel: HomeVM = hiltViewModel(),
+    moneyViewModel: MoneyVM = hiltViewModel(),
+    onNavigateToBudgets: () -> Unit = {}
 ) {
     val homeState by viewModel.state.collectAsState()
+    // Budgets live on the Money view model; grabbing the same shared instance
+    // here (Hilt scopes it to the hosting Activity, same as AnalyticsScreen
+    // does) avoids re-fetching anything just to show the summary card below.
+    val moneyState by moneyViewModel.state.collectAsState()
     val dims = Dimens.current
     val selectedMonth = homeState.selectedMonth
     val selectedYear = homeState.selectedYear
@@ -178,7 +190,13 @@ fun HomeScreen(
                     isLoading = homeState.isLoading
                 )
             }
-            item { 
+            item {
+                BudgetsSummaryCard(
+                    moneyState = moneyState,
+                    onClick = onNavigateToBudgets
+                )
+            }
+            item {
                 InvestmentPortfolioSection(
                     totalInvested = homeState.investmentTotalInvested,
                     totalCurrent  = homeState.investmentTotalCurrent,
@@ -668,6 +686,100 @@ private fun BankAccountCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budgets — a small teaser card under Bank Accounts that redirects to the
+// dedicated Budgets screen rather than trying to fit the full breakdown here.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun BudgetsSummaryCard(
+    moneyState: MoneyState,
+    onClick: () -> Unit
+) {
+    val dims = Dimens.current
+    val hasBudgets = moneyState.hasBudgets
+    val overCount = moneyState.budgetsOverLimitCount
+    // Budgets come in with the rest of the first Money load; until that
+    // finishes, an empty map here means "not fetched yet", not "none set" —
+    // show a spinner instead of flashing the empty-state copy first.
+    val isLoading = moneyState.isLoading && moneyState.budgets.isEmpty()
+
+    val subtitle = when {
+        !hasBudgets -> "Set monthly limits per category"
+        overCount > 0 -> "$overCount ${if (overCount == 1) "category" else "categories"} over limit this month"
+        else -> "${formatShortened(moneyState.totalBudgetSpent)} of ${formatShortened(moneyState.totalBudgetLimit)} spent this month"
+    }
+    val subtitleColor = if (overCount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(dims.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(dims.cardInnerPadding),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(dims.avatarSizeMedium)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PieChart,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(dims.iconSizeSmall + 2.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(dims.itemSpacingLarge))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Budgets",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                if (isLoading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(11.dp),
+                            strokeWidth = 1.5.dp,
+                            strokeCap = StrokeCap.Round,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Loading...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = subtitleColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "Open Budgets",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(dims.iconSizeSmall)
+            )
         }
     }
 }

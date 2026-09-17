@@ -74,8 +74,9 @@ object AppModule {
     @Singleton
     fun provideSabdekhoRepository(
         api: DailyTrackApi,
-        demoDataManager: DemoDataManager
-    ): SabdekhoRepository = SabdekhoRepository(api, demoDataManager)
+        demoDataManager: DemoDataManager,
+        moshi: com.squareup.moshi.Moshi
+    ): SabdekhoRepository = SabdekhoRepository(api, demoDataManager, moshi)
 
     @Provides
     @Singleton

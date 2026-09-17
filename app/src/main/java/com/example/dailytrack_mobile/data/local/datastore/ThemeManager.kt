@@ -35,11 +35,7 @@ class ThemeManager(private val context: Context) {
 
     fun getInitialTheme(): AppTheme {
         val name = syncPrefs.getString(KEY_THEME, null) ?: return AppTheme.YELLOW
-        return try {
-            AppTheme.valueOf(name)
-        } catch (e: Exception) {
-            AppTheme.YELLOW
-        }
+        return resolveTheme(name)
     }
 
     fun getInitialThemeMode(): ThemeMode {
@@ -53,6 +49,21 @@ class ThemeManager(private val context: Context) {
 
     fun getInitialAmoled(): Boolean {
         return syncPrefs.getBoolean(KEY_AMOLED, false)
+    }
+
+    /**
+     * Resolves a persisted theme name to an [AppTheme], remapping themes that
+     * have since been retired so an existing pick lands on its closest
+     * replacement instead of silently resetting to the default.
+     */
+    fun resolveTheme(name: String): AppTheme = when (name) {
+        "DRACULA" -> AppTheme.SYNTHWAVE
+        "MONOKAI" -> AppTheme.MILES_MORALES
+        else -> try {
+            AppTheme.valueOf(name)
+        } catch (e: IllegalArgumentException) {
+            AppTheme.YELLOW
+        }
     }
 
     private fun cacheTheme(themeName: String) {

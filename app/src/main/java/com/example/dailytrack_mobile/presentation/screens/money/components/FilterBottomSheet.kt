@@ -30,6 +30,7 @@ import java.time.LocalDate
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,7 +62,7 @@ fun FilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.79f)
+                .height(rememberSheetHeight(0.79f))
         ) {
             // ─────────────────────────────────────────────────────────────────
             // Header Bar

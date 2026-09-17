@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Functions
+import androidx.compose.material.icons.filled.HistoryEdu
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -56,10 +58,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
 import com.example.dailytrack_mobile.presentation.screens.forms.components.AccountSearchDialog
 import com.example.dailytrack_mobile.presentation.screens.forms.components.CategorySearchDialog
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.LocalAppTheme
+import com.example.dailytrack_mobile.presentation.util.AmountExpression
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -97,18 +101,30 @@ fun AddMoneyScreen(
 ) {
     val formState by formsVM.addMoneyState.collectAsState()
 
-    var selectedType by remember { mutableStateOf(TransactionType.EXPENSE) }
-    var categoryInput by remember { mutableStateOf("") }
+    // Anything left half-typed last time seeds the form, so backing out of the
+    // screen — or the process being killed behind a banking app — costs nothing.
+    val restoredDraft = remember { formsVM.consumeSavedDraft() }
+    var showDraftBanner by remember { mutableStateOf(restoredDraft != null) }
+
+    var selectedType by remember {
+        mutableStateOf(
+            restoredDraft?.type
+                ?.let { saved -> TransactionType.entries.firstOrNull { it.name == saved } }
+                ?: TransactionType.EXPENSE
+        )
+    }
+    var categoryInput by remember { mutableStateOf(restoredDraft?.category.orEmpty()) }
     var categorySearchDialogOpen by remember { mutableStateOf(false) }
     var categorySearchQuery by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    var amount by remember { mutableStateOf(restoredDraft?.amount.orEmpty()) }
+    var note by remember { mutableStateOf(restoredDraft?.note.orEmpty()) }
     var isDescriptionFocused by remember { mutableStateOf(false) }
     var showSuggestions by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
     val dims = Dimens.current
     val amountFocusRequester = remember { FocusRequester() }
+    var isAmountFocused by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     // Smoothly scroll and manage suggestions when description focus changes
@@ -129,9 +145,11 @@ fun AddMoneyScreen(
         focusManager.clearFocus()
     }
 
-    var selectedAccount by remember { mutableStateOf<String?>(null) }
+    var selectedAccount by remember { mutableStateOf(restoredDraft?.account) }
+    // Date is deliberately not restored: a draft picked up the next day should
+    // file under today, not the day the typing started.
     var selectedDate by remember { mutableStateOf(System.currentTimeMillis()) }
-    var excludeAnalytics by remember { mutableStateOf(false) }
+    var excludeAnalytics by remember { mutableStateOf(restoredDraft?.excludeAnalytics ?: false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var accountSearchDialogOpen by remember { mutableStateOf(false) }
     var accountSearchQuery by remember { mutableStateOf("") }
@@ -154,6 +172,11 @@ fun AddMoneyScreen(
     val displayDateFormat = remember { SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()) }
     val apiDateFormat = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
 
+    // The amount field doubles as a calculator; everything downstream works off
+    // the evaluated value, never the raw text.
+    val evaluatedAmount = remember(amount) { AmountExpression.evaluate(amount) }
+    val amountPreview = remember(amount) { AmountExpression.previewFor(amount) }
+
     val isDirty = remember(selectedType, categoryInput, amount, note, selectedAccount, excludeAnalytics) {
         amount.isNotBlank() || categoryInput.isNotBlank() || note.isNotBlank() ||
             selectedType != TransactionType.EXPENSE || excludeAnalytics
@@ -161,6 +184,22 @@ fun AddMoneyScreen(
 
     LaunchedEffect(isDirty) {
         onDirtyStateChanged(isDirty)
+    }
+
+    // Mirror the form into the draft store. Debounced so a fast typist doesn't
+    // write on every keystroke; an emptied form clears its own draft.
+    LaunchedEffect(selectedType, categoryInput, amount, note, selectedAccount, excludeAnalytics) {
+        kotlinx.coroutines.delay(400)
+        formsVM.persistDraft(
+            TransactionDraft(
+                type = selectedType.name,
+                category = categoryInput,
+                amount = amount,
+                note = note,
+                account = selectedAccount,
+                excludeAnalytics = excludeAnalytics
+            )
+        )
     }
 
     // Category lists based on type, most-used transactions, and DB
@@ -342,6 +381,71 @@ fun AddMoneyScreen(
             }
         }
 
+        // ── Restored Draft Notice ────────────────────────────────────
+        // Says plainly why the form came back pre-filled, and offers the one
+        // action that matters if it wasn't wanted.
+        AnimatedVisibility(
+            visible = showDraftBanner,
+            enter = fadeIn(tween(200)) + expandVertically(tween(200)),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.HistoryEdu,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Restored your unsaved entry",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            categoryInput = ""
+                            amount = ""
+                            note = ""
+                            excludeAnalytics = false
+                            selectedType = TransactionType.EXPENSE
+                            selectedAccount = accountsList.firstOrNull()
+                            formsVM.clearDraft()
+                            showDraftBanner = false
+                        }
+                    ) {
+                        Text(
+                            text = "Discard",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    IconButton(
+                        onClick = { showDraftBanner = false },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         // ── Expense / Income Segmented Switcher ───────────────────────
         Box(
             modifier = Modifier
@@ -470,13 +574,14 @@ fun AddMoneyScreen(
                     BasicTextField(
                         value = amount,
                         onValueChange = { newValue ->
-                            // Allow numbers and at most one decimal point with 2 decimals
-                            if (newValue.isEmpty() || newValue.matches(Regex("^\\d*\\.?\\d{0,2}$"))) {
+                            // Digits, one decimal point, and arithmetic — a bill split
+                            // across three items can be typed as "120+40+15".
+                            if (AmountExpression.isAllowedInput(newValue)) {
                                 amount = newValue
                             }
                         },
                         textStyle = TextStyle(
-                            fontSize = 42.sp,
+                            fontSize = if (amount.length > 12) 30.sp else 42.sp,
                             fontWeight = FontWeight.Bold,
                             color = activeAmountColor
                         ),
@@ -486,12 +591,22 @@ fun AddMoneyScreen(
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
-                            onDone = { focusManager.clearFocus() }
+                            onDone = {
+                                // Collapse the expression on Done so the field then
+                                // shows exactly the number that will be saved.
+                                if (!AmountExpression.isPlainNumber(amount)) {
+                                    AmountExpression.evaluate(amount)?.let { value ->
+                                        amount = AmountExpression.formatAmount(value)
+                                    }
+                                }
+                                focusManager.clearFocus()
+                            }
                         ),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(amountFocusRequester),
+                            .focusRequester(amountFocusRequester)
+                            .onFocusChanged { isAmountFocused = it.isFocused },
                         decorationBox = { innerTextField ->
                             Box(contentAlignment = Alignment.CenterStart) {
                                 if (amount.isEmpty()) {
@@ -506,6 +621,66 @@ fun AddMoneyScreen(
                             }
                         }
                     )
+                }
+
+                // Operator row — the decimal keypad offers no minus, times or
+                // divide, so the field supplies them rather than asking the user
+                // to hunt through keyboard layouts.
+                AnimatedVisibility(
+                    visible = isAmountFocused,
+                    enter = fadeIn(tween(160)) + expandVertically(tween(180)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(140))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AMOUNT_OPERATORS.forEach { (label, token) ->
+                            AmountOperatorKey(
+                                label = label,
+                                accent = activeAmountColor,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    val next = amount + token
+                                    if (AmountExpression.isAllowedInput(next)) amount = next
+                                }
+                            )
+                        }
+                        AmountOperatorKey(
+                            label = "⌫",
+                            accent = activeAmountColor,
+                            modifier = Modifier.weight(1f),
+                            onClick = { amount = amount.dropLast(1) }
+                        )
+                    }
+                }
+
+                // Only appears while the field holds an expression, so plain
+                // number entry looks exactly as it did before.
+                AnimatedVisibility(
+                    visible = amountPreview != null,
+                    enter = fadeIn(tween(150)) + expandVertically(tween(150)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(120))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Functions,
+                            contentDescription = null,
+                            tint = activeAmountColor.copy(alpha = 0.8f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "= ₹${amountPreview.orEmpty()}",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = activeAmountColor.copy(alpha = 0.9f)
+                        )
+                    }
                 }
             }
         }
@@ -814,12 +989,12 @@ fun AddMoneyScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         // ── Save Transaction Button ──────────────────────────────────
-        val isValidAmount = (amount.toDoubleOrNull() ?: 0.0) > 0
+        val isValidAmount = (evaluatedAmount ?: 0.0) > 0
         val isFormValid = !formState.isSaving && isValidAmount && categoryInput.isNotBlank() && selectedAccount != null
 
         Button(
             onClick = {
-                val amt = amount.toDoubleOrNull() ?: 0.0
+                val amt = evaluatedAmount ?: 0.0
                 val dateStr = apiDateFormat.format(Date(selectedDate))
                 formsVM.saveTransaction(
                     type = selectedType.dbValue,
@@ -998,5 +1173,49 @@ fun AddMoneyScreen(
                 accountSearchQuery = ""
             }
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Amount operator keys
+//
+// Displayed with the conventional × and ÷ glyphs but inserting the * and /
+// the expression parser actually reads.
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val AMOUNT_OPERATORS = listOf(
+    "+" to "+",
+    "−" to "-",
+    "×" to "*",
+    "÷" to "/",
+    "(" to "(",
+    ")" to ")"
+)
+
+@Composable
+private fun AmountOperatorKey(
+    label: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = accent.copy(alpha = 0.10f),
+        modifier = modifier
+            .height(38.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = accent.copy(alpha = 0.9f)
+            )
+        }
     }
 }

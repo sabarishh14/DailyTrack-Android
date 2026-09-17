@@ -21,6 +21,16 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
+    private const val SLOW_ENDPOINT_TIMEOUT_SECONDS = 180
+
+    private val SLOW_ENDPOINTS = listOf(
+        "/api/sync/db-to-sheets",
+        "/api/sync/investments-to-sheets",
+        "/api/sync/ocr-balances",
+        "/api/sync/ocr-split",
+        "/api/movies/sync/rss"
+    )
+
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
@@ -54,8 +64,22 @@ object NetworkModule {
             chain.proceed(requestBuilder.build())
         }
 
+        // A handful of endpoints fan out to Google Apps Script (Sheets push, Drive
+        // OCR, Letterboxd RSS) and routinely run past the default read timeout.
+        val slowEndpointInterceptor = Interceptor { chain ->
+            val request = chain.request()
+            if (SLOW_ENDPOINTS.any { request.url.encodedPath.startsWith(it) }) {
+                chain.withReadTimeout(SLOW_ENDPOINT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .withWriteTimeout(SLOW_ENDPOINT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .proceed(request)
+            } else {
+                chain.proceed(request)
+            }
+        }
+
         return OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(slowEndpointInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

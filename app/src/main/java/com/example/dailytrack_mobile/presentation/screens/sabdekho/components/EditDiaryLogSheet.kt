@@ -39,6 +39,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -177,6 +178,7 @@ fun EditDiaryLogSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = rememberSheetHeight(0.9f))
                 .navigationBarsPadding()
                 .padding(horizontal = dims.screenHorizontalPadding)
                 .verticalScroll(rememberScrollState()),

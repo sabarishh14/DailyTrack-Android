@@ -114,6 +114,33 @@ data class SpendingCategory(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Budgets
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * One category's standing against its monthly limit.
+ *
+ * Budgets are always measured over the current calendar month, independent of
+ * whatever range the Analysis filters are set to — a "monthly limit" that moved
+ * with an arbitrary filter would not mean anything.
+ */
+data class BudgetProgress(
+    val category: String,
+    val limit: Double,
+    val spent: Double
+) {
+    val emoji: String get() = CategoryEmojis.forCategory(category)
+    val color: Color get() = ChartColors.forCategory(category)
+    val remaining: Double get() = limit - spent
+    val isOver: Boolean get() = spent > limit
+    /** 0f..1f for the bar; overspend is shown by colour and copy, not a longer bar. */
+    val fraction: Float get() = if (limit <= 0.0) 0f else (spent / limit).coerceIn(0.0, 1.0).toFloat()
+    val percentUsed: Int get() = if (limit <= 0.0) 0 else ((spent / limit) * 100).toInt()
+    /** Past four-fifths of the limit but not yet over — worth a warning colour. */
+    val isNearLimit: Boolean get() = !isOver && limit > 0.0 && spent / limit >= 0.8
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Filter State
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -293,6 +320,16 @@ data class MoneyState(
         ),
         selectedTypes = setOf(TransactionType.DEBIT)
     ),
+    /**
+     * Snapshot of [analysisFilterState] taken right before a "View all <category>
+     * transactions" drill-through overwrote it with a single-category filter.
+     * Restored (and cleared) when the user lands back on the Cash Flow tab, so a
+     * temporary look at one category's transactions never leaves the donut stuck
+     * showing that category alone. Cleared without restoring if the user
+     * deliberately changes filters in the meantime — a deliberate choice should
+     * never be silently reverted.
+     */
+    val preDrillDownFilterState: AnalysisFilterState? = null,
 
     // API-driven data
     val transactions: List<Transaction> = emptyList(),
@@ -313,6 +350,13 @@ data class MoneyState(
     val showBulkDeleteConfirm: Boolean = false,
     val isBulkUpdating: Boolean = false,
     val isBulkDeleting: Boolean = false,
+
+    // Budgets
+    val budgets: Map<String, Double> = emptyMap(),
+    val budgetSuggestions: Map<String, com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto> = emptyMap(),
+    val isBudgetSheetVisible: Boolean = false,
+    val isSavingBudgets: Boolean = false,
+    val isBudgetSectionExpanded: Boolean = false,
 
     // Pagination
     val currentOffset: Int = 0,
@@ -368,6 +412,66 @@ data class MoneyState(
                       else transactions.map { it.bank }.distinct()
             val list = if (raw.isNotEmpty()) raw else DEFAULT_CANONICAL_ACCOUNTS
             return sortAccountsCanonical(list)
+        }
+
+    // ── Budgets ──────────────────────────────────────────────────────
+
+    /** Debits in the current calendar month, the same definition the bars use. */
+    private val currentMonthSpendByCategory: Map<String, Double>
+        get() {
+            val today = java.time.LocalDate.now()
+            val prefix = "%04d-%02d".format(today.year, today.monthValue)
+            return transactions
+                .filter { it.type == TransactionType.DEBIT && !it.isExcluded && !it.isSavings }
+                .filter { it.rawDate.startsWith(prefix) }
+                .groupBy { it.category }
+                .mapValues { (_, txs) -> txs.sumOf { it.amount } }
+        }
+
+    /** Over-limit first, then by how much of the limit is used. */
+    val budgetProgress: List<BudgetProgress>
+        get() {
+            if (budgets.isEmpty()) return emptyList()
+            val spendByCategory = currentMonthSpendByCategory
+            return budgets
+                .filter { it.value > 0.0 }
+                .map { (category, limit) ->
+                    BudgetProgress(
+                        category = category,
+                        limit = limit,
+                        spent = spendByCategory[category] ?: 0.0
+                    )
+                }
+                .sortedWith(compareByDescending<BudgetProgress> { it.isOver }.thenByDescending { it.spent / it.limit })
+        }
+
+    val hasBudgets: Boolean get() = budgetProgress.isNotEmpty()
+    val totalBudgetLimit: Double get() = budgetProgress.sumOf { it.limit }
+    val totalBudgetSpent: Double get() = budgetProgress.sumOf { it.spent }
+    val budgetsOverLimitCount: Int get() = budgetProgress.count { it.isOver }
+
+    val totalBudgetFraction: Float
+        get() = if (totalBudgetLimit <= 0.0) 0f
+                else (totalBudgetSpent / totalBudgetLimit).coerceIn(0.0, 1.0).toFloat()
+
+    /**
+     * How far through the month we are, 0f..1f. Drawn as a marker on the overall
+     * bar so "57% spent" can be read against "60% of the month gone".
+     */
+    val monthElapsedFraction: Float
+        get() {
+            val today = java.time.LocalDate.now()
+            return today.dayOfMonth.toFloat() / today.lengthOfMonth().toFloat()
+        }
+
+    val budgetMonthLabel: String
+        get() = java.time.LocalDate.now().month
+            .getDisplayName(TextStyle.FULL, Locale.getDefault())
+
+    val budgetDaysRemaining: Int
+        get() {
+            val today = java.time.LocalDate.now()
+            return today.lengthOfMonth() - today.dayOfMonth
         }
 
     val filteredTransactions: List<Transaction>

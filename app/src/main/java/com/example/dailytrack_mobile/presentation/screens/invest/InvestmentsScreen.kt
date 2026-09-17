@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Insights
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.*
@@ -43,6 +44,7 @@ import com.example.dailytrack_mobile.presentation.screens.invest.components.Char
 import com.example.dailytrack_mobile.presentation.screens.invest.components.EmptyHoldingsState
 import com.example.dailytrack_mobile.presentation.screens.invest.components.FilterPills
 import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingItem
+import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingsSnapshotSheet
 import com.example.dailytrack_mobile.presentation.screens.invest.components.PortfolioHeader
 import com.example.dailytrack_mobile.presentation.screens.invest.components.AdvancedChart
 import com.example.dailytrack_mobile.presentation.screens.invest.components.SummaryRow
@@ -239,6 +241,65 @@ fun InvestmentsScreen(
                     )
                 }
 
+                // ── Drill into the scrubbed date's holdings ────────────────────
+                // Appears only while a chart point is selected, so the screen
+                // gains no permanent chrome for an occasional action.
+                item {
+                    AnimatedVisibility(
+                        visible = selectedChartPoint != null,
+                        enter = fadeIn(tween(200)) + expandVertically(tween(220)),
+                        exit = fadeOut(tween(140)) + shrinkVertically(tween(180))
+                    ) {
+                        val pointDate = selectedChartPoint?.date
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    horizontal = dims.screenHorizontalPadding,
+                                    vertical = dims.itemSpacingSmall
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) {
+                                    pointDate?.let {
+                                        viewModel.onAction(InvestAction.OpenHoldingsSnapshot(it))
+                                    }
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Insights,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = pointDate?.let { "See holdings on ${formatPointDate(it)}" }
+                                        ?: "See holdings",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // ── Filter pill tabs ────────────────────────────────────────────
                 item {
                     FilterPills(
@@ -294,6 +355,13 @@ fun InvestmentsScreen(
                     }
                 }
             }
+        }
+
+        if (state.isHoldingsSheetOpen) {
+            HoldingsSnapshotSheet(
+                state = state,
+                onAction = viewModel::onAction
+            )
         }
 
         if (state.isCategorySettingsOpen) {

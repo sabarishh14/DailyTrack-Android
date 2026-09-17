@@ -41,6 +41,7 @@ import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCano
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 private val defaultCategories = listOf(
     "Food", "Transport", "Shopping", "Entertainment", "Bills",
@@ -305,7 +306,7 @@ fun BulkEditTransactionsSheet(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.79f)
+                .height(rememberSheetHeight(0.79f))
                 .imePadding()
         ) {
             Column(

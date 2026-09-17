@@ -30,6 +30,7 @@ import com.example.dailytrack_mobile.presentation.navigation.components.BottomNa
 import com.example.dailytrack_mobile.presentation.screens.activities.ActivitiesScreen
 import com.example.dailytrack_mobile.presentation.screens.home.HomeScreen
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestmentsScreen
+import com.example.dailytrack_mobile.presentation.screens.money.BudgetsScreen
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyAction
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyCashFlowTab
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyDialogsAndSheets
@@ -253,6 +254,7 @@ fun MainScreen(
         Routes.AddInvestment.route -> "Add Investment"
         Routes.SyncBroker.route -> "Syncing Broker"
         Routes.Analytics.route -> "Analytics"
+        Routes.Budgets.route -> "Budgets"
         else -> "DailyTrack"
     }
 
@@ -343,7 +345,7 @@ fun MainScreen(
                         navigateSafely(Routes.Analytics.route)
                     }
                 )
-            } else if (currentRoute != Routes.Analytics.route) {
+            } else if (currentRoute != Routes.Analytics.route && currentRoute != Routes.Budgets.route) {
                 Column {
                     TopAppBar(
                         navigationIcon = {
@@ -422,8 +424,20 @@ fun MainScreen(
                             routeToPage(targetRoute)
                         }
                         if (targetPage != null) {
+                            // Coming from a non-pager screen (e.g. Analytics), the
+                            // HorizontalPager isn't in the composition yet, so an
+                            // animated scroll has nothing to animate and the tap
+                            // would appear to do nothing. Switch the route first,
+                            // then jump straight to the page; only animate when
+                            // the pager is already on screen to swipe between tabs.
+                            val pagerAlreadyVisible = currentRoute in mainTabRoutes
+                            currentRoute = targetRoute
                             coroutineScope.launch {
-                                pagerState.animateScrollToPage(targetPage)
+                                if (pagerAlreadyVisible) {
+                                    pagerState.animateScrollToPage(targetPage)
+                                } else {
+                                    pagerState.scrollToPage(targetPage)
+                                }
                             }
                         } else {
                             navigateSafely(targetRoute)
@@ -471,7 +485,9 @@ fun MainScreen(
                     modifier = Modifier.fillMaxSize()
                 ) { page ->
                     when (page) {
-                        PAGE_HOME -> HomeScreen()
+                        PAGE_HOME -> HomeScreen(
+                            onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
+                        )
                         PAGE_CASH_FLOW -> MoneyCashFlowTab(
                             state = moneyState,
                             onAction = moneyViewModel::onAction,
@@ -509,6 +525,10 @@ fun MainScreen(
             } else {
                 when (currentRoute) {
                     Routes.Analytics.route -> AnalyticsScreen(
+                        onNavigateBack = { navigateSafely(Routes.Home.route) },
+                        onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
+                    )
+                    Routes.Budgets.route -> BudgetsScreen(
                         onNavigateBack = { navigateSafely(Routes.Home.route) }
                     )
                     Routes.AddMoney.route -> AddMoneyScreen(

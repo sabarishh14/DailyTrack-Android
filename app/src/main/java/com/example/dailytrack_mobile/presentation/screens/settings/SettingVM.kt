@@ -54,7 +54,8 @@ class SettingsVM @Inject constructor(
     private val investmentsRepository: InvestmentsRepository? = null,
     private val sabdekhoRepository: SabdekhoRepository? = null,
     private val authRepository: com.example.dailytrack_mobile.data.repository.AuthRepository? = null,
-    private val appUpdateManager: AppUpdateManager? = null
+    private val appUpdateManager: AppUpdateManager? = null,
+    private val syncPreferencesManager: com.example.dailytrack_mobile.data.local.datastore.SyncPreferencesManager? = null
 ) : ViewModel() {
 
     constructor(
@@ -76,7 +77,8 @@ class SettingsVM @Inject constructor(
         investmentsRepository = null,
         sabdekhoRepository = null,
         authRepository = null,
-        appUpdateManager = null
+        appUpdateManager = null,
+        syncPreferencesManager = null
     )
 
     private val _isInitialConfigLoaded = MutableStateFlow(themeManager.hasSyncCache())
@@ -88,7 +90,8 @@ class SettingsVM @Inject constructor(
             themeMode = themeManager.getInitialThemeMode(),
             withAmoled = themeManager.getInitialAmoled(),
             isAppLockEnabled = appLockManager.isAppLockEnabledSync(),
-            lockTimeout = appLockManager.getLockTimeoutSync()
+            lockTimeout = appLockManager.getLockTimeoutSync(),
+            letterboxdUsername = syncPreferencesManager?.getLetterboxdUsername().orEmpty()
         )
     )
     val state = _state.asStateFlow()
@@ -103,11 +106,7 @@ class SettingsVM @Inject constructor(
         // Listen for theme changes from DataStore on startup
         viewModelScope.launch {
             themeManager.themeFlow.collect { savedThemeName ->
-                try {
-                    _state.update { it.copy(selectedTheme = AppTheme.valueOf(savedThemeName)) }
-                } catch (e: Exception) {
-                    _state.update { it.copy(selectedTheme = AppTheme.YELLOW) }
-                }
+                _state.update { it.copy(selectedTheme = themeManager.resolveTheme(savedThemeName)) }
                 _isInitialConfigLoaded.value = true
             }
         }
@@ -265,6 +264,30 @@ class SettingsVM @Inject constructor(
             is SettingsAction.OnForceSyncClicked -> {
                 forceSyncAllPages()
             }
+            is SettingsAction.OnSyncScreenOpened -> {
+                refreshPendingSheetSyncCount()
+            }
+
+            is SettingsAction.OnPushTransactionsToSheets -> {
+                if (!_state.value.sheetTransactionSync.isRunning) pushTransactionsToSheets()
+            }
+
+            is SettingsAction.OnPushInvestmentsToSheets -> {
+                if (!_state.value.sheetInvestmentSync.isRunning) pushInvestmentsToSheets()
+            }
+
+            is SettingsAction.OnReconcileBalances -> {
+                if (!_state.value.balanceReconcile.isRunning) reconcileBalances()
+            }
+
+            is SettingsAction.OnLetterboxdDialogVisible -> {
+                _state.update { it.copy(isLetterboxdDialogVisible = action.visible) }
+            }
+
+            is SettingsAction.OnLetterboxdSyncStarted -> {
+                if (!_state.value.letterboxdSync.isRunning) syncLetterboxd(action.username)
+            }
+
             is SettingsAction.OnServerStatusClicked -> {
                 checkServerStatus()
             }
@@ -454,6 +477,156 @@ class SettingsVM @Inject constructor(
             _state.update { it.copy(isRefreshingServerStatus = true, serverStatusResult = null) }
             val result = moneyRepository?.checkHealth()?.getOrNull() ?: false
             _state.update { it.copy(isRefreshingServerStatus = false, serverStatusResult = result) }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Outbound syncs & reconciliation
+    //
+    // Each is a one-shot manual action reporting into its own [SyncTaskState],
+    // so a slow Sheets push never blocks the reconcile row next to it.
+    // -------------------------------------------------------------------------
+
+    private fun refreshPendingSheetSyncCount() {
+        val repository = moneyRepository ?: return
+        viewModelScope.launch {
+            repository.getPendingSheetSyncCount().onSuccess { count ->
+                _state.update { it.copy(pendingSheetSyncCount = count) }
+            }
+        }
+    }
+
+    private fun pushTransactionsToSheets() {
+        val repository = moneyRepository ?: return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(sheetTransactionSync = SyncTaskState(isRunning = true, message = "Pushing to Sheets..."))
+            }
+            repository.syncTransactionsToSheets { syncedSoFar, _ ->
+                _state.update {
+                    it.copy(
+                        sheetTransactionSync = it.sheetTransactionSync.copy(
+                            message = "Pushed $syncedSoFar so far..."
+                        )
+                    )
+                }
+            }.onSuccess { total ->
+                _state.update {
+                    it.copy(
+                        sheetTransactionSync = SyncTaskState(
+                            isRunning = false,
+                            isSuccess = true,
+                            message = if (total == 0) "Already up to date"
+                                      else "Pushed $total transaction" + (if (total == 1) "" else "s")
+                        ),
+                        pendingSheetSyncCount = 0
+                    )
+                }
+            }.onFailure { error ->
+                _state.update {
+                    it.copy(
+                        sheetTransactionSync = SyncTaskState(
+                            isRunning = false,
+                            isSuccess = false,
+                            message = error.message ?: "Sheets push failed"
+                        )
+                    )
+                }
+                refreshPendingSheetSyncCount()
+            }
+        }
+    }
+
+    private fun pushInvestmentsToSheets() {
+        val repository = moneyRepository ?: return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(sheetInvestmentSync = SyncTaskState(isRunning = true, message = "Pushing snapshots..."))
+            }
+            repository.syncInvestmentsToSheets()
+                .onSuccess { message ->
+                    _state.update {
+                        it.copy(sheetInvestmentSync = SyncTaskState(isRunning = false, isSuccess = true, message = message))
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            sheetInvestmentSync = SyncTaskState(
+                                isRunning = false,
+                                isSuccess = false,
+                                message = error.message ?: "Investment push failed"
+                            )
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun reconcileBalances() {
+        val repository = moneyRepository ?: return
+        viewModelScope.launch {
+            _state.update {
+                it.copy(balanceReconcile = SyncTaskState(isRunning = true, message = "Scanning screenshots..."))
+            }
+            repository.reconcileBalancesFromScreenshots()
+                .onSuccess { message ->
+                    _state.update {
+                        it.copy(balanceReconcile = SyncTaskState(isRunning = false, isSuccess = true, message = message))
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            balanceReconcile = SyncTaskState(
+                                isRunning = false,
+                                isSuccess = false,
+                                message = error.message ?: "Could not scan screenshots"
+                            )
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun syncLetterboxd(username: String) {
+        val repository = sabdekhoRepository ?: return
+        val handle = username.trim()
+        if (handle.isBlank()) {
+            _state.update {
+                it.copy(letterboxdSync = SyncTaskState(isSuccess = false, message = "Enter your Letterboxd username"))
+            }
+            return
+        }
+
+        syncPreferencesManager?.setLetterboxdUsername(handle)
+        viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    letterboxdUsername = handle,
+                    isLetterboxdDialogVisible = false,
+                    letterboxdSync = SyncTaskState(isRunning = true, message = "Fetching your feed...")
+                )
+            }
+            repository.syncLetterboxd(handle) { progress ->
+                _state.update { it.copy(letterboxdSync = it.letterboxdSync.copy(message = progress)) }
+            }
+                .onSuccess { message ->
+                    _state.update {
+                        it.copy(letterboxdSync = SyncTaskState(isRunning = false, isSuccess = true, message = message))
+                    }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(
+                            letterboxdSync = SyncTaskState(
+                                isRunning = false,
+                                isSuccess = false,
+                                message = error.message ?: "Letterboxd import failed"
+                            )
+                        )
+                    }
+                }
         }
     }
 

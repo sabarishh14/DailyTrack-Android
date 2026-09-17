@@ -21,6 +21,14 @@ sealed interface SettingsAction {
     data class OnDemoModeToggled(val enabled: Boolean) : SettingsAction
     object OnResetDemoDataClicked : SettingsAction
     object OnForceSyncClicked : SettingsAction
+
+    // Outbound syncs & reconciliation
+    object OnSyncScreenOpened : SettingsAction
+    object OnPushTransactionsToSheets : SettingsAction
+    object OnPushInvestmentsToSheets : SettingsAction
+    object OnReconcileBalances : SettingsAction
+    data class OnLetterboxdDialogVisible(val visible: Boolean) : SettingsAction
+    data class OnLetterboxdSyncStarted(val username: String) : SettingsAction
     object OnServerStatusClicked : SettingsAction
     data class OnReminderToggled(val enabled: Boolean) : SettingsAction
     data class OnReminderTimeChanged(val time: LocalTime) : SettingsAction

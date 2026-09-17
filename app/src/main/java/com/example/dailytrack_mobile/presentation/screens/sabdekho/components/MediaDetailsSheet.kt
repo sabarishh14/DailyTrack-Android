@@ -42,6 +42,7 @@ import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoActio
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.LocalDate
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +68,7 @@ fun MediaDetailsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxSize()
+                .height(rememberSheetHeight(0.92f))
                 .navigationBarsPadding()
         ) {
             // ── Top Backdrop Header Banner ──────────────────────────────────

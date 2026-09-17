@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -84,8 +87,160 @@ class InvestVM @Inject constructor(
             is InvestAction.SetCategorySettingsOpen -> {
                 _state.update { it.copy(isCategorySettingsOpen = action.isOpen) }
             }
+
+            is InvestAction.OpenHoldingsSnapshot -> {
+                _state.update {
+                    it.copy(
+                        isHoldingsSheetOpen = true,
+                        snapshotDate = action.date,
+                        snapshotHoldings = emptyList(),
+                        compareHoldings = emptyList(),
+                        compareDate = null,
+                        snapshotError = null,
+                        isComparePickerOpen = false
+                    )
+                }
+                loadSnapshotHoldings()
+            }
+
+            is InvestAction.CloseHoldingsSnapshot -> {
+                snapshotJob?.cancel()
+                _state.update {
+                    it.copy(
+                        isHoldingsSheetOpen = false,
+                        isComparePickerOpen = false,
+                        isSnapshotLoading = false,
+                        isCompareLoading = false
+                    )
+                }
+            }
+
+            is InvestAction.SelectSnapshotType -> {
+                if (_state.value.snapshotType == action.type) return
+                _state.update {
+                    it.copy(
+                        snapshotType = action.type,
+                        snapshotHoldings = emptyList(),
+                        compareHoldings = emptyList(),
+                        snapshotError = null
+                    )
+                }
+                // Both dates are re-fetched: the two lists must always describe
+                // the same asset class or the diff would be nonsense.
+                loadSnapshotHoldings()
+            }
+
+            is InvestAction.SelectCompareDate -> {
+                _state.update {
+                    it.copy(
+                        compareDate = action.date,
+                        compareHoldings = emptyList(),
+                        isComparePickerOpen = false
+                    )
+                }
+                if (action.date != null) loadCompareHoldings(action.date)
+            }
+
+            is InvestAction.SetComparePickerOpen -> {
+                _state.update { it.copy(isComparePickerOpen = action.isOpen) }
+            }
         }
     }
+
+    // -- Holdings snapshots ---------------------------------------------------
+
+    private var snapshotJob: Job? = null
+
+    /**
+     * Loads the selected date and, when one is set, the comparison date too.
+     * They go out together so switching asset class refreshes both sides at once
+     * rather than briefly showing a diff between two different asset classes.
+     */
+    private fun loadSnapshotHoldings() {
+        val current = _state.value
+        val date = current.snapshotDate ?: return
+        val type = current.snapshotType
+        val compare = current.compareDate
+
+        snapshotJob?.cancel()
+        snapshotJob = viewModelScope.launch {
+            _state.update {
+                it.copy(
+                    isSnapshotLoading = true,
+                    isCompareLoading = compare != null,
+                    snapshotError = null
+                )
+            }
+
+            coroutineScope {
+                val baseDeferred = async { fetchHoldings(date, type) }
+                val compareDeferred = compare?.let { d -> async { fetchHoldings(d, type) } }
+
+                val baseResult = baseDeferred.await()
+                val compareResult = compareDeferred?.await()
+
+                _state.update { state ->
+                    var updated = state.copy(isSnapshotLoading = false, isCompareLoading = false)
+                    baseResult
+                        .onSuccess { rows -> updated = updated.copy(snapshotHoldings = rows) }
+                        .onFailure { error ->
+                            updated = updated.copy(
+                                snapshotHoldings = emptyList(),
+                                snapshotError = error.message ?: "Couldn't load holdings for this date"
+                            )
+                        }
+                    compareResult?.onSuccess { rows -> updated = updated.copy(compareHoldings = rows) }
+                    updated
+                }
+            }
+        }
+    }
+
+    private fun loadCompareHoldings(date: String) {
+        val type = _state.value.snapshotType
+        viewModelScope.launch {
+            _state.update { it.copy(isCompareLoading = true) }
+            fetchHoldings(date, type)
+                .onSuccess { rows ->
+                    _state.update { state ->
+                        // The user may have changed their mind while this was in flight.
+                        if (state.compareDate != date) state.copy(isCompareLoading = false)
+                        else state.copy(compareHoldings = rows, isCompareLoading = false)
+                    }
+                }
+                .onFailure {
+                    _state.update { it.copy(isCompareLoading = false, compareHoldings = emptyList()) }
+                }
+        }
+    }
+
+    private suspend fun fetchHoldings(date: String, type: HoldingsType): Result<List<HoldingSnapshotRow>> =
+        when (type) {
+            HoldingsType.EQUITY -> repository.getEquityHoldingsForDate(date).map { holdings ->
+                holdings.map { dto ->
+                    HoldingSnapshotRow(
+                        symbol = dto.symbol,
+                        quantity = dto.quantity,
+                        averagePrice = dto.averagePrice,
+                        unitPrice = dto.ltp,
+                        invested = dto.investedValue,
+                        current = dto.currentValue
+                    )
+                }
+            }
+            HoldingsType.MUTUAL_FUNDS -> repository.getMutualFundHoldingsForDate(date).map { holdings ->
+                holdings.map { dto ->
+                    HoldingSnapshotRow(
+                        symbol = dto.symbol,
+                        quantity = dto.quantity,
+                        averagePrice = dto.averagePrice,
+                        unitPrice = dto.nav,
+                        invested = dto.investedValue,
+                        current = dto.currentValue
+                    )
+                }
+            }
+        }
 
     private fun loadInvestments(forceRefresh: Boolean = false) {
         viewModelScope.launch {

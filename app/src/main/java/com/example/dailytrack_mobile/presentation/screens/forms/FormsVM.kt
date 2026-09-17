@@ -2,6 +2,8 @@ package com.example.dailytrack_mobile.presentation.screens.forms
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
+import com.example.dailytrack_mobile.data.local.datastore.TransactionDraftStore
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.repository.ActivitiesRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
@@ -51,7 +53,8 @@ class FormsVM @Inject constructor(
     private val moneyRepository: MoneyRepository,
     private val activitiesRepository: ActivitiesRepository,
     private val investmentsRepository: InvestmentsRepository,
-    private val sabdekhoRepository: SabdekhoRepository
+    private val sabdekhoRepository: SabdekhoRepository,
+    private val transactionDraftStore: TransactionDraftStore
 ) : ViewModel() {
 
     private val _addMoneyState = MutableStateFlow(
@@ -182,6 +185,20 @@ class FormsVM @Inject constructor(
         _addMovieState.update { it.copy(isSearching = false, searchResults = emptyList()) }
     }
 
+    // ── Transaction draft ────────────────────────────────────────────────────
+
+    /** The draft left behind by a previous visit, or null if there is none. */
+    fun consumeSavedDraft(): TransactionDraft? = transactionDraftStore.read()
+
+    /** Called as the form changes; an emptied form clears its own draft. */
+    fun persistDraft(draft: TransactionDraft) {
+        transactionDraftStore.write(draft)
+    }
+
+    fun clearDraft() {
+        transactionDraftStore.clear()
+    }
+
     fun saveTransaction(
         type: String,
         category: String,
@@ -205,6 +222,8 @@ class FormsVM @Inject constructor(
             )
 
             result.onSuccess {
+                // The entry landed, so the draft has served its purpose.
+                transactionDraftStore.clear()
                 _addMoneyState.update { state ->
                     val updatedRecent = if (!note.isNullOrBlank()) {
                         (listOf(note.trim()) + state.recentDescriptions).distinct()

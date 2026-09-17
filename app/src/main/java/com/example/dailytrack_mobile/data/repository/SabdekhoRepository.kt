@@ -8,7 +8,12 @@ import com.example.dailytrack_mobile.data.remote.dto.AddTvDiaryRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTvShowRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaLibraryResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
+import com.example.dailytrack_mobile.data.remote.dto.LetterboxdSyncEventDto
+import com.example.dailytrack_mobile.data.remote.dto.LetterboxdSyncRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaShowDto
+import com.squareup.moshi.Moshi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -16,7 +21,8 @@ import javax.inject.Singleton
 @Singleton
 class SabdekhoRepository @Inject constructor(
     private val api: DailyTrackApi,
-    private val demoDataManager: DemoDataManager
+    private val demoDataManager: DemoDataManager,
+    private val moshi: Moshi
 ) {
     val dataUpdateFlow: SharedFlow<Unit> get() = demoDataManager.dataUpdateFlow
 
@@ -425,5 +431,59 @@ class SabdekhoRepository @Inject constructor(
             true
         }
     }
-}
 
+    /**
+     * Imports recent Letterboxd activity for [username].
+     *
+     * The endpoint streams newline-delimited JSON: progress lines carry a
+     * `status`, and the last line carries the result. Progress is relayed
+     * through [onProgress] so a long import can show what it is doing instead
+     * of an opaque spinner.
+     */
+    suspend fun syncLetterboxd(
+        username: String,
+        onProgress: (String) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (demoDataManager.isDemoModeEnabled()) {
+                return@runCatching "Demo mode — Letterboxd import is disabled."
+            }
+
+            val response = api.syncLetterboxdRss(LetterboxdSyncRequestDto(username.trim()))
+            if (!response.isSuccessful) {
+                throw Exception("Letterboxd sync failed (HTTP ${response.code()})")
+            }
+            val body = response.body() ?: throw Exception("Letterboxd sync returned no data")
+
+            val adapter = moshi.adapter(LetterboxdSyncEventDto::class.java)
+            var last: LetterboxdSyncEventDto? = null
+
+            body.use {
+                val source = it.source()
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (line.isBlank()) continue
+                    val event = runCatching { adapter.fromJson(line) }.getOrNull() ?: continue
+                    last = event
+                    val status = event.status
+                    if (status != null && status != "complete") onProgress(status)
+                }
+            }
+
+            val result = last ?: throw Exception("Letterboxd sync ended without a result")
+            if (result.success == false) {
+                throw Exception(result.message ?: "Letterboxd sync failed")
+            }
+
+            clearCache()
+            demoDataManager.notifyDataUpdated()
+
+            val movies = result.addedMovies ?: 0
+            val logs = result.addedLogs ?: 0
+            when {
+                movies == 0 && logs == 0 -> "Already up to date — nothing new on Letterboxd."
+                else -> "Imported $logs log${if (logs == 1) "" else "s"} and $movies new film${if (movies == 1) "" else "s"}."
+            }
+        }
+    }
+}

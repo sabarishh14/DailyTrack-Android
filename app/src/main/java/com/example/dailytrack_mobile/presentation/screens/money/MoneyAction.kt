@@ -46,6 +46,12 @@ sealed class MoneyAction {
     data class ToggleExcludeAnalytics(val id: Long, val currentExcluded: Boolean) : MoneyAction()
     object ClearActionMessage : MoneyAction()
 
+    // Budgets
+    data class SetBudgetSheetVisible(val visible: Boolean) : MoneyAction()
+    data class SetBudgetSectionExpanded(val expanded: Boolean) : MoneyAction()
+    /** Saves the whole set at once; a limit of 0 removes that category's budget. */
+    data class SaveBudgets(val limits: Map<String, Double>) : MoneyAction()
+
     // Multi-Selection & Bulk Actions
     data class ToggleTransactionSelection(val id: Long) : MoneyAction()
     object SelectAllTransactions : MoneyAction()

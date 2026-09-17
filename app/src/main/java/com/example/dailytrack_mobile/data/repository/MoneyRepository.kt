@@ -5,6 +5,8 @@ import com.example.dailytrack_mobile.data.local.demo.DemoDataManager
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTransactionRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.BudgetDto
+import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
@@ -25,6 +27,8 @@ class MoneyRepository @Inject constructor(
         private const val KEY_MOST_USED_INCOME = "cached_most_used_income"
         private const val KEY_ACCOUNTS = "cached_accounts"
         private const val KEY_CATEGORIES = "cached_categories"
+        private const val KEY_DEMO_BUDGETS = "demo_budgets"
+        private const val MAX_SHEET_SYNC_BATCHES = 200
     }
 
     val dataUpdateFlow: SharedFlow<Unit> get() = demoDataManager.dataUpdateFlow
@@ -38,6 +42,7 @@ class MoneyRepository @Inject constructor(
     private var cachedAccountNames = mutableListOf<String>()
     private val cachedTransactions = mutableMapOf<String, TransactionsResponseDto>()
     private var cachedCategories: List<String>? = null
+    private var cachedBudgets: List<BudgetDto>? = null
     private var inMemoryMostUsedExpense = mutableListOf<String>()
     private var inMemoryMostUsedIncome = mutableListOf<String>()
     private val cachedAllDescriptions = mutableListOf<String>()
@@ -73,6 +78,7 @@ class MoneyRepository @Inject constructor(
 
     fun clearCache() {
         cachedTransactions.clear()
+        cachedBudgets = null
     }
 
     fun recordSingleDescription(category: String, note: String) {
@@ -346,6 +352,137 @@ class MoneyRepository @Inject constructor(
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Budgets
+    //
+    // Demo mode keeps its own budgets in prefs so the section is fully editable
+    // offline; suggestions are server-computed and so stay empty there.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    suspend fun getBudgets(forceRefresh: Boolean = false): Result<List<BudgetDto>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            readDemoBudgets()
+        } else {
+            if (!forceRefresh && cachedBudgets != null) {
+                cachedBudgets!!
+            } else {
+                val response = api.getBudgets()
+                if (!response.success) {
+                    throw Exception(response.message ?: "Failed to load budgets")
+                }
+                response.budgets.also { cachedBudgets = it }
+            }
+        }
+    }
+
+    suspend fun getBudgetSuggestions(): Result<Map<String, BudgetSuggestionDto>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            emptyMap()
+        } else {
+            val response = api.getBudgetSuggestions()
+            if (!response.success) {
+                throw Exception(response.message ?: "Failed to load budget suggestions")
+            }
+            response.suggestions
+        }
+    }
+
+    /** Upserts the whole set at once; entries at 0 or less are deleted server-side. */
+    suspend fun saveBudgets(budgets: List<BudgetDto>): Result<Unit> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            writeDemoBudgets(budgets.filter { it.monthlyLimit > 0.0 })
+        } else {
+            val response = api.updateBudgetsBulk(budgets)
+            if (!response.success) {
+                throw Exception(response.message ?: "Failed to save budgets")
+            }
+            cachedBudgets = null
+        }
+    }
+
+    private fun readDemoBudgets(): List<BudgetDto> {
+        val raw = listCache.read(KEY_DEMO_BUDGETS)
+        return raw.mapNotNull { entry ->
+            val category = entry.substringBeforeLast('=', "")
+            val limit = entry.substringAfterLast('=', "").toDoubleOrNull()
+            if (category.isBlank() || limit == null) null else BudgetDto(category, limit)
+        }
+    }
+
+    private fun writeDemoBudgets(budgets: List<BudgetDto>) {
+        listCache.write(KEY_DEMO_BUDGETS, budgets.map { "${it.category}=${it.monthlyLimit}" })
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Outbound syncs & reconciliation
+    // ─────────────────────────────────────────────────────────────────────────
+
+    suspend fun getPendingSheetSyncCount(): Result<Int> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            0
+        } else {
+            val response = api.getPendingSheetSyncCount()
+            if (!response.success) {
+                throw Exception(response.message ?: "Failed to check pending transactions")
+            }
+            response.count
+        }
+    }
+
+    /**
+     * Drains the Sheets queue. The server pushes a few rows per call, so this
+     * loops until it reports nothing left, reporting each batch through
+     * [onBatch] so the UI can count up rather than sit on a spinner.
+     */
+    suspend fun syncTransactionsToSheets(
+        onBatch: (syncedSoFar: Int, message: String?) -> Unit = { _, _ -> }
+    ): Result<Int> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            return@runCatching 0
+        }
+        var total = 0
+        var batches = 0
+        while (true) {
+            val response = api.syncTransactionsToSheets()
+            if (!response.success) {
+                throw Exception(response.message ?: "Sheets sync failed")
+            }
+            total += response.syncedCount
+            batches++
+            onBatch(total, response.message)
+            if (!response.hasMore || response.syncedCount == 0) break
+            // The queue is drained a handful of rows at a time; this cap stops a
+            // server that always reports `has_more` from looping forever.
+            if (batches >= MAX_SHEET_SYNC_BATCHES) break
+        }
+        total
+    }
+
+    suspend fun syncInvestmentsToSheets(): Result<String> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            return@runCatching "Demo mode — nothing to push."
+        }
+        val response = api.syncInvestmentsToSheets()
+        if (!response.success) {
+            throw Exception(response.message ?: "Investment sync failed")
+        }
+        response.message ?: "Investments synced to Sheets."
+    }
+
+    suspend fun reconcileBalancesFromScreenshots(): Result<String> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            return@runCatching "Demo mode — no screenshots to scan."
+        }
+        val response = api.reconcileBalancesFromScreenshots()
+        if (!response.success) {
+            throw Exception(response.message ?: "Could not scan screenshots")
+        }
+        cachedAccounts = null
+        clearCache()
+        demoDataManager.notifyDataUpdated()
+        response.message ?: "Balances reconciled."
     }
 
     suspend fun checkHealth(): Result<Boolean> = runCatching {

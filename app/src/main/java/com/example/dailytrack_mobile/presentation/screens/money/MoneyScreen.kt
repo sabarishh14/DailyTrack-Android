@@ -19,6 +19,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRefreshBox
 import com.example.dailytrack_mobile.presentation.screens.money.components.AnalysisTab
 import com.example.dailytrack_mobile.presentation.screens.money.components.BulkDeleteConfirmationDialog
+import com.example.dailytrack_mobile.presentation.screens.money.components.BudgetManagerSheet
 import com.example.dailytrack_mobile.presentation.screens.money.components.BulkEditTransactionsSheet
 import com.example.dailytrack_mobile.presentation.screens.money.components.DeleteConfirmationDialog
 import com.example.dailytrack_mobile.presentation.screens.money.components.EditTransactionDialog
@@ -206,6 +207,22 @@ fun MoneyDialogsAndSheets(
             },
             onDismiss = {
                 onAction(MoneyAction.SetFilterSheetVisible(false))
+            }
+        )
+    }
+
+    // Budget Editor Bottom Sheet
+    if (state.isBudgetSheetVisible) {
+        BudgetManagerSheet(
+            categories = state.mostUsedCategories,
+            currentBudgets = state.budgets,
+            suggestions = state.budgetSuggestions,
+            isSaving = state.isSavingBudgets,
+            onSave = { limits ->
+                onAction(MoneyAction.SaveBudgets(limits))
+            },
+            onDismiss = {
+                onAction(MoneyAction.SetBudgetSheetVisible(false))
             }
         )
     }

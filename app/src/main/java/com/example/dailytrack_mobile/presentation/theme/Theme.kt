@@ -39,6 +39,9 @@ fun DailyTrackTheme(
             AppTheme.PURPLE -> PurpleThemeColors.darkScheme
             AppTheme.JUNE_OLED -> JuneOledThemeColors.darkScheme
             AppTheme.DT_OG -> DtOgThemeColors.darkScheme
+            AppTheme.MILES_MORALES -> MilesMoralesThemeColors.darkScheme
+            AppTheme.SYNTHWAVE -> SynthwaveThemeColors.darkScheme
+            AppTheme.CATPPUCCIN_MOCHA -> CatppuccinMochaThemeColors.darkScheme
         }
         else -> when (appTheme) {
             AppTheme.YELLOW -> YellowThemeColors.lightScheme
@@ -47,6 +50,9 @@ fun DailyTrackTheme(
             AppTheme.PURPLE -> PurpleThemeColors.lightScheme
             AppTheme.JUNE_OLED -> JuneOledThemeColors.lightScheme
             AppTheme.DT_OG -> DtOgThemeColors.lightScheme
+            AppTheme.MILES_MORALES -> MilesMoralesThemeColors.lightScheme
+            AppTheme.SYNTHWAVE -> SynthwaveThemeColors.lightScheme
+            AppTheme.CATPPUCCIN_MOCHA -> CatppuccinMochaThemeColors.lightScheme
         }
     }
 

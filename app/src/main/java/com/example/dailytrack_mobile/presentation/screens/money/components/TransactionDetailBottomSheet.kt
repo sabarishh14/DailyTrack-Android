@@ -36,6 +36,7 @@ import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,7 +86,7 @@ fun TransactionDetailBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.79f)
+                .height(rememberSheetHeight(0.79f))
         ) {
             // ── Top Bar Header ───────────────────────────────────────────
             Row(

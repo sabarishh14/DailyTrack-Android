@@ -55,14 +55,16 @@ class MoneyVM @Inject constructor(
             _state.update { it.copy(isLoading = true, errorMessage = null) }
         }
         loadJob = viewModelScope.launch {
-            // Launch all three in parallel
+            // Launch all of them in parallel
             val accountsDeferred = async { repository.getAccounts(forceRefresh = forceRefresh) }
             val transactionsDeferred = async { repository.getTransactions(limit = PAGE_SIZE, offset = 0, forceRefresh = forceRefresh) }
             val categoriesDeferred = async { repository.getCategories(forceRefresh = forceRefresh) }
+            val budgetsDeferred = async { repository.getBudgets(forceRefresh = forceRefresh) }
 
             val accountsResult = accountsDeferred.await()
             val transactionsResult = transactionsDeferred.await()
             val categoriesResult = categoriesDeferred.await()
+            val budgetsResult = budgetsDeferred.await()
 
             _state.update { current ->
                 var updated = current.copy(isLoading = false, isRefreshing = false)
@@ -98,6 +100,11 @@ class MoneyVM @Inject constructor(
                     updated = updated.copy(apiCategories = categories)
                 }
 
+                // Budgets are optional garnish — a failure here must not blank the screen
+                budgetsResult.onSuccess { budgets ->
+                    updated = updated.copy(budgets = budgets.associate { it.category to it.monthlyLimit })
+                }
+
                 updated
             }
 
@@ -105,6 +112,20 @@ class MoneyVM @Inject constructor(
             // for the spending analyser, exactly like the Web app does.
             if (_state.value.hasMore) {
                 fetchAllTransactionsProgressively(forceRefresh = forceRefresh)
+            }
+
+            // Quietly warm the budget suggestions too, so by the time someone
+            // actually opens the budget editor they're already there instead of
+            // popping in — and reflowing the whole list — mid-look.
+            prefetchBudgetSuggestions()
+        }
+    }
+
+    private fun prefetchBudgetSuggestions() {
+        if (_state.value.budgetSuggestions.isNotEmpty()) return
+        viewModelScope.launch {
+            repository.getBudgetSuggestions().onSuccess { suggestions ->
+                _state.update { it.copy(budgetSuggestions = suggestions) }
             }
         }
     }
@@ -144,7 +165,20 @@ class MoneyVM @Inject constructor(
 
     fun onAction(action: MoneyAction) {
         when (action) {
-            is MoneyAction.SelectTab -> _state.update { it.copy(selectedTab = action.index) }
+            is MoneyAction.SelectTab -> _state.update { current ->
+                // Landing back on the Cash Flow tab (index 0) resolves any pending
+                // drill-through: put the filters back exactly as they were before
+                // "View all <category> transactions" temporarily overwrote them.
+                if (action.index == 0 && current.preDrillDownFilterState != null) {
+                    current.copy(
+                        selectedTab = action.index,
+                        analysisFilterState = current.preDrillDownFilterState,
+                        preDrillDownFilterState = null
+                    )
+                } else {
+                    current.copy(selectedTab = action.index)
+                }
+            }
             is MoneyAction.UpdateSearchQuery -> _state.update { it.copy(searchQuery = action.query) }
             is MoneyAction.SelectCategory -> _state.update { it.copy(selectedCategory = action.category) }
 
@@ -339,6 +373,11 @@ class MoneyVM @Inject constructor(
                     newCategoryFilters[action.category] = ItemFilterStatus.INCLUDED
                 }
                 current.copy(
+                    // Remember exactly what the donut was showing before this
+                    // temporary single-category filter, so returning to the Cash
+                    // Flow tab can put it back rather than leaving the donut
+                    // stuck on just this one category.
+                    preDrillDownFilterState = current.analysisFilterState,
                     analysisFilterState = current.analysisFilterState.copy(categoryFilters = newCategoryFilters),
                     selectedCategory = "All",
                     selectedTab = 1
@@ -464,6 +503,50 @@ class MoneyVM @Inject constructor(
                 }
             }
 
+            is MoneyAction.SetBudgetSheetVisible -> {
+                _state.update { it.copy(isBudgetSheetVisible = action.visible) }
+                // Normally already warmed by prefetchBudgetSuggestions() right after
+                // load; this is just the fallback for whoever opens the sheet before
+                // that finishes.
+                if (action.visible) prefetchBudgetSuggestions()
+            }
+
+            is MoneyAction.SetBudgetSectionExpanded -> _state.update {
+                it.copy(isBudgetSectionExpanded = action.expanded)
+            }
+
+            is MoneyAction.SaveBudgets -> {
+                viewModelScope.launch {
+                    _state.update { it.copy(isSavingBudgets = true) }
+                    val payload = action.limits.map { (category, limit) ->
+                        com.example.dailytrack_mobile.data.remote.dto.BudgetDto(
+                            category = category,
+                            monthlyLimit = limit
+                        )
+                    }
+                    repository.saveBudgets(payload)
+                        .onSuccess {
+                            val saved = action.limits.filterValues { it > 0.0 }
+                            _state.update {
+                                it.copy(
+                                    budgets = saved,
+                                    isSavingBudgets = false,
+                                    isBudgetSheetVisible = false,
+                                    actionMessage = if (saved.isEmpty()) "Budgets cleared" else "Budgets updated"
+                                )
+                            }
+                        }
+                        .onFailure { error ->
+                            _state.update {
+                                it.copy(
+                                    isSavingBudgets = false,
+                                    actionMessage = error.message ?: "Failed to save budgets"
+                                )
+                            }
+                        }
+                }
+            }
+
             is MoneyAction.ToggleTransactionSelection -> {
                 _state.update { current ->
                     val newSelection = if (current.selectedTransactionIds.contains(action.id)) {
@@ -550,7 +633,31 @@ class MoneyVM @Inject constructor(
                 }
             }
         }
+
+        // Any deliberate filter edit — wherever it happens from, Cash Flow or
+        // Transactions — abandons the pending drill-through restore. Reverting a
+        // choice the user just made on purpose would be a worse surprise than
+        // leaving it in place; only an *unmodified* drill-through gets undone by
+        // SelectTab(0) above.
+        if (action.isManualFilterEdit) {
+            _state.update {
+                if (it.preDrillDownFilterState != null) it.copy(preDrillDownFilterState = null) else it
+            }
+        }
     }
+
+    private val MoneyAction.isManualFilterEdit: Boolean
+        get() = this is MoneyAction.ApplyAnalysisFilters ||
+            this is MoneyAction.UpdateAnalysisFilterState ||
+            this is MoneyAction.ResetAnalysisFilters ||
+            this is MoneyAction.RemoveCategoryFilter ||
+            this is MoneyAction.RemoveAccountFilter ||
+            this is MoneyAction.RemoveTypeFilter ||
+            this is MoneyAction.ToggleQuickPreset ||
+            this is MoneyAction.ClearFinancialYearFilter ||
+            this is MoneyAction.ClearDateRangeFilter ||
+            this is MoneyAction.SelectMonthYearFilter ||
+            this is MoneyAction.ClearMonthYearFilter
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

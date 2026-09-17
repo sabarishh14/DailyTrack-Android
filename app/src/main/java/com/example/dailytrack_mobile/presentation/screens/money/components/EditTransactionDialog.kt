@@ -43,6 +43,7 @@ import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCano
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 private enum class EditTxType(val label: String, val dbValue: String, val color: Color) {
     EXPENSE("Expense", "Debit", Color(0xFFFF5252)),
@@ -229,7 +230,7 @@ fun EditTransactionDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.79f)
+                .height(rememberSheetHeight(0.79f))
                 .imePadding()
         ) {
             // ── Header ───────────────────────────────────────────────────────

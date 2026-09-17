@@ -73,6 +73,82 @@ data class ChartPoint(
     val pnlPercent: Float get() = if (invested == 0f) 0f else (pnl / invested) * 100f
 }
 
+// -----------------------------------------------------------------------------
+// Holdings snapshots
+//
+// Every portfolio snapshot keeps the individual holdings that made it up, so a
+// point on the chart can be opened to see what was actually held that day — and
+// diffed against any other day the app has a snapshot for.
+// -----------------------------------------------------------------------------
+
+enum class HoldingsType(val label: String) {
+    EQUITY("Stocks"),
+    MUTUAL_FUNDS("Mutual Funds")
+}
+
+data class HoldingSnapshotRow(
+    val symbol: String,
+    val quantity: Double,
+    val averagePrice: Double,
+    /** LTP for equity, NAV for mutual funds — the same slot either way. */
+    val unitPrice: Double,
+    val invested: Double,
+    val current: Double
+) {
+    val pnl: Double get() = current - invested
+    val pnlPercent: Double get() = if (invested == 0.0) 0.0 else (pnl / invested) * 100.0
+}
+
+enum class HoldingChange { NEW, EXITED, HELD }
+
+/**
+ * One symbol across two dates, always ordered chronologically: [from] is the
+ * earlier date and [to] the later one, so every difference reads "later minus
+ * earlier" regardless of which date was picked on the chart first.
+ */
+data class HoldingComparison(
+    val symbol: String,
+    val from: HoldingSnapshotRow?,
+    val to: HoldingSnapshotRow?
+) {
+    val change: HoldingChange
+        get() = when {
+            from == null -> HoldingChange.NEW
+            to == null -> HoldingChange.EXITED
+            else -> HoldingChange.HELD
+        }
+
+    val quantity: Double get() = to?.quantity ?: 0.0
+    val quantityDelta: Double get() = quantity - (from?.quantity ?: 0.0)
+
+    val unitPrice: Double get() = to?.unitPrice ?: 0.0
+    val unitPriceDelta: Double get() = if (from != null && to != null) to.unitPrice - from.unitPrice else 0.0
+
+    val invested: Double get() = to?.invested ?: 0.0
+    val investedDelta: Double get() = invested - (from?.invested ?: 0.0)
+
+    val current: Double get() = to?.current ?: 0.0
+    val currentDelta: Double get() = current - (from?.current ?: 0.0)
+
+    val fromQuantity: Double get() = from?.quantity ?: 0.0
+    val fromPrice: Double get() = from?.unitPrice ?: 0.0
+    val fromValue: Double get() = from?.current ?: 0.0
+
+    /** Price move per unit — the cleanest read on performance, unaffected by buying or selling. */
+    val pricePercent: Double
+        get() = if (from == null || to == null || from.unitPrice == 0.0) 0.0 else unitPriceDelta / from.unitPrice * 100.0
+
+    /** Change in position value, which also includes any units added or removed. */
+    val currentPercent: Double get() = if (fromValue == 0.0) 0.0 else currentDelta / fromValue * 100.0
+
+    val returns: Double get() = current - invested
+    val returnPercent: Double get() = if (invested == 0.0) 0.0 else returns / invested * 100.0
+    val returnsDelta: Double get() = returns - ((from?.current ?: 0.0) - (from?.invested ?: 0.0))
+
+    /** Largest value on either date, so exited positions still sort sensibly. */
+    val sortValue: Double get() = maxOf(current, from?.current ?: 0.0)
+}
+
 data class InvestState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
@@ -82,7 +158,19 @@ data class InvestState(
     val selectedTimeRange: ChartTimeRange = ChartTimeRange.THREE_MONTHS,
     val chartPoints: List<ChartPoint> = emptyList(),
     val hiddenCategories: Set<InvestCategory> = emptySet(),
-    val isCategorySettingsOpen: Boolean = false
+    val isCategorySettingsOpen: Boolean = false,
+
+    // Holdings snapshot sheet
+    val isHoldingsSheetOpen: Boolean = false,
+    val snapshotDate: String? = null,
+    val snapshotType: HoldingsType = HoldingsType.EQUITY,
+    val isSnapshotLoading: Boolean = false,
+    val snapshotHoldings: List<HoldingSnapshotRow> = emptyList(),
+    val snapshotError: String? = null,
+    val compareDate: String? = null,
+    val isCompareLoading: Boolean = false,
+    val compareHoldings: List<HoldingSnapshotRow> = emptyList(),
+    val isComparePickerOpen: Boolean = false
 ) {
     // ── Visibility helpers ──────────────────────────────────────────────
     val visibleCategoriesCount: Int get() = InvestCategory.entries.size - hiddenCategories.size
@@ -180,5 +268,56 @@ data class InvestState(
             ChartTimeRange.YTD -> "YTD"
             else -> "past ${selectedTimeRange.label}"
         }
+
+    // -- Holdings snapshot ------------------------------------------------
+
+    val isComparing: Boolean get() = compareDate != null
+
+    /** Every date the app holds a snapshot for, newest first. */
+    val availableSnapshotDates: List<String>
+        get() = historicalSnapshots
+            .map { it.date.substringBefore("T") }
+            .distinct()
+            .sortedDescending()
+
+    val snapshotTotalValue: Double get() = snapshotHoldings.sumOf { it.current }
+    val snapshotTotalInvested: Double get() = snapshotHoldings.sumOf { it.invested }
+    val snapshotTotalReturn: Double get() = snapshotTotalValue - snapshotTotalInvested
+    val snapshotTotalReturnPercent: Double
+        get() = if (snapshotTotalInvested == 0.0) 0.0 else (snapshotTotalReturn / snapshotTotalInvested) * 100.0
+
+    // Dates are ISO yyyy-MM-dd, so string order is chronological order.
+    private val snapshotIsLater: Boolean
+        get() = compareDate != null && snapshotDate != null && snapshotDate > compareDate
+
+    /** The earlier of the two dates being compared. */
+    val comparisonFromDate: String? get() = if (snapshotIsLater) compareDate else snapshotDate
+
+    /** The later of the two dates being compared. */
+    val comparisonToDate: String? get() = if (snapshotIsLater) snapshotDate else compareDate
+
+    private val fromHoldings: List<HoldingSnapshotRow>
+        get() = if (snapshotIsLater) compareHoldings else snapshotHoldings
+
+    private val toHoldings: List<HoldingSnapshotRow>
+        get() = if (snapshotIsLater) snapshotHoldings else compareHoldings
+
+    /** Both dates merged by symbol, largest positions first. */
+    val holdingsComparison: List<HoldingComparison>
+        get() {
+            if (!isComparing) return emptyList()
+            val fromBySymbol = fromHoldings.associateBy { it.symbol }
+            val toBySymbol = toHoldings.associateBy { it.symbol }
+            return (fromBySymbol.keys + toBySymbol.keys)
+                .map { symbol ->
+                    HoldingComparison(symbol = symbol, from = fromBySymbol[symbol], to = toBySymbol[symbol])
+                }
+                .sortedByDescending { it.sortValue }
+        }
+
+    val comparisonFromInvested: Double get() = fromHoldings.sumOf { it.invested }
+    val comparisonToInvested: Double get() = toHoldings.sumOf { it.invested }
+    val comparisonFromValue: Double get() = fromHoldings.sumOf { it.current }
+    val comparisonToValue: Double get() = toHoldings.sumOf { it.current }
 
 }
