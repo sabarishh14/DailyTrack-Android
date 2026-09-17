@@ -63,7 +63,7 @@ class SabdekhoVM @Inject constructor(
                         }
                     }
                     SabdekhoTab.STATS -> {
-                        if (_state.value.stats == null) {
+                        if (_state.value.stats == null || _state.value.tvStats == null) {
                             loadStats(_state.value.selectedStatsYear)
                         }
                     }
@@ -332,9 +332,13 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
-    private fun loadStats(year: String = "2026") {
+    // Movie and TV stats load side by side: the stats tab follows the
+    // All / Films / TV switch, and flipping it should show data instantly
+    // rather than start a fresh request.
+    private fun loadStats(year: String = _state.value.selectedStatsYear) {
+        _state.update { it.copy(selectedStatsYear = year) }
         viewModelScope.launch {
-            _state.update { it.copy(isStatsLoading = true, selectedStatsYear = year) }
+            _state.update { it.copy(isStatsLoading = true) }
             repository.getMovieStats(year = year)
                 .onSuccess { statsResp ->
                     _state.update {
@@ -346,6 +350,18 @@ class SabdekhoVM @Inject constructor(
                 }
                 .onFailure {
                     _state.update { it.copy(isStatsLoading = false) }
+                }
+        }
+        viewModelScope.launch {
+            _state.update { it.copy(isTvStatsLoading = true, tvStatsError = null) }
+            repository.getTvStats(year = year)
+                .onSuccess { tvResp ->
+                    _state.update { it.copy(isTvStatsLoading = false, tvStats = tvResp) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(isTvStatsLoading = false, tvStatsError = error.message ?: "Couldn't load TV stats")
+                    }
                 }
         }
     }

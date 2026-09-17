@@ -166,6 +166,11 @@ interface DailyTrackApi {
         @Query("year") year: String? = null
     ): com.example.dailytrack_mobile.data.remote.dto.MediaStatsResponseDto
 
+    @GET("/api/tv/stats")
+    suspend fun getTvStats(
+        @Query("year") year: String? = null
+    ): com.example.dailytrack_mobile.data.remote.dto.TvStatsResponseDto
+
     @GET("/api/movies/details/{tmdb_id}")
     suspend fun getMovieDetails(
         @Path("tmdb_id") tmdbId: Int

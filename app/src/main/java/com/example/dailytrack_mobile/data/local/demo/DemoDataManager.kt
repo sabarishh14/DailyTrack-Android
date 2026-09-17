@@ -600,8 +600,8 @@ class DemoDataManager @Inject constructor(
 
         return MediaStatsResponseDto(
             success = true,
-            year = year ?: "2026",
-            available_years = listOf(2026, 2025, 2024, 2023, 2022),
+            year = year ?: LocalDate.now().year.toString(),
+            available_years = (LocalDate.now().year downTo LocalDate.now().year - 4).toList(),
             films_logged = filmsLogged,
             total_likes = totalLikes,
             total_hours = totalHours,
@@ -612,6 +612,98 @@ class DemoDataManager @Inject constructor(
             highest_rated = highestRated,
             theatre_stats = theatreStats,
             extremes = extremes
+        )
+    }
+
+    /**
+     * TV stats computed from the demo diary, shaped like /api/tv/stats so the
+     * stats tab behaves the same offline.
+     */
+    suspend fun getTvStats(year: String? = null): TvStatsResponseDto {
+        val container = getOrLoadContainer()
+        val allLogs = container.mediaDiaryLogs.filter { it.type.equals("tv", ignoreCase = true) }
+        val effectiveYear = year?.takeIf { it != "all" }
+        val logs = if (effectiveYear != null) allLogs.filter { it.date?.startsWith(effectiveYear) == true } else allLogs
+        val dated = logs.mapNotNull { log -> log.date?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }?.let { it to log } }
+
+        val episodeLogs = logs.filter { it.episodeNumber != null }
+        val ratings = logs.mapNotNull { it.rating?.takeIf { r -> r > 0f }?.toDouble() }
+
+        val byMonth = MutableList(12) { 0 }
+        val byDay = MutableList(7) { 0 }
+        val byWeek = MutableList(52) { 0 }
+        dated.forEach { (d, _) ->
+            byMonth[d.monthValue - 1]++
+            byDay[d.dayOfWeek.value - 1]++
+            byWeek[(d.get(java.time.temporal.IsoFields.WEEK_OF_WEEK_BASED_YEAR) - 1).coerceIn(0, 51)]++
+        }
+
+        val ratingDist = ratings.groupingBy { it.toString() }.eachCount()
+
+        val perShow = logs.groupBy { it.showId }
+        fun showDto(log: MediaDiaryLogDto, group: List<MediaDiaryLogDto>) = TvStatsShowDto(
+            show_id = log.showId,
+            tmdb_id = log.tmdbId,
+            name = log.showName,
+            poster_path = log.posterPath,
+            episodes = group.count { it.episodeNumber != null },
+            logs = group.size,
+            rating = group.mapNotNull { it.rating?.takeIf { r -> r > 0f }?.toDouble() }
+                .takeIf { it.isNotEmpty() }?.average()?.let { kotlin.math.round(it * 10) / 10.0 },
+            ratings_count = group.count { (it.rating ?: 0f) > 0f },
+            last_watched = group.mapNotNull { it.date }.maxOrNull()
+        )
+        val shows = perShow.values.map { showDto(it.first(), it) }
+
+        val binge = episodeLogs.groupBy { it.showId to it.date }
+            .maxByOrNull { it.value.size }
+            ?.takeIf { it.value.size >= 2 }
+            ?.let { (key, group) ->
+                TvBingeDto(
+                    show_id = key.first, tmdb_id = group.first().tmdbId, name = group.first().showName,
+                    poster_path = group.first().posterPath, date = key.second, episodes = group.size
+                )
+            }
+
+        val tvShows = container.mediaShows.filter { it.type.equals("tv", ignoreCase = true) }
+        fun fromShow(show: MediaShowDto) = TvStatsShowDto(
+            show_id = show.id, tmdb_id = show.tmdbId, name = show.name, poster_path = show.posterPath,
+            status = show.status,
+            episodes_watched = allLogs.count { it.showId == show.id && it.episodeNumber != null },
+            last_watched = allLogs.filter { it.showId == show.id }.mapNotNull { it.date }.maxOrNull()
+        )
+        val completed = tvShows.filter { it.status.equals("WATCHED", ignoreCase = true) }.map(::fromShow)
+
+        val availableYears = allLogs.mapNotNull { it.date?.take(4)?.toIntOrNull() }.distinct().sortedDescending()
+        val weeks = if (effectiveYear == null) 52.0 * maxOf(1, availableYears.size) else 52.0
+
+        return TvStatsResponseDto(
+            success = true,
+            year = year ?: LocalDate.now().year.toString(),
+            available_years = availableYears,
+            episodes_watched = episodeLogs.size,
+            shows_watched = perShow.size,
+            seasons_watched = logs.mapNotNull { log -> log.seasonNumber?.let { log.showId to it } }.distinct().size,
+            total_entries = logs.size,
+            total_likes = logs.count { it.liked },
+            total_reviews = logs.count { !it.review.isNullOrBlank() },
+            total_rewatches = logs.count { it.rewatch },
+            average_rating = ratings.takeIf { it.isNotEmpty() }?.average()?.let { kotlin.math.round(it * 100) / 100.0 },
+            shows_completed = completed.size,
+            avg_per_week = kotlin.math.round(episodeLogs.size / weeks * 10) / 10.0,
+            avg_per_month = kotlin.math.round(episodeLogs.size / (weeks / 4.33) * 10) / 10.0,
+            by_week = byWeek,
+            by_month = byMonth,
+            by_day = byDay,
+            episodes_by_year = episodeLogs.mapNotNull { it.date?.take(4)?.toIntOrNull() }
+                .groupingBy { it }.eachCount().toSortedMap().map { (y, c) -> TvYearCountDto(y, c) },
+            rating_distribution = ratingDist,
+            most_watched = shows.sortedWith(compareByDescending<TvStatsShowDto> { it.episodes }.thenByDescending { it.logs }).take(12),
+            highest_rated = shows.filter { it.rating != null }.sortedByDescending { it.rating }.take(12),
+            biggest_binge = binge,
+            longest_streak = MediaStreakDto(length = if (dated.isEmpty()) 0 else 1),
+            completed = completed,
+            in_progress = tvShows.filter { it.status.equals("WATCHING", ignoreCase = true) }.map(::fromShow)
         )
     }
 

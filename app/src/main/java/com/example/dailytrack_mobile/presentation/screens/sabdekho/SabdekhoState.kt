@@ -34,7 +34,10 @@ data class SabdekhoState(
     // Stats Tab
     val isStatsLoading: Boolean = false,
     val stats: MediaStatsResponseDto? = null,
-    val selectedStatsYear: String = "2026",
+    val selectedStatsYear: String = LocalDate.now().year.toString(),
+    val isTvStatsLoading: Boolean = false,
+    val tvStats: TvStatsResponseDto? = null,
+    val tvStatsError: String? = null,
 
     // Media Details & Log Sheet
     val isDetailsSheetOpen: Boolean = false,

@@ -226,6 +226,20 @@ class SabdekhoRepository @Inject constructor(
         }
     }
 
+    suspend fun getTvStats(
+        year: String? = null
+    ): Result<com.example.dailytrack_mobile.data.remote.dto.TvStatsResponseDto> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            demoDataManager.getTvStats(year = year)
+        } else {
+            val response = api.getTvStats(year = year)
+            if (!response.success) {
+                throw Exception(response.message ?: "Failed to load TV stats")
+            }
+            response
+        }
+    }
+
     suspend fun getMediaDetails(
         tmdbId: Int,
         isMovie: Boolean

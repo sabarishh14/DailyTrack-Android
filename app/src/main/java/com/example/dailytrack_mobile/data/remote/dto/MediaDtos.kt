@@ -315,7 +315,11 @@ data class MediaExtremeItemDto(
     @Json(name = "name") val name: String? = null,
     @Json(name = "poster_path") val poster_path: String? = null,
     @Json(name = "runtime") val runtime: Int? = null,
-    @Json(name = "release_year") val release_year: String? = null
+    @Json(name = "release_year") val release_year: String? = null,
+    // Newer backends send the full date and when it was last watched; both are
+    // optional so an older server still parses.
+    @Json(name = "release_date") val release_date: String? = null,
+    @Json(name = "watched_date") val watched_date: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -332,4 +336,72 @@ data class MediaStreakDto(
     @Json(name = "length") val length: Int = 0,
     @Json(name = "start") val start: String? = null,
     @Json(name = "end") val end: String? = null
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sabdekho TV Stats DTOs (/api/tv/stats)
+// Every field has a default so a partial or older payload still parses.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@JsonClass(generateAdapter = true)
+data class TvStatsResponseDto(
+    @Json(name = "success") val success: Boolean = true,
+    @Json(name = "year") val year: String? = null,
+    @Json(name = "available_years") val available_years: List<Int> = emptyList(),
+    @Json(name = "episodes_watched") val episodes_watched: Int = 0,
+    @Json(name = "shows_watched") val shows_watched: Int = 0,
+    @Json(name = "seasons_watched") val seasons_watched: Int = 0,
+    @Json(name = "total_entries") val total_entries: Int = 0,
+    @Json(name = "total_likes") val total_likes: Int = 0,
+    @Json(name = "total_reviews") val total_reviews: Int = 0,
+    @Json(name = "total_rewatches") val total_rewatches: Int = 0,
+    @Json(name = "average_rating") val average_rating: Double? = null,
+    @Json(name = "shows_completed") val shows_completed: Int = 0,
+    @Json(name = "avg_per_week") val avg_per_week: Double = 0.0,
+    @Json(name = "avg_per_month") val avg_per_month: Double = 0.0,
+    @Json(name = "by_week") val by_week: List<Int> = emptyList(),
+    @Json(name = "by_month") val by_month: List<Int> = emptyList(),
+    @Json(name = "by_day") val by_day: List<Int> = emptyList(),
+    @Json(name = "episodes_by_year") val episodes_by_year: List<TvYearCountDto> = emptyList(),
+    @Json(name = "rating_distribution") val rating_distribution: Map<String, Int> = emptyMap(),
+    @Json(name = "most_watched") val most_watched: List<TvStatsShowDto> = emptyList(),
+    @Json(name = "highest_rated") val highest_rated: List<TvStatsShowDto> = emptyList(),
+    @Json(name = "biggest_binge") val biggest_binge: TvBingeDto? = null,
+    @Json(name = "longest_streak") val longest_streak: MediaStreakDto? = null,
+    @Json(name = "completed") val completed: List<TvStatsShowDto> = emptyList(),
+    @Json(name = "in_progress") val in_progress: List<TvStatsShowDto> = emptyList(),
+    @Json(name = "message") val message: String? = null
+)
+
+/** One show in any TV stats list; each list fills the fields relevant to it. */
+@JsonClass(generateAdapter = true)
+data class TvStatsShowDto(
+    @Json(name = "show_id") val show_id: Int = 0,
+    @Json(name = "tmdb_id") val tmdb_id: Int? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "poster_path") val poster_path: String? = null,
+    @Json(name = "status") val status: String? = null,
+    @Json(name = "episodes") val episodes: Int = 0,
+    @Json(name = "logs") val logs: Int = 0,
+    @Json(name = "rating") val rating: Double? = null,
+    @Json(name = "ratings_count") val ratings_count: Int = 0,
+    @Json(name = "episodes_watched") val episodes_watched: Int = 0,
+    @Json(name = "last_watched") val last_watched: String? = null,
+    @Json(name = "completed_on") val completed_on: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class TvBingeDto(
+    @Json(name = "show_id") val show_id: Int = 0,
+    @Json(name = "tmdb_id") val tmdb_id: Int? = null,
+    @Json(name = "name") val name: String? = null,
+    @Json(name = "poster_path") val poster_path: String? = null,
+    @Json(name = "date") val date: String? = null,
+    @Json(name = "episodes") val episodes: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class TvYearCountDto(
+    @Json(name = "year") val year: Int = 0,
+    @Json(name = "count") val count: Int = 0
 )

@@ -30,8 +30,8 @@ data class ActivityEntry(
 data class ActivitiesState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val selectedMonth: Month = Month.JULY,
-    val selectedYear: Int = 2026,
+    val selectedMonth: Month = java.time.LocalDate.now().month,
+    val selectedYear: Int = java.time.LocalDate.now().year,
     val allActivities: List<ActivityEntry> = emptyList(),
     val activityLog: List<ActivityEntry> = emptyList()
 )

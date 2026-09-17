@@ -21,7 +21,7 @@ sealed class SabdekhoAction {
     data class ChangeDiaryTypeFilter(val type: String) : SabdekhoAction()
 
     // Stats Tab Actions
-    data class LoadStats(val year: String = "2026") : SabdekhoAction()
+    data class LoadStats(val year: String = java.time.LocalDate.now().year.toString()) : SabdekhoAction()
     data class SelectStatsYear(val year: String) : SabdekhoAction()
 
     // Media Details & Log Bottom Sheet Actions
