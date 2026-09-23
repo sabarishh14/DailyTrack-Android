@@ -125,6 +125,8 @@ fun SabdekhoScreen(
             val isMovie = logToEdit.type.equals("movie", ignoreCase = true)
             EditDiaryLogSheet(
                 log = logToEdit,
+                isSaving = state.isSavingEditLog,
+                errorMessage = state.editLogError,
                 onDismiss = { viewModel.onAction(SabdekhoAction.CloseEditLog) },
                 onSave = { rating, review, liked, rewatch, tag, date, season, episode ->
                     viewModel.onAction(
@@ -270,6 +272,24 @@ private fun LibraryTabContent(
                     onAction(SabdekhoAction.ChangeFilter(code))
                 }
             }
+            FilterChipView(
+                label = if (state.hasActiveLibraryFilters) "⚙️ Filters •" else "⚙️ More Filters",
+                isSelected = state.showMoreFilters
+            ) {
+                onAction(SabdekhoAction.ToggleMoreFilters)
+            }
+        }
+
+        // Year / Month / Week / Language live in a bottom sheet (same pattern as
+        // the Money tab's filter sheet) rather than dropdowns in the page.
+        if (state.showMoreFilters) {
+            LibraryFilterBottomSheet(
+                state = state,
+                onApply = { year, month, week, language ->
+                    onAction(SabdekhoAction.ApplyLibraryFilters(year, month, week, language))
+                },
+                onDismiss = { onAction(SabdekhoAction.DismissMoreFilters) }
+            )
         }
 
         Spacer(modifier = Modifier.height(dims.itemSpacingMedium))
@@ -440,10 +460,10 @@ private fun LibraryTabContent(
                     "tv" -> "TV shows"
                     else -> "titles"
                 }
-                val emptyTitle = if (state.activeFilter == "all") {
-                    "Your library has no $mediaLabel"
-                } else {
-                    "No \"${state.activeFilter}\" $mediaLabel"
+                val emptyTitle = when {
+                    state.hasActiveLibraryFilters -> "No $mediaLabel match these filters"
+                    state.activeFilter == "all" -> "Your library has no $mediaLabel"
+                    else -> "No \"${state.activeFilter}\" $mediaLabel"
                 }
                 val emptyIcon = when (state.mediaTypeFilter.lowercase()) {
                     "movie" -> Icons.Default.Movie

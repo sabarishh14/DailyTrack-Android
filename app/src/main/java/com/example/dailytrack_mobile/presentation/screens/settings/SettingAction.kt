@@ -27,6 +27,7 @@ sealed interface SettingsAction {
     object OnPushTransactionsToSheets : SettingsAction
     object OnPushInvestmentsToSheets : SettingsAction
     object OnReconcileBalances : SettingsAction
+    data class OnReconcileBalancesSheetVisible(val visible: Boolean) : SettingsAction
     data class OnLetterboxdDialogVisible(val visible: Boolean) : SettingsAction
     data class OnLetterboxdSyncStarted(val username: String) : SettingsAction
     object OnServerStatusClicked : SettingsAction

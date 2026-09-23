@@ -123,12 +123,16 @@ fun SabdekhoDiaryTab(
                 verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
                 contentPadding = PaddingValues(bottom = dims.screenBottomPadding + 56.dp)
             ) {
-                items(filteredLogs, key = { it.id }) { log ->
+                // Film and TV log ids can collide, and duplicate keys crash the list.
+                items(filteredLogs, key = { "${it.type}-${it.id}" }) { log ->
                     DiaryLogCard(
                         log = log,
                         onCardClick = {
                             // Find corresponding show or construct minimal show to open details
-                            val matchedShow = state.shows.find { it.id == log.showId } ?: MediaShowDto(
+                            val logIsMovie = log.type.equals("movie", ignoreCase = true)
+                            val matchedShow = state.shows.find {
+                                it.id == log.showId && it.type.equals("movie", ignoreCase = true) == logIsMovie
+                            } ?: MediaShowDto(
                                 id = log.showId,
                                 tmdbId = log.tmdbId,
                                 name = log.showName,

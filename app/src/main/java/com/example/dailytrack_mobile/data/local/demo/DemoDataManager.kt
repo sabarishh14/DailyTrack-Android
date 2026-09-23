@@ -825,12 +825,13 @@ class DemoDataManager @Inject constructor(
         val current = getOrLoadContainer()
         val updatedLogs = current.mediaDiaryLogs.map { log ->
             if (log.id == logId) {
+                // The edit sheet always sends the full form, so null means cleared.
                 log.copy(
-                    rating = rating ?: log.rating,
-                    review = review ?: log.review,
+                    rating = rating?.takeIf { it > 0f },
+                    review = review?.takeIf { it.isNotBlank() },
                     liked = liked ?: log.liked,
                     rewatch = rewatch ?: log.rewatch,
-                    tags = tags ?: log.tags,
+                    tags = tags?.takeIf { it.isNotBlank() },
                     date = date ?: log.date,
                     seasonNumber = if (!isMovie) seasonNumber else null,
                     episodeNumber = if (!isMovie) episodeNumber else null

@@ -33,14 +33,14 @@ class SabdekhoVM @Inject constructor(
     init {
         viewModelScope.launch {
             demoModeManager.isDemoModeEnabledFlow.collect {
-                loadShows(status = _state.value.activeFilter, type = _state.value.mediaTypeFilter)
+                reloadShows()
                 loadDiary(type = _state.value.diaryTypeFilter)
                 loadStats(year = _state.value.selectedStatsYear)
             }
         }
         viewModelScope.launch {
             repository.dataUpdateFlow.collect {
-                loadShows(status = _state.value.activeFilter, type = _state.value.mediaTypeFilter)
+                reloadShows()
                 loadDiary(type = _state.value.diaryTypeFilter)
                 loadStats(year = _state.value.selectedStatsYear)
             }
@@ -54,7 +54,7 @@ class SabdekhoVM @Inject constructor(
                 when (action.tab) {
                     SabdekhoTab.LIBRARY -> {
                         if (_state.value.shows.isEmpty()) {
-                            loadShows(_state.value.activeFilter, _state.value.mediaTypeFilter)
+                            reloadShows()
                         }
                     }
                     SabdekhoTab.DIARY -> {
@@ -74,7 +74,8 @@ class SabdekhoVM @Inject constructor(
                 _state.update { it.copy(gridColumns = cols) }
             }
             is SabdekhoAction.LoadShows -> {
-                loadShows(action.status, action.type)
+                val s = _state.value
+                loadShows(action.status, action.type, s.yearFilter, s.monthFilter, s.weekFilter, s.languageFilter)
             }
             is SabdekhoAction.SearchQueryChanged -> {
                 _state.update { it.copy(searchQuery = action.query) }
@@ -82,7 +83,7 @@ class SabdekhoVM @Inject constructor(
             }
             is SabdekhoAction.ChangeFilter -> {
                 _state.update { it.copy(activeFilter = action.filter) }
-                loadShows(action.filter, _state.value.mediaTypeFilter)
+                reloadShows()
             }
             is SabdekhoAction.ChangeMediaType -> {
                 val newType = action.mediaType
@@ -98,13 +99,58 @@ class SabdekhoVM @Inject constructor(
                         activeFilter = adjustedFilter
                     )
                 }
-                loadShows(adjustedFilter, newType)
+                reloadShows()
                 loadDiary(newType, forceRefresh = true)
             }
             is SabdekhoAction.Refresh -> {
-                loadShows(_state.value.activeFilter, _state.value.mediaTypeFilter, forceRefresh = true)
+                reloadShows(forceRefresh = true)
                 loadDiary(_state.value.diaryTypeFilter, forceRefresh = true)
                 loadStats(_state.value.selectedStatsYear)
+            }
+
+            // Library "More Filters" bottom sheet
+            is SabdekhoAction.ToggleMoreFilters -> {
+                _state.update { it.copy(showMoreFilters = !it.showMoreFilters) }
+                if (_state.value.showMoreFilters && !_state.value.isFilterOptionsLoaded) {
+                    loadFilterOptions()
+                }
+            }
+            is SabdekhoAction.DismissMoreFilters -> {
+                _state.update { it.copy(showMoreFilters = false) }
+            }
+            is SabdekhoAction.ApplyLibraryFilters -> {
+                _state.update {
+                    it.copy(
+                        yearFilter = action.year,
+                        monthFilter = action.month,
+                        weekFilter = action.week,
+                        languageFilter = action.language,
+                        showMoreFilters = false
+                    )
+                }
+                reloadShows()
+            }
+            is SabdekhoAction.ClearLibraryFilters -> {
+                _state.update {
+                    it.copy(yearFilter = "all", monthFilter = "all", weekFilter = "all", languageFilter = "all")
+                }
+                reloadShows()
+            }
+            is SabdekhoAction.FilterLibraryFromStats -> {
+                _state.update {
+                    it.copy(
+                        currentTab = SabdekhoTab.LIBRARY,
+                        yearFilter = action.year,
+                        monthFilter = action.month,
+                        weekFilter = action.week,
+                        languageFilter = action.language,
+                        mediaTypeFilter = action.mediaType ?: it.mediaTypeFilter,
+                        activeFilter = "all", // the tapped slice may hold any status, not just "Watching"
+                        showMoreFilters = true
+                    )
+                }
+                if (!_state.value.isFilterOptionsLoaded) loadFilterOptions()
+                reloadShows()
             }
 
             // Diary Actions
@@ -209,10 +255,13 @@ class SabdekhoVM @Inject constructor(
 
             // Edit Log
             is SabdekhoAction.OpenEditLog -> {
-                _state.update { it.copy(editingLog = action.log, isEditDialogOpen = true) }
+                _state.update {
+                    it.copy(editingLog = action.log, isEditDialogOpen = true, isSavingEditLog = false, editLogError = null)
+                }
             }
             is SabdekhoAction.CloseEditLog -> {
-                _state.update { it.copy(editingLog = null, isEditDialogOpen = false) }
+                if (_state.value.isSavingEditLog) return
+                _state.update { it.copy(editingLog = null, isEditDialogOpen = false, editLogError = null) }
             }
             is SabdekhoAction.SubmitEditLog -> {
                 submitEditLog(
@@ -283,7 +332,15 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
-    private fun loadShows(status: String, type: String = "all", forceRefresh: Boolean = false) {
+    private fun loadShows(
+        status: String,
+        type: String = "all",
+        year: String = "all",
+        month: String = "all",
+        week: String = "all",
+        language: String = "all",
+        forceRefresh: Boolean = false
+    ) {
         viewModelScope.launch {
             if (forceRefresh) {
                 repository.clearCache()
@@ -291,7 +348,11 @@ class SabdekhoVM @Inject constructor(
             } else {
                 _state.update { it.copy(isLoading = true, error = null) }
             }
-            repository.getMediaLibrary(limit = 100, offset = 0, type = type, status = status, forceRefresh = forceRefresh)
+            repository.getMediaLibrary(
+                limit = 100, offset = 0, type = type, status = status,
+                year = year, month = month, week = week, language = language,
+                forceRefresh = forceRefresh
+            )
                 .onSuccess { response ->
                     _state.update {
                         it.copy(
@@ -311,6 +372,34 @@ class SabdekhoVM @Inject constructor(
                         )
                     }
                 }
+        }
+    }
+
+    /** Reissues the Library fetch using whatever filters are currently in state. */
+    private fun reloadShows(forceRefresh: Boolean = false) {
+        val s = _state.value
+        loadShows(
+            status = s.activeFilter,
+            type = s.mediaTypeFilter,
+            year = s.yearFilter,
+            month = s.monthFilter,
+            week = s.weekFilter,
+            language = s.languageFilter,
+            forceRefresh = forceRefresh
+        )
+    }
+
+    private fun loadFilterOptions() {
+        viewModelScope.launch {
+            repository.getMediaFilters().onSuccess { response ->
+                _state.update {
+                    it.copy(
+                        filterYears = response.years,
+                        filterLanguages = response.languages,
+                        isFilterOptionsLoaded = true
+                    )
+                }
+            }
         }
     }
 
@@ -421,7 +510,7 @@ class SabdekhoVM @Inject constructor(
                             shows = curr.shows.map { if (it.id == showId) it.copy(status = newStatus) else it }
                         )
                     }
-                    loadShows(_state.value.activeFilter, _state.value.mediaTypeFilter)
+                    reloadShows()
                 }
         }
     }
@@ -431,7 +520,7 @@ class SabdekhoVM @Inject constructor(
             repository.deleteMediaShow(showId, isMovie)
                 .onSuccess {
                     _state.update { it.copy(isDetailsSheetOpen = false, selectedShow = null) }
-                    loadShows(_state.value.activeFilter, _state.value.mediaTypeFilter)
+                    reloadShows()
                     loadDiary(_state.value.diaryTypeFilter)
                     loadStats(_state.value.selectedStatsYear)
                 }
@@ -523,7 +612,9 @@ class SabdekhoVM @Inject constructor(
         season: Int? = null,
         episode: Int? = null
     ) {
+        if (_state.value.isSavingEditLog) return  // a second tap must not send a second save
         viewModelScope.launch {
+            _state.update { it.copy(isSavingEditLog = true, editLogError = null) }
             repository.updateDiaryLog(
                 logId = logId,
                 isMovie = isMovie,
@@ -536,9 +627,16 @@ class SabdekhoVM @Inject constructor(
                 seasonNumber = season,
                 episodeNumber = episode
             ).onSuccess {
-                _state.update { it.copy(isEditDialogOpen = false, editingLog = null) }
+                _state.update {
+                    it.copy(isSavingEditLog = false, isEditDialogOpen = false, editingLog = null, editLogError = null)
+                }
                 loadDiary(_state.value.diaryTypeFilter)
                 loadStats(_state.value.selectedStatsYear)
+            }.onFailure { error ->
+                // Keep the sheet open with the user's edits so they can retry.
+                _state.update {
+                    it.copy(isSavingEditLog = false, editLogError = error.message ?: "Couldn't save changes")
+                }
             }
         }
     }
@@ -570,7 +668,7 @@ class SabdekhoVM @Inject constructor(
                     posterPath = tmdbResult.posterPath
                 )
                 _state.update { it.copy(selectedShow = updatedShow, detailsSheetSubTab = 2) }
-                loadShows(_state.value.activeFilter, _state.value.mediaTypeFilter)
+                reloadShows()
                 loadDiary(_state.value.diaryTypeFilter)
                 if (updatedShow != null) {
                     repository.getMediaDetails(tmdbResult.id, isMovie).onSuccess { details ->

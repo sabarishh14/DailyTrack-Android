@@ -280,6 +280,11 @@ class SettingsVM @Inject constructor(
                 if (!_state.value.balanceReconcile.isRunning) reconcileBalances()
             }
 
+            is SettingsAction.OnReconcileBalancesSheetVisible -> {
+                _state.update { it.copy(showReconcileBalancesSheet = action.visible) }
+                if (action.visible) loadReconcileAccounts()
+            }
+
             is SettingsAction.OnLetterboxdDialogVisible -> {
                 _state.update { it.copy(isLetterboxdDialogVisible = action.visible) }
             }
@@ -574,6 +579,7 @@ class SettingsVM @Inject constructor(
                     _state.update {
                         it.copy(balanceReconcile = SyncTaskState(isRunning = false, isSuccess = true, message = message))
                     }
+                    if (_state.value.showReconcileBalancesSheet) loadReconcileAccounts(forceRefresh = true)
                 }
                 .onFailure { error ->
                     _state.update {
@@ -585,6 +591,34 @@ class SettingsVM @Inject constructor(
                             )
                         )
                     }
+                }
+        }
+    }
+
+    private fun loadReconcileAccounts(forceRefresh: Boolean = false) {
+        val repository = moneyRepository ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(isLoadingReconcileAccounts = true) }
+            repository.getAccounts(forceRefresh = forceRefresh)
+                .onSuccess { accounts ->
+                    _state.update {
+                        it.copy(
+                            isLoadingReconcileAccounts = false,
+                            reconcileAccounts = accounts
+                                .filter { dto -> dto.balanceTracked }
+                                .map { dto ->
+                                    com.example.dailytrack_mobile.presentation.screens.money.AccountInfo(
+                                        account = dto.account,
+                                        balance = dto.balance,
+                                        realBalance = dto.realBalance,
+                                        balanceTracked = dto.balanceTracked
+                                    )
+                                }
+                        )
+                    }
+                }
+                .onFailure {
+                    _state.update { it.copy(isLoadingReconcileAccounts = false) }
                 }
         }
     }

@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.presentation.util.Dimens
 
@@ -74,6 +75,7 @@ fun AddActionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(rememberSheetHeight(0.35f))
                 .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingLarge),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

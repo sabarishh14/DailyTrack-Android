@@ -16,6 +16,26 @@ sealed class SabdekhoAction {
     data class ChangeMediaType(val mediaType: String) : SabdekhoAction()
     object Refresh : SabdekhoAction()
 
+    // Library "More Filters" bottom sheet — year/month/week/language, each "all" clears that facet.
+    object ToggleMoreFilters : SabdekhoAction()
+    object DismissMoreFilters : SabdekhoAction()
+    data class ApplyLibraryFilters(
+        val year: String,
+        val month: String,
+        val week: String,
+        val language: String
+    ) : SabdekhoAction()
+    object ClearLibraryFilters : SabdekhoAction()
+
+    /** A Stats chart bar was tapped: jump to Library with exactly this slice applied. */
+    data class FilterLibraryFromStats(
+        val year: String = "all",
+        val month: String = "all",
+        val week: String = "all",
+        val language: String = "all",
+        val mediaType: String? = null
+    ) : SabdekhoAction()
+
     // Diary Tab Actions
     data class LoadDiary(val type: String = "all", val forceRefresh: Boolean = false) : SabdekhoAction()
     data class ChangeDiaryTypeFilter(val type: String) : SabdekhoAction()

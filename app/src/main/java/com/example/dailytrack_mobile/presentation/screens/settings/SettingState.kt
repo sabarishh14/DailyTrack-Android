@@ -7,6 +7,7 @@ import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.ThemeMode
 
 import com.example.dailytrack_mobile.data.update.AppUpdateInfo
+import com.example.dailytrack_mobile.presentation.screens.money.AccountInfo
 import java.io.File
 import java.time.DayOfWeek
 
@@ -50,6 +51,9 @@ data class SettingsState(
     val sheetTransactionSync: SyncTaskState = SyncTaskState(),
     val sheetInvestmentSync: SyncTaskState = SyncTaskState(),
     val balanceReconcile: SyncTaskState = SyncTaskState(),
+    val showReconcileBalancesSheet: Boolean = false,
+    val reconcileAccounts: List<AccountInfo> = emptyList(),
+    val isLoadingReconcileAccounts: Boolean = false,
     val letterboxdSync: SyncTaskState = SyncTaskState(),
     /** Transactions still queued for Sheets, or null before it has been checked. */
     val pendingSheetSyncCount: Int? = null,

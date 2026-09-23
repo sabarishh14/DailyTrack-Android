@@ -591,8 +591,11 @@ private fun HistorySubTab(
     onAction: (SabdekhoAction) -> Unit
 ) {
     val dims = Dimens.current
-    val showLogs = remember(state.diaryLogs, show.id) {
-        state.diaryLogs.filter { it.showId == show.id }
+    // Films and TV shows are separate tables with their own ids, so the id
+    // alone matches the other kind's logs too — that showed up as "copies".
+    val showIsMovie = show.type.equals("movie", ignoreCase = true)
+    val showLogs = remember(state.diaryLogs, show.id, showIsMovie) {
+        state.diaryLogs.filter { it.showId == show.id && it.type.equals("movie", ignoreCase = true) == showIsMovie }
     }
 
     if (showLogs.isEmpty()) {
@@ -634,7 +637,7 @@ private fun HistorySubTab(
             verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
             contentPadding = PaddingValues(bottom = 32.dp)
         ) {
-            items(showLogs, key = { it.id }) { log ->
+            items(showLogs, key = { "${it.type}-${it.id}" }) { log ->
                 DiaryLogCard(
                     log = log,
                     onCardClick = {},

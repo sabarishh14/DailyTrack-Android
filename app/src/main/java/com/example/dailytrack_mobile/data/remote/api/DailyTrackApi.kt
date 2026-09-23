@@ -20,6 +20,7 @@ import com.example.dailytrack_mobile.data.remote.dto.ApiResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.CategoriesResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.EquityHoldingDto
 import com.example.dailytrack_mobile.data.remote.dto.ManualAssetDto
+import com.example.dailytrack_mobile.data.remote.dto.MediaFiltersResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaLibraryResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MutualFundHoldingDto
@@ -52,6 +53,12 @@ interface DailyTrackApi {
     @POST("/api/transactions")
     suspend fun addTransaction(
         @Body transaction: AddTransactionRequestDto
+    ): ApiResponseDto
+
+    /** Same endpoint with a list: the server saves the whole batch in one commit, or none of it. */
+    @POST("/api/transactions")
+    suspend fun addTransactions(
+        @Body transactions: List<AddTransactionRequestDto>
     ): ApiResponseDto
 
     @PUT("/api/transactions/{id}")
@@ -125,8 +132,15 @@ interface DailyTrackApi {
         @Query("limit") limit: Int = 60,
         @Query("offset") offset: Int = 0,
         @Query("type") type: String = "all",
-        @Query("status") status: String = "WATCHING"
+        @Query("status") status: String = "WATCHING",
+        @Query("year") year: String = "all",
+        @Query("month") month: String = "all",
+        @Query("week") week: String = "all",
+        @Query("language") language: String = "all"
     ): MediaLibraryResponseDto
+
+    @GET("/api/media/filters")
+    suspend fun getMediaFilters(): MediaFiltersResponseDto
 
     @GET("/api/media/search")
     suspend fun searchMedia(

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Tv
@@ -46,6 +47,8 @@ import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 fun EditDiaryLogSheet(
     log: MediaDiaryLogDto,
     onDismiss: () -> Unit,
+    isSaving: Boolean = false,
+    errorMessage: String? = null,
     onSave: (
         rating: Float?,
         review: String?,
@@ -178,7 +181,7 @@ fun EditDiaryLogSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = rememberSheetHeight(0.9f))
+                .height(rememberSheetHeight(0.9f))
                 .navigationBarsPadding()
                 .padding(horizontal = dims.screenHorizontalPadding)
                 .verticalScroll(rememberScrollState()),
@@ -594,8 +597,35 @@ fun EditDiaryLogSheet(
 
             Spacer(modifier = Modifier.height(4.dp))
 
+            if (errorMessage != null) {
+                Surface(
+                    shape = RoundedCornerShape(dims.buttonCornerRadius),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = errorMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
             // ── Save Changes Primary Button ──────────────────────────────────
             Button(
+                enabled = !isSaving,
                 onClick = {
                     onSave(
                         rating.takeIf { it > 0f },
@@ -617,9 +647,17 @@ fun EditDiaryLogSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Icon(imageVector = Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
                     Text(
-                        text = "Save Changes",
+                        text = if (isSaving) "Saving…" else "Save Changes",
                         style = MaterialTheme.typography.labelLarge
                     )
                 }

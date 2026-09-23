@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -211,7 +212,39 @@ private fun LazyListScope.movieStatsItems(
     // ── Monthly Breakdown Bar Chart ────────────────────────────────
     if (stats.by_month.isNotEmpty()) {
         item(key = "movie-months") {
-            MonthlyActivityCard(title = "MONTHLY ACTIVITY", byMonth = stats.by_month, accent = MaterialTheme.colorScheme.primary)
+            MonthlyActivityCard(
+                title = "MONTHLY ACTIVITY",
+                byMonth = stats.by_month,
+                accent = MaterialTheme.colorScheme.primary,
+                onBarClick = { month ->
+                    onAction(
+                        SabdekhoAction.FilterLibraryFromStats(
+                            year = stats.year ?: "all",
+                            month = month.toString(),
+                            mediaType = "movie"
+                        )
+                    )
+                }
+            )
+        }
+    }
+
+    // ── By Language Bar Chart ──────────────────────────────────────
+    if (stats.films_by_language.isNotEmpty()) {
+        item(key = "movie-languages") {
+            LanguageActivityCard(
+                languages = stats.films_by_language,
+                accent = MaterialTheme.colorScheme.primary,
+                onBarClick = { item ->
+                    onAction(
+                        SabdekhoAction.FilterLibraryFromStats(
+                            year = stats.year ?: "all",
+                            language = item.code ?: "all",
+                            mediaType = "movie"
+                        )
+                    )
+                }
+            )
         }
     }
 
@@ -604,12 +637,43 @@ private fun LazyListScope.tvStatsItems(
 
     if (tv.by_month.isNotEmpty()) {
         item(key = "tv-months") {
-            MonthlyActivityCard(title = "MONTHLY ACTIVITY", byMonth = tv.by_month, accent = TvAccent)
+            MonthlyActivityCard(
+                title = "MONTHLY ACTIVITY",
+                byMonth = tv.by_month,
+                accent = TvAccent,
+                onBarClick = { month ->
+                    onAction(
+                        SabdekhoAction.FilterLibraryFromStats(
+                            year = tv.year ?: "all",
+                            month = month.toString(),
+                            mediaType = "tv"
+                        )
+                    )
+                }
+            )
         }
     }
 
     if (tv.by_day.size == 7) {
         item(key = "tv-weekdays") { WeekdayActivityCard(tv.by_day, TvAccent) }
+    }
+
+    if (tv.shows_by_language.isNotEmpty()) {
+        item(key = "tv-languages") {
+            LanguageActivityCard(
+                languages = tv.shows_by_language,
+                accent = TvAccent,
+                onBarClick = { item ->
+                    onAction(
+                        SabdekhoAction.FilterLibraryFromStats(
+                            year = tv.year ?: "all",
+                            language = item.code ?: "all",
+                            mediaType = "tv"
+                        )
+                    )
+                }
+            )
+        }
     }
 
     if (tv.rating_distribution.isNotEmpty()) {
@@ -916,7 +980,12 @@ private fun RatingDistributionCard(distribution: Map<String, Int>) {
 }
 
 @Composable
-private fun MonthlyActivityCard(title: String, byMonth: List<Int>, accent: Color) {
+private fun MonthlyActivityCard(
+    title: String,
+    byMonth: List<Int>,
+    accent: Color,
+    onBarClick: ((month: Int) -> Unit)? = null
+) {
     val dims = Dimens.current
     StatsCard {
         Text(
@@ -949,7 +1018,58 @@ private fun MonthlyActivityCard(title: String, byMonth: List<Int>, accent: Color
                     fill = Brush.verticalGradient(listOf(accent.copy(alpha = 0.7f), accent)),
                     barWidthFraction = 0.55f,
                     animationLabel = "monthBar_${title}_$index",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    onClick = onBarClick?.let { click -> { click(index + 1) } }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguageActivityCard(
+    languages: List<LanguageCountDto>,
+    accent: Color,
+    onBarClick: ((LanguageCountDto) -> Unit)? = null
+) {
+    val dims = Dimens.current
+    StatsCard {
+        Text(
+            text = "BY LANGUAGE",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 1.sp
+        )
+
+        Spacer(modifier = Modifier.height(dims.itemSpacingLarge))
+
+        val maxCount = remember(languages) { languages.maxOfOrNull { it.count }?.coerceAtLeast(1) ?: 1 }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(125.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            languages.forEachIndexed { index, item ->
+                // The "Other" bucket (code == null) folds several languages into
+                // one bar, so it isn't a single value the Library can filter by.
+                val clickable = onBarClick != null && item.code != null
+                BarColumn(
+                    count = item.count,
+                    max = maxCount,
+                    label = item.language ?: "?",
+                    labelSize = 8.sp,
+                    countColor = accent,
+                    fill = Brush.verticalGradient(listOf(accent.copy(alpha = 0.7f), accent)),
+                    barWidthFraction = 0.55f,
+                    animationLabel = "languageBar_$index",
+                    modifier = Modifier
+                        .weight(1f)
+                        .alpha(if (item.code != null) 1f else 0.6f),
+                    onClick = if (clickable) ({ onBarClick(item) }) else null
                 )
             }
         }
@@ -1006,11 +1126,14 @@ private fun BarColumn(
     fill: Brush,
     barWidthFraction: Float,
     animationLabel: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.fillMaxHeight()
+        modifier = modifier
+            .fillMaxHeight()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Box(
             modifier = Modifier

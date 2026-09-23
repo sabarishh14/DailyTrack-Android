@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import kotlin.math.roundToInt
@@ -100,6 +101,7 @@ fun CategoryVisibilitySheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(rememberSheetHeight(0.75f))
                 .padding(
                     start = dims.screenHorizontalPadding,
                     end = dims.screenHorizontalPadding,

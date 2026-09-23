@@ -238,9 +238,9 @@ internal fun SyncSettingsSubScreen(
                         SyncActionItem(
                             icon = Icons.Default.Balance,
                             title = "Reconcile Balances",
-                            idleSubtitle = "Read balances from UPI screenshots in Drive",
+                            idleSubtitle = "Compare tracked vs. bank balances",
                             task = state.balanceReconcile,
-                            onClick = { onAction(SettingsAction.OnReconcileBalances) }
+                            onClick = { onAction(SettingsAction.OnReconcileBalancesSheetVisible(true)) }
                         )
                     }
                     SettingsCard {
@@ -264,6 +264,16 @@ internal fun SyncSettingsSubScreen(
             initialUsername = state.letterboxdUsername,
             onConfirm = { onAction(SettingsAction.OnLetterboxdSyncStarted(it)) },
             onDismiss = { onAction(SettingsAction.OnLetterboxdDialogVisible(false)) }
+        )
+    }
+
+    if (state.showReconcileBalancesSheet) {
+        ReconcileBalancesSheet(
+            accounts = state.reconcileAccounts,
+            isLoadingAccounts = state.isLoadingReconcileAccounts,
+            scanTask = state.balanceReconcile,
+            onScanClicked = { onAction(SettingsAction.OnReconcileBalances) },
+            onDismiss = { onAction(SettingsAction.OnReconcileBalancesSheetVisible(false)) }
         )
     }
 }

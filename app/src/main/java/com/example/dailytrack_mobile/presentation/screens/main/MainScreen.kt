@@ -533,7 +533,10 @@ fun MainScreen(
                     )
                     Routes.AddMoney.route -> AddMoneyScreen(
                         onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { onFormSaved("Transaction saved successfully!", Routes.Money.route) }
+                        onSaveSuccess = { count ->
+                            val message = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
+                            onFormSaved(message, Routes.Money.route)
+                        }
                     )
                     Routes.AddActivity.route -> AddActivityScreen(
                         onDirtyStateChanged = { isCurrentFormDirty = it },

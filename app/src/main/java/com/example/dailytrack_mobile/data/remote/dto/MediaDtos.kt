@@ -11,6 +11,20 @@ data class MediaLibraryResponseDto(
     @Json(name = "hasMore") val hasMore: Boolean? = null
 )
 
+/** GET /api/media/filters — the years and languages the Library's filter dropdowns can offer. */
+@JsonClass(generateAdapter = true)
+data class MediaFiltersResponseDto(
+    @Json(name = "success") val success: Boolean = true,
+    @Json(name = "years") val years: List<Int> = emptyList(),
+    @Json(name = "languages") val languages: List<MediaFilterLanguageDto> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class MediaFilterLanguageDto(
+    @Json(name = "code") val code: String? = null,
+    @Json(name = "label") val label: String? = null
+)
+
 @JsonClass(generateAdapter = true)
 data class MediaShowDto(
     @Json(name = "id") val id: Int,
@@ -279,6 +293,7 @@ data class MediaStatsResponseDto(
     @Json(name = "extremes") val extremes: MediaExtremesDto? = null,
     @Json(name = "most_rewatched") val most_rewatched: List<MediaRewatchedDto> = emptyList(),
     @Json(name = "longest_streak") val longest_streak: MediaStreakDto? = null,
+    @Json(name = "films_by_language") val films_by_language: List<LanguageCountDto> = emptyList(),
     @Json(name = "message") val message: String? = null
 )
 
@@ -370,6 +385,7 @@ data class TvStatsResponseDto(
     @Json(name = "longest_streak") val longest_streak: MediaStreakDto? = null,
     @Json(name = "completed") val completed: List<TvStatsShowDto> = emptyList(),
     @Json(name = "in_progress") val in_progress: List<TvStatsShowDto> = emptyList(),
+    @Json(name = "shows_by_language") val shows_by_language: List<LanguageCountDto> = emptyList(),
     @Json(name = "message") val message: String? = null
 )
 
@@ -403,5 +419,17 @@ data class TvBingeDto(
 @JsonClass(generateAdapter = true)
 data class TvYearCountDto(
     @Json(name = "year") val year: Int = 0,
+    @Json(name = "count") val count: Int = 0
+)
+
+/**
+ * One bar in a "by language" chart. `code` is the raw ISO 639-1 code (or
+ * "unknown"/null for the catch-all "Other" bucket, which isn't a single
+ * language so it can't be used to filter by).
+ */
+@JsonClass(generateAdapter = true)
+data class LanguageCountDto(
+    @Json(name = "code") val code: String? = null,
+    @Json(name = "language") val language: String? = null,
     @Json(name = "count") val count: Int = 0
 )

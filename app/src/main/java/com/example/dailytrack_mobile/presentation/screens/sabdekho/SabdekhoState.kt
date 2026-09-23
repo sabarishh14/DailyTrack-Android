@@ -26,6 +26,17 @@ data class SabdekhoState(
     val onlineResults: List<MediaSearchResultDto> = emptyList(),
     val gridColumns: Int = 4,
 
+    // Library "More Filters" — watched-year/month/week (from diary logs, same
+    // as what the Stats charts count) and language, on top of status/type.
+    val yearFilter: String = "all",
+    val monthFilter: String = "all",
+    val weekFilter: String = "all",
+    val languageFilter: String = "all",
+    val showMoreFilters: Boolean = false,
+    val filterYears: List<Int> = emptyList(),
+    val filterLanguages: List<MediaFilterLanguageDto> = emptyList(),
+    val isFilterOptionsLoaded: Boolean = false,
+
     // Diary Tab
     val isDiaryLoading: Boolean = false,
     val diaryLogs: List<MediaDiaryLogDto> = emptyList(),
@@ -57,6 +68,8 @@ data class SabdekhoState(
     val logEpisode: Int? = null,
     val selectedLogEpisodes: Set<Int> = emptySet(),
     val isSubmittingLog: Boolean = false,
+    val isSavingEditLog: Boolean = false,
+    val editLogError: String? = null,
 
     // Rematch Search State
     val rematchQuery: String = "",
@@ -66,4 +79,7 @@ data class SabdekhoState(
     // Edit Log Modal
     val editingLog: MediaDiaryLogDto? = null,
     val isEditDialogOpen: Boolean = false
-)
+) {
+    val hasActiveLibraryFilters: Boolean
+        get() = yearFilter != "all" || monthFilter != "all" || weekFilter != "all" || languageFilter != "all"
+}

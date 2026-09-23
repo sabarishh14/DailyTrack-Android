@@ -8,6 +8,7 @@ import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.repository.ActivitiesRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
+import com.example.dailytrack_mobile.data.repository.NewTransaction
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -187,66 +188,50 @@ class FormsVM @Inject constructor(
 
     // ── Transaction draft ────────────────────────────────────────────────────
 
-    /** The draft left behind by a previous visit, or null if there is none. */
-    fun consumeSavedDraft(): TransactionDraft? = transactionDraftStore.read()
+    /** Entries left behind by a previous visit, in order; empty if there are none. */
+    fun consumeSavedDrafts(): List<TransactionDraft> = transactionDraftStore.readAll()
 
     /** Called as the form changes; an emptied form clears its own draft. */
-    fun persistDraft(draft: TransactionDraft) {
-        transactionDraftStore.write(draft)
+    fun persistDrafts(drafts: List<TransactionDraft>) {
+        transactionDraftStore.writeAll(drafts)
     }
 
     fun clearDraft() {
         transactionDraftStore.clear()
     }
 
-    fun saveTransaction(
-        type: String,
-        category: String,
-        amount: Double,
-        note: String?,
-        accountName: String,
-        date: String,
-        excludeAnalytics: Boolean,
-        onSuccess: () -> Unit
-    ) {
+    /** Saves every entry in one request; on failure nothing is saved and the entries stay put. */
+    fun saveTransactions(entries: List<NewTransaction>, onSuccess: (count: Int) -> Unit) {
+        if (entries.isEmpty() || _addMoneyState.value.isSaving) return
         viewModelScope.launch {
             _addMoneyState.update { it.copy(isSaving = true, errorMessage = null) }
-            val result = moneyRepository.addTransaction(
-                type = type,
-                category = category,
-                amount = amount,
-                note = note,
-                accountName = accountName,
-                date = date,
-                excludeAnalytics = excludeAnalytics
-            )
-
-            result.onSuccess {
-                // The entry landed, so the draft has served its purpose.
-                transactionDraftStore.clear()
-                _addMoneyState.update { state ->
-                    val updatedRecent = if (!note.isNullOrBlank()) {
-                        (listOf(note.trim()) + state.recentDescriptions).distinct()
-                    } else state.recentDescriptions
-                    val updatedByCat = if (!note.isNullOrBlank()) {
-                        val existing = state.descriptionsByCategory[category].orEmpty()
-                        state.descriptionsByCategory + (category to (listOf(note.trim()) + existing).distinct())
-                    } else state.descriptionsByCategory
-                    state.copy(
-                        isSaving = false,
-                        recentDescriptions = updatedRecent,
-                        descriptionsByCategory = updatedByCat
-                    )
+            moneyRepository.addTransactions(entries)
+                .onSuccess {
+                    // The entries landed, so the draft has served its purpose.
+                    transactionDraftStore.clear()
+                    _addMoneyState.update { state ->
+                        var recent = state.recentDescriptions
+                        var byCategory = state.descriptionsByCategory
+                        entries.forEach { e ->
+                            val note = e.note?.trim().orEmpty()
+                            if (note.isNotBlank()) {
+                                recent = (listOf(note) + recent).distinct()
+                                byCategory = byCategory + (e.category to (listOf(note) + byCategory[e.category].orEmpty()).distinct())
+                            }
+                        }
+                        state.copy(isSaving = false, recentDescriptions = recent, descriptionsByCategory = byCategory)
+                    }
+                    onSuccess(entries.size)
                 }
-                onSuccess()
-            }.onFailure { error ->
-                _addMoneyState.update {
-                    it.copy(
-                        isSaving = false,
-                        errorMessage = error.message ?: "Failed to add transaction"
-                    )
+                .onFailure { error ->
+                    _addMoneyState.update {
+                        it.copy(
+                            isSaving = false,
+                            errorMessage = error.message
+                                ?: if (entries.size > 1) "Couldn't save these transactions" else "Failed to add transaction"
+                        )
+                    }
                 }
-            }
         }
     }
 

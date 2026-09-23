@@ -250,9 +250,13 @@ private fun CyclingStatCard(
                 onDragEnd   = { dragAccumulator = 0f },
                 onDragCancel = { dragAccumulator = 0f },
                 onVerticalDrag = { change, dragAmount ->
-                    change.consume()
-                    // Only accumulate downward motion (positive dragAmount)
+                    // Only accumulate + consume downward motion (positive dragAmount) —
+                    // this card owns that gesture. Upward drags are left unconsumed so
+                    // the enclosing scrollable page still receives them; consuming both
+                    // directions here fought the page's own scroll on every swipe that
+                    // started on this card, which read as the whole page jittering.
                     if (dragAmount > 0f) {
+                        change.consume()
                         dragAccumulator += dragAmount
                         if (dragAccumulator >= swipeThreshold) {
                             // Advance to next type and reset accumulator

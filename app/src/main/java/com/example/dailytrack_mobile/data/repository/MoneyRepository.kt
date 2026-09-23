@@ -16,6 +16,17 @@ import kotlinx.coroutines.flow.SharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One entry of a batch being added. [type] is the DB value ("Debit", "Credit", …). */
+data class NewTransaction(
+    val type: String,
+    val category: String,
+    val amount: Double,
+    val note: String?,
+    val accountName: String,
+    val date: String,
+    val excludeAnalytics: Boolean
+)
+
 @Singleton
 class MoneyRepository @Inject constructor(
     private val api: DailyTrackApi,
@@ -206,6 +217,45 @@ class MoneyRepository @Inject constructor(
                     try { listCache.write(KEY_CATEGORIES, it) } catch (_: Exception) {}
                 }
             }
+        }
+    }
+
+    /** Saves a batch in one request, so either every entry lands or none do. */
+    suspend fun addTransactions(entries: List<NewTransaction>): Result<Unit> = runCatching {
+        require(entries.isNotEmpty()) { "Nothing to save" }
+        if (demoDataManager.isDemoModeEnabled()) {
+            entries.forEach { e ->
+                demoDataManager.addTransaction(
+                    type = e.type,
+                    category = e.category,
+                    amount = e.amount,
+                    note = e.note,
+                    accountName = e.accountName,
+                    date = e.date,
+                    excludeAnalytics = e.excludeAnalytics
+                )
+            }
+        } else {
+            val request = entries.map { e ->
+                AddTransactionRequestDto(
+                    account = e.accountName,
+                    date = e.date,
+                    type = e.type,
+                    heading = e.category,
+                    description = e.note ?: "",
+                    amount = e.amount,
+                    excludeAnalytics = e.excludeAnalytics
+                )
+            }
+            val response = api.addTransactions(request)
+            if (!response.success) {
+                throw Exception(response.message ?: "Failed to add transactions")
+            }
+            entries.forEach { e ->
+                if (!e.note.isNullOrBlank()) recordSingleDescription(category = e.category, note = e.note)
+            }
+            clearCache()
+            demoDataManager.notifyDataUpdated()
         }
     }
 

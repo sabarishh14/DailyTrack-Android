@@ -39,6 +39,17 @@ import com.example.dailytrack_mobile.presentation.screens.money.Transaction
 import com.example.dailytrack_mobile.presentation.screens.money.TransactionType
 import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCanonical
 import com.example.dailytrack_mobile.presentation.util.Dimens
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryAmountCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryCategoryPills
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryDateAccountRow
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryDescriptionCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryEditorHeader
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryExcludeCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntrySummaryCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryType
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryTypeSelector
+import com.example.dailytrack_mobile.presentation.components.transaction.TransactionEntryState
+import com.example.dailytrack_mobile.presentation.components.transaction.entryTypeAccent
 import java.text.SimpleDateFormat
 import java.util.*
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
@@ -50,26 +61,6 @@ private val defaultCategories = listOf(
 )
 
 internal val defaultAccounts = DEFAULT_CANONICAL_ACCOUNTS
-
-internal class EditableTxItem(
-    val id: Long,
-    val initialTitle: String,
-    initialType: String,
-    initialCategory: String,
-    initialAccount: String,
-    initialDate: String,
-    initialAmount: String,
-    initialDescription: String,
-    initialExcludeAnalytics: Boolean
-) {
-    var type by mutableStateOf(initialType)
-    var category by mutableStateOf(initialCategory)
-    var account by mutableStateOf(initialAccount)
-    var date by mutableStateOf(initialDate)
-    var amount by mutableStateOf(initialAmount)
-    var description by mutableStateOf(initialDescription)
-    var excludeAnalytics by mutableStateOf(initialExcludeAnalytics)
-}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -96,30 +87,9 @@ fun BulkEditTransactionsSheet(
     var batchFeedbackMessage by remember { mutableStateOf<String?>(null) }
 
     // Initialize list of editable items from selected transactions
-    val items = remember(transactions) {
-        transactions.map { tx ->
-            val typeStr = when {
-                tx.type == TransactionType.CREDIT || tx.rawType.equals("Credit", ignoreCase = true) -> "Credit"
-                tx.type == TransactionType.SAVINGS || tx.isSavings -> "Savings"
-                tx.type == TransactionType.INVESTMENT || tx.isInvestment -> "Investment"
-                else -> "Debit"
-            }
-            val dateStr = if (tx.rawDate.isNotBlank()) tx.rawDate else apiDateFormat.format(Date(tx.timestampMillis))
-            val amountStr = if (tx.amount % 1.0 == 0.0) "%.0f".format(tx.amount) else "%.2f".format(tx.amount)
-            val desc = tx.note ?: tx.description ?: ""
-            EditableTxItem(
-                id = tx.id,
-                initialTitle = tx.title,
-                initialType = typeStr,
-                initialCategory = tx.category,
-                initialAccount = tx.bank,
-                initialDate = dateStr,
-                initialAmount = amountStr,
-                initialDescription = desc,
-                initialExcludeAnalytics = tx.isExcluded
-            )
-        }
-    }
+    val items = remember(transactions) { transactions.map { it.toEntryState() } }
+    // Per-transaction tab: one entry open at a time, the rest folded into cards.
+    var expandedItemId by remember { mutableStateOf<Long?>(null) }
 
     val accountsList = remember(availableAccounts) {
         val list = if (availableAccounts.isNotEmpty()) availableAccounts else defaultAccounts
@@ -133,22 +103,20 @@ fun BulkEditTransactionsSheet(
         source.distinct().take(8)
     }
 
-    val totalAmount = remember(items.map { it.amount }) {
-        items.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
-    }
+    val totalAmount = items.sumOf { it.evaluatedAmount ?: 0.0 }
 
     // Category Picker Dialog states (Batch & Individual)
     var showBatchCategoryPicker by remember { mutableStateOf(false) }
-    var categoryPickerTargetItem by remember { mutableStateOf<EditableTxItem?>(null) }
+    var categoryPickerTargetItem by remember { mutableStateOf<TransactionEntryState?>(null) }
 
     // Account Picker Dialog states (Batch & Individual)
     var showBatchAccountPicker by remember { mutableStateOf(false) }
-    var accountPickerTargetItem by remember { mutableStateOf<EditableTxItem?>(null) }
+    var accountPickerTargetItem by remember { mutableStateOf<TransactionEntryState?>(null) }
 
     // Description / Note Suggestions state
     var batchDescription by remember { mutableStateOf("") }
     var isBatchDescriptionFocused by remember { mutableStateOf(false) }
-    var activeDescriptionTargetItem by remember { mutableStateOf<EditableTxItem?>(null) }
+    var activeDescriptionTargetItem by remember { mutableStateOf<TransactionEntryState?>(null) }
 
     val isAnyDescriptionFocused = isBatchDescriptionFocused || activeDescriptionTargetItem != null
 
@@ -161,7 +129,7 @@ fun BulkEditTransactionsSheet(
 
     val currentDescriptionText = when {
         isBatchDescriptionFocused -> batchDescription
-        activeDescriptionTargetItem != null -> activeDescriptionTargetItem?.description ?: ""
+        activeDescriptionTargetItem != null -> activeDescriptionTargetItem?.note ?: ""
         else -> ""
     }
 
@@ -173,8 +141,8 @@ fun BulkEditTransactionsSheet(
         )
     }
 
-    val descriptionSuggestions = remember(currentDescriptionText, recentDescriptions, items.map { it.description }) {
-        val existing = (recentDescriptions + items.map { it.description }.filter { it.isNotBlank() } + defaultFallbackSuggestions).distinct()
+    val descriptionSuggestions = remember(currentDescriptionText, recentDescriptions, items.map { it.note }) {
+        val existing = (recentDescriptions + items.map { it.note }.filter { it.isNotBlank() } + defaultFallbackSuggestions).distinct()
         val query = currentDescriptionText.trim()
         if (query.isBlank()) {
             existing.take(40)
@@ -195,8 +163,7 @@ fun BulkEditTransactionsSheet(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { ms ->
-                        val dateStr = apiDateFormat.format(Date(ms))
-                        items.forEach { it.date = dateStr }
+                        items.forEach { it.dateMillis = ms }
                         batchFeedbackMessage = "Applied ${displayDateFormat.format(Date(ms))} to all items"
                     }
                     showBatchDatePicker = false
@@ -215,19 +182,15 @@ fun BulkEditTransactionsSheet(
     }
 
     // Single item date picker
-    var datePickerTargetItem by remember { mutableStateOf<EditableTxItem?>(null) }
+    var datePickerTargetItem by remember { mutableStateOf<TransactionEntryState?>(null) }
     datePickerTargetItem?.let { target ->
-        val currentMs = remember(target.date) {
-            try { apiDateFormat.parse(target.date)?.time ?: System.currentTimeMillis() }
-            catch (_: Exception) { System.currentTimeMillis() }
-        }
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = currentMs)
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = target.dateMillis)
         DatePickerDialog(
             onDismissRequest = { datePickerTargetItem = null },
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let { ms ->
-                        target.date = apiDateFormat.format(Date(ms))
+                        target.dateMillis = ms
                     }
                     datePickerTargetItem = null
                 }) {
@@ -274,7 +237,7 @@ fun BulkEditTransactionsSheet(
     if (showBatchAccountPicker) {
         AccountPickerDialog(
             accountsList = accountsList,
-            currentAccount = items.firstOrNull()?.account ?: "",
+            currentAccount = items.firstOrNull()?.account.orEmpty(),
             onAccountSelected = { acc ->
                 items.forEach { it.account = acc }
                 batchFeedbackMessage = "Applied \"$acc\" to all ${items.size} items"
@@ -287,7 +250,7 @@ fun BulkEditTransactionsSheet(
     accountPickerTargetItem?.let { target ->
         AccountPickerDialog(
             accountsList = accountsList,
-            currentAccount = target.account,
+            currentAccount = target.account.orEmpty(),
             onAccountSelected = { acc ->
                 target.account = acc
                 accountPickerTargetItem = null
@@ -699,7 +662,7 @@ fun BulkEditTransactionsSheet(
                                                     .weight(1f)
                                                     .clip(RoundedCornerShape(dims.buttonCornerRadius))
                                                     .clickable {
-                                                        items.forEach { it.type = dbVal }
+                                                        items.forEach { it.type = EntryType.fromDb(dbVal) }
                                                         batchFeedbackMessage = "Applied \"$label\" type to all items"
                                                     }
                                             ) {
@@ -753,8 +716,8 @@ fun BulkEditTransactionsSheet(
                                         FilterChip(
                                             selected = false,
                                             onClick = {
-                                                val todayStr = apiDateFormat.format(Date())
-                                                items.forEach { it.date = todayStr }
+                                                val now = System.currentTimeMillis()
+                                                items.forEach { it.dateMillis = now }
                                                 batchFeedbackMessage = "Applied Today to all items"
                                             },
                                             label = { Text("Today", style = MaterialTheme.typography.labelSmall) },
@@ -765,8 +728,7 @@ fun BulkEditTransactionsSheet(
                                             selected = false,
                                             onClick = {
                                                 val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-                                                val yesterdayStr = apiDateFormat.format(cal.time)
-                                                items.forEach { it.date = yesterdayStr }
+                                                items.forEach { it.dateMillis = cal.timeInMillis }
                                                 batchFeedbackMessage = "Applied Yesterday to all items"
                                             },
                                             label = { Text("Yesterday", style = MaterialTheme.typography.labelSmall) },
@@ -837,7 +799,7 @@ fun BulkEditTransactionsSheet(
 
                                         Button(
                                             onClick = {
-                                                items.forEach { it.description = batchDescription }
+                                                items.forEach { it.note = batchDescription }
                                                 batchFeedbackMessage = "Applied note to all ${items.size} items"
                                                 focusManager.clearFocus()
                                             },
@@ -922,7 +884,7 @@ fun BulkEditTransactionsSheet(
                     ) {
                         item {
                             Text(
-                                text = "Customize individual fields for each transaction below:",
+                                text = "Tap a transaction to change just that one",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -932,27 +894,72 @@ fun BulkEditTransactionsSheet(
                             items = items,
                             key = { _, itm -> itm.id }
                         ) { index, item ->
-                            CleanIndividualTxCard(
-                                index = index,
-                                item = item,
-                                accountsList = accountsList,
-                                allCategories = allCategories,
-                                recentCategories = recentCategories,
-                                displayDateFormat = displayDateFormat,
-                                apiDateFormat = apiDateFormat,
-                                onRequestDatePicker = { datePickerTargetItem = item },
-                                onRequestCategoryPicker = { categoryPickerTargetItem = item },
-                                onRequestAccountPicker = { accountPickerTargetItem = item },
-                                onDescriptionFocused = {
-                                    activeDescriptionTargetItem = item
-                                    isBatchDescriptionFocused = false
-                                },
-                                onDescriptionBlurred = {
-                                    if (activeDescriptionTargetItem == item) {
-                                        activeDescriptionTargetItem = null
-                                    }
+                            if (item.id == expandedItemId) {
+                                // The same fields as Add Money and Edit, one entry at a time.
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    EntryEditorHeader(
+                                        number = index + 1,
+                                        total = items.size,
+                                        onCollapse = {
+                                            focusManager.clearFocus()
+                                            expandedItemId = null
+                                        }
+                                    )
+                                    EntryTypeSelector(
+                                        selected = item.type,
+                                        options = EntryType.entries,
+                                        onSelect = { item.type = it }
+                                    )
+                                    EntryAmountCard(
+                                        amount = item.amount,
+                                        onAmountChange = { item.amount = it },
+                                        accent = entryTypeAccent(item.type),
+                                        compact = true
+                                    )
+                                    EntryDateAccountRow(
+                                        dateMillis = item.dateMillis,
+                                        account = item.account,
+                                        onDateClick = { datePickerTargetItem = item },
+                                        onAccountClick = { accountPickerTargetItem = item }
+                                    )
+                                    EntryCategoryPills(
+                                        pills = editCategoryPills(item.category, item.type, mostUsedCategories, allCategories),
+                                        selected = item.category,
+                                        onSelect = { item.category = it },
+                                        onMore = { categoryPickerTargetItem = item }
+                                    )
+                                    EntryDescriptionCard(
+                                        note = item.note,
+                                        onNoteChange = { item.note = it },
+                                        onFocusChanged = { focused ->
+                                            if (focused) {
+                                                activeDescriptionTargetItem = item
+                                                isBatchDescriptionFocused = false
+                                            } else if (activeDescriptionTargetItem == item) {
+                                                activeDescriptionTargetItem = null
+                                            }
+                                        }
+                                    )
+                                    EntryExcludeCard(
+                                        checked = item.excludeAnalytics,
+                                        onCheckedChange = { item.excludeAnalytics = it }
+                                    )
                                 }
-                            )
+                            } else {
+                                EntrySummaryCard(
+                                    number = index + 1,
+                                    entry = item,
+                                    onClick = {
+                                        focusManager.clearFocus()
+                                        expandedItemId = item.id
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1043,10 +1050,10 @@ fun BulkEditTransactionsSheet(
                                     modifier = Modifier.clickable {
                                         if (isBatchDescriptionFocused) {
                                             batchDescription = suggestion
-                                            items.forEach { it.description = suggestion }
+                                            items.forEach { it.note = suggestion }
                                             batchFeedbackMessage = "Applied note to all ${items.size} items"
                                         } else if (activeDescriptionTargetItem != null) {
-                                            activeDescriptionTargetItem?.description = suggestion
+                                            activeDescriptionTargetItem?.note = suggestion
                                         }
                                         focusManager.clearFocus()
                                         isBatchDescriptionFocused = false
@@ -1089,24 +1096,19 @@ fun BulkEditTransactionsSheet(
                         Text("Cancel", style = MaterialTheme.typography.labelLarge)
                     }
 
-                    val allAmountsValid = remember(items.map { it.amount }) {
-                        items.all {
-                            val parsed = it.amount.toDoubleOrNull()
-                            parsed != null && parsed > 0.0
-                        }
-                    }
+                    val allAmountsValid = items.all { (it.evaluatedAmount ?: 0.0) > 0.0 && !it.account.isNullOrBlank() }
 
                     Button(
                         onClick = {
                             val updates = items.map { item ->
                                 BulkEditTransactionItemDto(
                                     id = item.id,
-                                    account = item.account,
-                                    date = item.date,
-                                    type = item.type,
+                                    account = item.account.orEmpty(),
+                                    date = item.apiDate,
+                                    type = item.type.dbValue,
                                     heading = item.category.trim().ifEmpty { "Other" },
-                                    description = item.description.takeIf { it.isNotBlank() } ?: "",
-                                    amount = item.amount.toDoubleOrNull() ?: 0.0,
+                                    description = item.note.trim(),
+                                    amount = item.evaluatedAmount ?: 0.0,
                                     excludeAnalytics = item.excludeAnalytics
                                 )
                             }

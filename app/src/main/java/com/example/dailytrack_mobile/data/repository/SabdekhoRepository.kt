@@ -6,6 +6,7 @@ import com.example.dailytrack_mobile.data.remote.dto.AddMovieDiaryRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddMovieRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTvDiaryRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTvShowRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.MediaFiltersResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaLibraryResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.remote.dto.LetterboxdSyncEventDto
@@ -39,19 +40,40 @@ class SabdekhoRepository @Inject constructor(
         offset: Int = 0,
         type: String = "all",
         status: String = "WATCHING",
+        year: String = "all",
+        month: String = "all",
+        week: String = "all",
+        language: String = "all",
         forceRefresh: Boolean = false
     ): Result<MediaLibraryResponseDto> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) {
+            // Demo shows carry no watch-date/language data to filter by, so those
+            // facets are a no-op offline — status/type filtering still works.
             demoDataManager.getMediaLibrary(limit = limit, offset = offset, type = type, status = status)
         } else {
-            val key = "$limit-$offset-$type-$status"
+            val key = "$limit-$offset-$type-$status-$year-$month-$week-$language"
             if (!forceRefresh && cachedMediaLibrary.containsKey(key)) {
                 cachedMediaLibrary[key]!!
             } else {
-                api.getMediaLibrary(limit = limit, offset = offset, type = type, status = status).also {
+                api.getMediaLibrary(
+                    limit = limit, offset = offset, type = type, status = status,
+                    year = year, month = month, week = week, language = language
+                ).also {
                     cachedMediaLibrary[key] = it
                 }
             }
+        }
+    }
+
+    private var cachedMediaFilters: MediaFiltersResponseDto? = null
+
+    /** Years/languages for the Library's filter dropdowns. Cached for the process lifetime — this data barely changes. */
+    suspend fun getMediaFilters(forceRefresh: Boolean = false): Result<MediaFiltersResponseDto> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            // No language/watch-date data in the demo dataset to derive these from.
+            MediaFiltersResponseDto(success = true, years = emptyList(), languages = emptyList())
+        } else {
+            cachedMediaFilters?.takeIf { !forceRefresh } ?: api.getMediaFilters().also { cachedMediaFilters = it }
         }
     }
 
@@ -386,18 +408,25 @@ class SabdekhoRepository @Inject constructor(
             demoDataManager.notifyDataUpdated()
             res
         } else {
+            // Moshi leaves nulls out of the JSON, and the server keeps any field
+            // it isn't sent — so a cleared rating/review/tag must go over as an
+            // explicit empty value, which the server stores as "none".
             val req = com.example.dailytrack_mobile.data.remote.dto.UpdateDiaryLogRequestDto(
                 log_ids = listOf(logId),
-                rating = rating,
-                review = review,
+                rating = rating ?: 0f,
+                review = review ?: "",
                 liked = liked,
                 rewatch = rewatch,
-                tags = tags,
+                tags = tags ?: "",
                 date = date,
                 season_number = seasonNumber,
                 episode_number = episodeNumber
             )
-            if (isMovie) api.updateMovieDiary(req) else api.updateTvDiary(req)
+            val response = if (isMovie) api.updateMovieDiary(req) else api.updateTvDiary(req)
+            if (!response.success) {
+                throw Exception(response.message ?: "Couldn't save changes")
+            }
+            clearCache()
             demoDataManager.notifyDataUpdated()
             true
         }
