@@ -107,7 +107,7 @@ class HomeVM @Inject constructor(
                     .map { dto ->
                         AccountInfo(
                             account = dto.account,
-                            balance = dto.balance,
+                            balance = dto.balance ?: 0.0,
                             realBalance = dto.realBalance,
                             balanceTracked = dto.balanceTracked
                         )

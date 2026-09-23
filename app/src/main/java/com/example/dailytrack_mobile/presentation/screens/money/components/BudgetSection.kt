@@ -135,7 +135,7 @@ private fun BudgetHeader(
             )
         }
 
-        if (hasBudgets) {
+        if (hasBudgets && com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)) {
             FilledTonalIconButton(
                 onClick = onEdit,
                 modifier = Modifier.size(38.dp),
@@ -162,7 +162,7 @@ private fun BudgetEmptyState(onSetBudgets: () -> Unit) {
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Spacer(Modifier.height(14.dp))
-    FilledTonalButton(
+    if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)) FilledTonalButton(
         onClick = onSetBudgets,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp)

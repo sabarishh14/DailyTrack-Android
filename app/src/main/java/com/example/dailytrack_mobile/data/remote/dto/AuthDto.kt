@@ -13,5 +13,6 @@ data class FirebaseLoginResponseDto(
     @param:Json(name = "success") val success: Boolean,
     @param:Json(name = "token") val token: String? = null,
     @param:Json(name = "isAdmin") val isAdmin: Boolean? = null,
+    @param:Json(name = "access") val access: AccessDto? = null,
     @param:Json(name = "message") val message: String? = null
 )

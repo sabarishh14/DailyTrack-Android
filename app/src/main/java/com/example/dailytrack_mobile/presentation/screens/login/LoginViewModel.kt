@@ -20,6 +20,18 @@ class LoginViewModel @Inject constructor(
     private val _state = MutableStateFlow(LoginState())
     val state = _state.asStateFlow()
 
+    init {
+        // Explain forced sign-outs (revoked access, expired session) on the login screen.
+        viewModelScope.launch {
+            authRepository.sessionNotice.collect { notice ->
+                if (notice != null) {
+                    _state.update { it.copy(isLoading = false, errorMessage = notice) }
+                    authRepository.consumeSessionNotice()
+                }
+            }
+        }
+    }
+
     fun onAction(action: LoginAction) {
         when (action) {
             is LoginAction.OnGoogleTokenReceived -> {

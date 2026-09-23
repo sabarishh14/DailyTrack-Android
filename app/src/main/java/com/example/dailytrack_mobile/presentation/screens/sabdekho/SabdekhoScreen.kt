@@ -443,7 +443,7 @@ private fun LibraryTabContent(
                                 textAlign = TextAlign.Center
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Button(
+                            if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)) Button(
                                 onClick = { onNavigateToAddMovie(null) },
                                 shape = RoundedCornerShape(dims.buttonCornerRadius)
                             ) {
@@ -496,7 +496,7 @@ private fun LibraryTabContent(
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedButton(
+                        if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)) OutlinedButton(
                             onClick = { onNavigateToAddMovie(null) },
                             shape = RoundedCornerShape(dims.buttonCornerRadius)
                         ) {

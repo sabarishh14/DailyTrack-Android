@@ -126,6 +126,11 @@ fun HomeScreen(
     // does) avoids re-fetching anything just to show the summary card below.
     val moneyState by moneyViewModel.state.collectAsState()
     val dims = Dimens.current
+    // Each section shows only if the user can see its data (ACCESS_CONTROL.md).
+    val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+    val canMoney = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
+    val canInvest = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
+    val showBalances = access.balancesVisible
     val selectedMonth = homeState.selectedMonth
     val selectedYear = homeState.selectedYear
 
@@ -172,7 +177,13 @@ fun HomeScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(dims.sectionSpacing)
         ) {
-            item {
+            if (!canMoney && !canInvest) item {
+                NothingSharedCard(
+                    hasOtherPages = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.GYM) ||
+                        access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
+                )
+            }
+            if (showBalances) item {
                 NetWorthSection(
                     totalBankBalance = apiBankBalance,
                     totalNetWorth = totalNetWorth,
@@ -183,20 +194,20 @@ fun HomeScreen(
                     totalInvestCount = homeState.totalInvestCategoriesCount
                 )
             }
-            item {
+            if (showBalances) item {
                 BankAccountsSection(
                     accounts = apiAccounts,
                     totalBankBalance = apiBankBalance,
                     isLoading = homeState.isLoading
                 )
             }
-            item {
+            if (canMoney) item {
                 BudgetsSummaryCard(
                     moneyState = moneyState,
                     onClick = onNavigateToBudgets
                 )
             }
-            item {
+            if (canInvest) item {
                 InvestmentPortfolioSection(
                     totalInvested = homeState.investmentTotalInvested,
                     totalCurrent  = homeState.investmentTotalCurrent,
@@ -206,7 +217,7 @@ fun HomeScreen(
                     totalCount    = homeState.totalInvestCategoriesCount
                 ) 
             }
-            item {
+            if (canMoney) item {
                 FlowSection(
                     title         = "INCOME BY ACCOUNT",
                     flows         = incomeFlows,
@@ -218,7 +229,7 @@ fun HomeScreen(
                     }
                 )
             }
-            item {
+            if (canMoney) item {
                 FlowSection(
                     title         = "EXPENSES BY ACCOUNT",
                     flows         = expenseFlows,
@@ -1226,6 +1237,39 @@ private fun SectionLabel(
                 modifier = Modifier
                     .size(16.dp)
                     .rotate(chevronRotation)
+            )
+        }
+    }
+}
+
+/** Home for someone with no money/investment access. */
+@Composable
+private fun NothingSharedCard(hasOtherPages: Boolean) {
+    val dims = Dimens.current
+    Card(
+        shape = RoundedCornerShape(dims.cardCornerRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = dims.cardInnerPadding, vertical = dims.cardInnerPadding * 2),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = if (hasOtherPages) "👋" else "🔒", style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = if (hasOtherPages) "Your pages are in the bar below" else "Nothing shared with you yet",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (hasOtherPages) "The owner has shared some sections of DailyTrack with you."
+                else "Your account is active, but the owner hasn't given you access to any pages yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
     }

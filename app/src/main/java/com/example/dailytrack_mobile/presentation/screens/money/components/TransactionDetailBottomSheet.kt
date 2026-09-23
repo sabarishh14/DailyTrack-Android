@@ -44,7 +44,8 @@ fun TransactionDetailBottomSheet(
     transaction: Transaction,
     onEdit: (Transaction) -> Unit,
     onDelete: (Transaction) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    canEdit: Boolean = true
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val dims = Dimens.current
@@ -435,7 +436,7 @@ fun TransactionDetailBottomSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
             // ── Footer Action Buttons ────────────────────────────────────
-            Row(
+            if (canEdit) Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingLarge),

@@ -55,6 +55,12 @@ fun MediaDetailsSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isMovie = show.type?.equals("movie", ignoreCase = true) == true
     val details = state.detailsData
+    val canEdit = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
+    // Sub-tab ids: 0 Log • 1 History • 2 Details • 3 Match. Viewers can't log or re-match.
+    val visibleSubTabs = if (canEdit) listOf(0, 1, 2, 3) else listOf(1, 2)
+    LaunchedEffect(show.id, canEdit) {
+        if (state.detailsSheetSubTab !in visibleSubTabs) onAction(SabdekhoAction.SetDetailsSubTab(visibleSubTabs.first()))
+    }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
@@ -283,7 +289,7 @@ fun MediaDetailsSheet(
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                statuses.forEach { st ->
+                statuses.filter { canEdit || show.status.equals(it, ignoreCase = true) }.forEach { st ->
                     val isCurrent = show.status.equals(st, ignoreCase = true)
                     Box(
                         modifier = Modifier
@@ -293,7 +299,7 @@ fun MediaDetailsSheet(
                                 if (isCurrent) MaterialTheme.colorScheme.primaryContainer
                                 else Color.Transparent
                             )
-                            .clickable {
+                            .clickable(enabled = canEdit) {
                                 onAction(SabdekhoAction.UpdateShowStatus(show.id, isMovie, st))
                             }
                             .padding(vertical = 7.dp),
@@ -314,13 +320,13 @@ fun MediaDetailsSheet(
             // ── Sub-Tabs Switcher (Log • History • Details • Match) ──────────
             val subTabTitles = listOf("Log", "History", "Details", "Match")
             SecondaryTabRow(
-                selectedTabIndex = state.detailsSheetSubTab,
+                selectedTabIndex = visibleSubTabs.indexOf(state.detailsSheetSubTab).coerceAtLeast(0),
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.primary,
                 divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)) }
             ) {
                 subTabTitles.forEachIndexed { index, title ->
-                    Tab(
+                    if (index in visibleSubTabs) Tab(
                         selected = state.detailsSheetSubTab == index,
                         onClick = { onAction(SabdekhoAction.SetDetailsSubTab(index)) },
                         text = {
@@ -341,7 +347,7 @@ fun MediaDetailsSheet(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                when (state.detailsSheetSubTab) {
+                when (if (state.detailsSheetSubTab in visibleSubTabs) state.detailsSheetSubTab else visibleSubTabs.first()) {
                     0 -> LogSubTab(state = state, show = show, isMovie = isMovie, details = details, onAction = onAction)
                     1 -> HistorySubTab(state = state, show = show, onAction = onAction)
                     2 -> DetailsSubTab(details = details, isLoading = state.isLoadingDetails, isMovie = isMovie)

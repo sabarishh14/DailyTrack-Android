@@ -24,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 import com.example.dailytrack_mobile.presentation.navigation.Routes
+import com.example.dailytrack_mobile.data.local.auth.AccessModule
+import com.example.dailytrack_mobile.presentation.access.LocalAccess
 import com.example.dailytrack_mobile.presentation.util.Dimens
 
 data class ActionItem(
@@ -39,6 +41,7 @@ fun AddActionSheet(
     onActionSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val access = LocalAccess.current
     val actions = listOf(
         ActionItem(
             title = "Money",
@@ -64,8 +67,8 @@ fun AddActionSheet(
             icon = Icons.Default.AccountBalance,
             route = Routes.AddAsset.route
         )
-    )
-    val dims = Dimens.current
+    ).filter { addActionAllowed(it.route, access) }
+val dims = Dimens.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -164,3 +167,11 @@ fun ActionCard(
     }
 }
 
+/** Which "Add" shortcut needs which module's edit access. */
+fun addActionAllowed(route: String, access: com.example.dailytrack_mobile.data.local.auth.AccessInfo): Boolean = when (route) {
+    Routes.AddMoney.route -> access.canEdit(AccessModule.MONEY)
+    Routes.AddActivity.route -> access.canEdit(AccessModule.GYM)
+    Routes.AddMovie.route -> access.canEdit(AccessModule.SABDEKHO)
+    Routes.AddAsset.route, Routes.AddInvestment.route, Routes.SyncBroker.route -> access.canEdit(AccessModule.INVEST)
+    else -> true
+}

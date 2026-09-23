@@ -159,6 +159,7 @@ fun DiaryLogCard(
     onDeleteClick: () -> Unit
 ) {
     val dims = Dimens.current
+    val canEdit = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
     var showMenu by remember { mutableStateOf(false) }
     val isMovie = log.type.equals("movie", ignoreCase = true)
     val posterUrl = if (log.posterPath != null) "https://image.tmdb.org/t/p/w200${log.posterPath}" else ""
@@ -235,7 +236,7 @@ fun DiaryLogCard(
                     }
                 }
 
-                Box {
+                if (canEdit) Box {
                     IconButton(
                         onClick = { showMenu = true },
                         modifier = Modifier.size(24.dp)

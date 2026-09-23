@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dailytrack_mobile.presentation.navigation.Routes
+import com.example.dailytrack_mobile.data.local.auth.AccessModule
+import com.example.dailytrack_mobile.presentation.access.LocalAccess
 import com.example.dailytrack_mobile.presentation.util.Dimens
 
 data class BottomNavItem(
@@ -43,7 +45,8 @@ fun BottomNavBar(
     currentRoute: String,
     onNavigate: (String) -> Unit
 ) {
-    val items = listOf(
+    val access = LocalAccess.current
+    val allItems = listOf(
         BottomNavItem(
             label = "Home",
             route = Routes.Home.route,
@@ -75,6 +78,15 @@ fun BottomNavBar(
             unselectedIcon = Icons.Outlined.AutoStories
         )
     )
+    val items = allItems.filter { item ->
+        when (item.route) {
+            Routes.Money.route -> access.canView(AccessModule.MONEY)
+            Routes.Activities.route -> access.canView(AccessModule.GYM)
+            Routes.Investments.route -> access.canView(AccessModule.INVEST)
+            Routes.Sabdekho.route -> access.canView(AccessModule.SABDEKHO)
+            else -> true
+        }
+    }
 
     Box(
         modifier = Modifier

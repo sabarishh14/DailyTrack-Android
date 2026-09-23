@@ -18,6 +18,9 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.dailytrack_mobile.data.local.auth.AccessInfo
+import com.example.dailytrack_mobile.presentation.access.LocalAccess
 import com.example.dailytrack_mobile.data.local.security.AppLockManager
 import com.example.dailytrack_mobile.data.local.security.LockTimeout
 import com.example.dailytrack_mobile.data.repository.AuthRepository
@@ -111,6 +114,10 @@ class MainActivity : FragmentActivity() {
             val state by settingsVM.state.collectAsState()
             val isLoggedIn by authRepository.isLoggedInFlow.collectAsState()
             val loginState by loginVM.state.collectAsState()
+            val storedAccess by authRepository.accessFlow.collectAsState()
+            // Demo mode runs on local sample data, so everything is available there.
+            val access = if (state.isDemoModeEnabled && isLoggedIn != true) AccessInfo.FULL
+                else storedAccess ?: AccessInfo.NONE
 
             // Simple navigation state
             var currentScreen by rememberSaveable { mutableStateOf("Main") }
@@ -152,6 +159,19 @@ class MainActivity : FragmentActivity() {
 
             // Lifecycle observer for background/foreground transitions
             val lifecycleOwner = LocalLifecycleOwner.current
+
+            // Keep permissions fresh while the app is in the foreground: role changes
+            // apply live, and a removed user is signed out (via the 401 handler).
+            LaunchedEffect(isLoggedIn, lifecycleOwner) {
+                if (isLoggedIn == true) {
+                    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                        while (true) {
+                            authRepository.refreshAccess()
+                            kotlinx.coroutines.delay(60_000L)
+                        }
+                    }
+                }
+            }
             DisposableEffect(lifecycleOwner, state.isAppLockEnabled, state.lockTimeout) {
                 val observer = LifecycleEventObserver { _, event ->
                     if (state.isAppLockEnabled) {
@@ -187,6 +207,7 @@ class MainActivity : FragmentActivity() {
                 withAmoled = state.withAmoled
             ) {
                 ProvideAppDimensions {
+                    CompositionLocalProvider(LocalAccess provides access) {
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = MaterialTheme.colorScheme.background
@@ -228,6 +249,7 @@ class MainActivity : FragmentActivity() {
                                 )
                             }
                         }
+                    }
                     }
                 }
             }

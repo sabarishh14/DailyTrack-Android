@@ -148,8 +148,16 @@ fun SettingsScreen(
     var currentSubScreen by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val categories = remember(state.isAppLockEnabled, state.appVersion, state.updateStatus, state.latestUpdateInfo) {
-        listOf(
+    val categories = remember(state.isAppLockEnabled, state.appVersion, state.updateStatus, state.latestUpdateInfo, state.isUserAdmin) {
+        listOfNotNull(
+            // Admins only: who can sign in and what they can see (ACCESS_CONTROL.md)
+            if (state.isUserAdmin) SettingsCategoryItem(
+                id = "AccessControl",
+                icon = Icons.Default.AdminPanelSettings,
+                title = "Access Control",
+                subtitle = "Who can see and change what",
+                keywords = listOf("access", "people", "users", "share", "permissions", "roles", "admin", "email", "invite")
+            ) else null,
             SettingsCategoryItem(
                 id = "General",
                 icon = Icons.Default.Tune,
@@ -334,6 +342,12 @@ fun SettingsScreen(
 
     // ── Sub-screen routing ───────────────────────────────────────────────────
     when (currentSubScreen) {
+        "AccessControl" -> {
+            com.example.dailytrack_mobile.presentation.screens.settings.components.AccessControlSubScreen(
+                onNavigateBack = { currentSubScreen = null }
+            )
+            return
+        }
         "AppLockSettings" -> {
             AppLockSettingsScreen(
                 state = state,

@@ -1,6 +1,11 @@
 package com.example.dailytrack_mobile.data.remote.api
 
+import com.example.dailytrack_mobile.data.remote.dto.AccessOptionsResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.AccessUserRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.AccessUserResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.AccessUsersResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
+import com.example.dailytrack_mobile.data.remote.dto.MeResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AddActivityRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddManualAssetRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddMediaResponseDto
@@ -282,5 +287,27 @@ interface DailyTrackApi {
     suspend fun firebaseLogin(
         @Body request: com.example.dailytrack_mobile.data.remote.dto.FirebaseLoginRequestDto
     ): Response<com.example.dailytrack_mobile.data.remote.dto.FirebaseLoginResponseDto>
+
+    // ---- Access control (see DT-Web/ACCESS_CONTROL.md) ----
+    @GET("/api/auth/me")
+    suspend fun getMyAccess(): Response<MeResponseDto>
+
+    @GET("/api/admin/users")
+    suspend fun getAccessUsers(): Response<AccessUsersResponseDto>
+
+    @GET("/api/admin/access-options")
+    suspend fun getAccessOptions(): Response<AccessOptionsResponseDto>
+
+    @POST("/api/admin/users")
+    suspend fun createAccessUser(@Body request: AccessUserRequestDto): Response<AccessUserResponseDto>
+
+    @PUT("/api/admin/users/{email}")
+    suspend fun updateAccessUser(
+        @Path("email") email: String,
+        @Body request: AccessUserRequestDto
+    ): Response<AccessUserResponseDto>
+
+    @DELETE("/api/admin/users/{email}")
+    suspend fun deleteAccessUser(@Path("email") email: String): Response<AccessUserResponseDto>
 }
 

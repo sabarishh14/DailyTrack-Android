@@ -77,7 +77,29 @@ object NetworkModule {
             }
         }
 
+        // A 401 from our API means the token expired or the email was removed from
+        // Access Control. Either way the session is over: sign out so the app
+        // returns to the login screen with an explanation.
+        val sessionInterceptor = Interceptor { chain ->
+            val request = chain.request()
+            val response = chain.proceed(request)
+            val path = request.url.encodedPath
+            // Runs outside the auth interceptor, so the header isn't visible here;
+            // onSessionRejected() ignores this if we weren't signed in.
+            if (response.code == 401 && path.startsWith("/api/") && !path.contains("/api/auth/firebase-login")) {
+                val revoked = try {
+                    response.peekBody(2048).string().contains("ACCESS_REVOKED")
+                } catch (_: Exception) { false }
+                authManager.onSessionRejected(
+                    if (revoked) "Your access to DailyTrack has been removed. Contact the owner if this is a mistake."
+                    else "Your session has expired. Please sign in again."
+                )
+            }
+            response
+        }
+
         return OkHttpClient.Builder()
+            .addInterceptor(sessionInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(slowEndpointInterceptor)
             .addInterceptor(loggingInterceptor)

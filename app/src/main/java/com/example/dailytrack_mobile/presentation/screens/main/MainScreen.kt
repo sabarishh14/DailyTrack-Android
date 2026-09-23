@@ -41,6 +41,10 @@ import com.example.dailytrack_mobile.presentation.screens.forms.*
 import com.example.dailytrack_mobile.presentation.screens.analytics.AnalyticsScreen
 import com.example.dailytrack_mobile.presentation.screens.home.components.HomeTopBar
 import com.example.dailytrack_mobile.presentation.screens.main.components.AddActionSheet
+import com.example.dailytrack_mobile.presentation.screens.main.components.addActionAllowed
+import com.example.dailytrack_mobile.data.local.auth.AccessInfo
+import com.example.dailytrack_mobile.data.local.auth.AccessModule
+import com.example.dailytrack_mobile.presentation.access.LocalAccess
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import kotlinx.coroutines.launch
 
@@ -50,7 +54,26 @@ private const val PAGE_TRANSACTIONS = 2
 private const val PAGE_ACTIVITIES = 3
 private const val PAGE_INVESTMENTS = 4
 private const val PAGE_SABDEKHO = 5
-private const val MAIN_PAGES_COUNT = 6
+private val ALL_PAGES = listOf(PAGE_HOME, PAGE_CASH_FLOW, PAGE_TRANSACTIONS, PAGE_ACTIVITIES, PAGE_INVESTMENTS, PAGE_SABDEKHO)
+
+/** Pager pages this user may open; Home is always first. */
+private fun allowedPages(access: AccessInfo): List<Int> = ALL_PAGES.filter { page ->
+    when (page) {
+        PAGE_CASH_FLOW, PAGE_TRANSACTIONS -> access.canView(AccessModule.MONEY)
+        PAGE_ACTIVITIES -> access.canView(AccessModule.GYM)
+        PAGE_INVESTMENTS -> access.canView(AccessModule.INVEST)
+        PAGE_SABDEKHO -> access.canView(AccessModule.SABDEKHO)
+        else -> true
+    }
+}
+
+private fun routeAllowed(route: String, access: AccessInfo): Boolean = when (route) {
+    Routes.Money.route, Routes.Analytics.route, Routes.Budgets.route -> access.canView(AccessModule.MONEY)
+    Routes.Activities.route -> access.canView(AccessModule.GYM)
+    Routes.Investments.route -> access.canView(AccessModule.INVEST)
+    Routes.Sabdekho.route -> access.canView(AccessModule.SABDEKHO)
+    else -> addActionAllowed(route, access)
+}
 
 private fun pageToRoute(page: Int): String = when (page) {
     PAGE_HOME -> Routes.Home.route
@@ -87,13 +110,21 @@ fun MainScreen(
         )
     }
 
+    // Pages are filtered by access, so pager positions and page ids differ:
+    // indexOfPage()/pageAt() translate between them.
+    val access = LocalAccess.current
+    val pages = remember(access) { allowedPages(access) }
+    val pagesState = rememberUpdatedState(pages)
+    fun pageAt(index: Int): Int = pagesState.value.getOrElse(index) { PAGE_HOME }
+    fun indexOfPage(page: Int?): Int? = page?.let { pagesState.value.indexOf(it).takeIf { i -> i >= 0 } }
+
     val initialPageIndex = remember {
         val target = targetRoute ?: Routes.Home.route
-        routeToPage(target) ?: PAGE_HOME
+        indexOfPage(routeToPage(target)) ?: 0
     }
     val pagerState = rememberPagerState(
         initialPage = initialPageIndex,
-        pageCount = { MAIN_PAGES_COUNT }
+        pageCount = { pagesState.value.size }
     )
 
     var currentRoute by remember { mutableStateOf(targetRoute ?: Routes.Home.route) }
@@ -108,7 +139,7 @@ fun MainScreen(
 
     // Update currentRoute and sync Money tab selection only when pager has fully settled
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { settledPage ->
+        snapshotFlow { pageAt(pagerState.settledPage) }.collect { settledPage ->
             if (settledPage == PAGE_CASH_FLOW || settledPage == PAGE_TRANSACTIONS) {
                 lastMoneyPage = settledPage
                 moneyViewModel.onAction(MoneyAction.SelectTab(if (settledPage == PAGE_CASH_FLOW) 0 else 1))
@@ -134,11 +165,13 @@ fun MainScreen(
     // React when ViewModel selects a Money tab (e.g. from AnalysisTab "View Filtered Transactions")
     LaunchedEffect(moneyState.selectedTab) {
         val targetPage = if (moneyState.selectedTab == 0) PAGE_CASH_FLOW else PAGE_TRANSACTIONS
-        if (pagerState.currentPage in listOf(PAGE_CASH_FLOW, PAGE_TRANSACTIONS) &&
-            pagerState.currentPage != targetPage &&
-            pagerState.targetPage != targetPage
+        val targetIndex = indexOfPage(targetPage)
+        if (targetIndex != null &&
+            pageAt(pagerState.currentPage) in listOf(PAGE_CASH_FLOW, PAGE_TRANSACTIONS) &&
+            pageAt(pagerState.currentPage) != targetPage &&
+            pageAt(pagerState.targetPage) != targetPage
         ) {
-            pagerState.animateScrollToPage(targetPage)
+            pagerState.animateScrollToPage(targetIndex)
         }
     }
 
@@ -163,18 +196,19 @@ fun MainScreen(
 
     // Centralized safe navigation that checks for unsaved changes
     fun navigateSafely(targetRoute: String, preferTransactions: Boolean = false) {
-        if (currentRoute == targetRoute && (targetRoute != Routes.Money.route || pagerState.currentPage == (if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage))) return
+        if (!routeAllowed(targetRoute, access)) return
+        if (currentRoute == targetRoute && (targetRoute != Routes.Money.route || pageAt(pagerState.currentPage) == (if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage))) return
 
         if (isFormScreen && isCurrentFormDirty) {
             pendingRoute = targetRoute
             showDiscardDialog = true
         } else {
             isCurrentFormDirty = false
-            val tabIdx = if (targetRoute == Routes.Money.route) {
+            val tabIdx = indexOfPage(if (targetRoute == Routes.Money.route) {
                 if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage
             } else {
                 routeToPage(targetRoute)
-            }
+            })
             if (tabIdx != null) {
                 coroutineScope.launch {
                     pagerState.animateScrollToPage(tabIdx)
@@ -184,19 +218,31 @@ fun MainScreen(
         }
     }
 
+    // If a permission change hides what's on screen, fall back to Home.
+    LaunchedEffect(access) {
+        if (!routeAllowed(currentRoute, access)) {
+            currentRoute = Routes.Home.route
+            pagerState.scrollToPage(0)
+        } else if (pagerState.currentPage >= pages.size) {
+            pagerState.scrollToPage(0)
+        }
+    }
+
     LaunchedEffect(targetRoute) {
-        if (targetRoute != null) {
-            val tabIdx = if (targetRoute == Routes.Money.route) {
+        if (targetRoute != null && routeAllowed(targetRoute, access)) {
+            val tabIdx = indexOfPage(if (targetRoute == Routes.Money.route) {
                 lastMoneyPage
             } else {
                 routeToPage(targetRoute)
-            }
+            })
             if (tabIdx != null) {
                 pagerState.scrollToPage(tabIdx)
                 currentRoute = targetRoute
             } else {
                 navigateSafely(targetRoute)
             }
+            onRouteConsumed()
+        } else if (targetRoute != null) {
             onRouteConsumed()
         }
     }
@@ -205,20 +251,23 @@ fun MainScreen(
     fun onFormSaved(message: String, destinationRoute: String = Routes.Home.route) {
         isCurrentFormDirty = false
         preselectedMediaForAddMovie = null
-        val tabIdx = if (destinationRoute == Routes.Money.route) {
+        val destPage = if (destinationRoute == Routes.Money.route) {
             PAGE_TRANSACTIONS
         } else {
             routeToPage(destinationRoute)
         }
+        val tabIdx = indexOfPage(destPage)
         if (tabIdx != null) {
-            if (tabIdx == PAGE_TRANSACTIONS || tabIdx == PAGE_CASH_FLOW) {
-                lastMoneyPage = tabIdx
+            if (destPage == PAGE_TRANSACTIONS || destPage == PAGE_CASH_FLOW) {
+                lastMoneyPage = destPage
             }
             coroutineScope.launch {
                 pagerState.scrollToPage(tabIdx)
             }
         }
-        currentRoute = destinationRoute
+        // e.g. a gym-only editor saving an activity lands on Activities; if the
+        // destination is hidden for this user, go Home instead.
+        currentRoute = if (routeAllowed(destinationRoute, access)) destinationRoute else Routes.Home.route
         coroutineScope.launch {
             snackbarHostState.showSnackbar(
                 message = message,
@@ -409,20 +458,20 @@ fun MainScreen(
         bottomBar = {
             if (!isFormScreen) {
                 val displayRoute = if (currentRoute in mainTabRoutes) {
-                    pageToRoute(pagerState.targetPage)
+                    pageToRoute(pageAt(pagerState.targetPage))
                 } else {
                     currentRoute
                 }
                 BottomNavBar(
                     currentRoute = displayRoute,
                     onNavigate = { targetRoute ->
-                        val targetPage = if (targetRoute == Routes.Money.route) {
-                            if (pagerState.currentPage == PAGE_CASH_FLOW) PAGE_CASH_FLOW
-                            else if (pagerState.currentPage == PAGE_TRANSACTIONS) PAGE_TRANSACTIONS
+                        val targetPage = indexOfPage(if (targetRoute == Routes.Money.route) {
+                            if (pageAt(pagerState.currentPage) == PAGE_CASH_FLOW) PAGE_CASH_FLOW
+                            else if (pageAt(pagerState.currentPage) == PAGE_TRANSACTIONS) PAGE_TRANSACTIONS
                             else lastMoneyPage
                         } else {
                             routeToPage(targetRoute)
-                        }
+                        })
                         if (targetPage != null) {
                             // Coming from a non-pager screen (e.g. Analytics), the
                             // HorizontalPager isn't in the composition yet, so an
@@ -447,7 +496,11 @@ fun MainScreen(
             }
         },
         floatingActionButton = {
-            if (!isFormScreen && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)) {
+            val canAddAnything = remember(access) {
+                listOf(Routes.AddMoney.route, Routes.AddActivity.route, Routes.AddMovie.route, Routes.AddAsset.route)
+                    .any { addActionAllowed(it, access) }
+            }
+            if (canAddAnything && !isFormScreen && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)) {
                 FloatingActionButton(
                     onClick = { showAddSheet = true },
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -483,8 +536,8 @@ fun MainScreen(
                     userScrollEnabled = !moneyState.isSelectionMode,
                     beyondViewportPageCount = 1,
                     modifier = Modifier.fillMaxSize()
-                ) { page ->
-                    when (page) {
+                ) { index ->
+                    when (pageAt(index)) {
                         PAGE_HOME -> HomeScreen(
                             onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
                         )
@@ -493,7 +546,7 @@ fun MainScreen(
                             onAction = moneyViewModel::onAction,
                             onNavigateToTransactions = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(PAGE_TRANSACTIONS)
+                                    indexOfPage(PAGE_TRANSACTIONS)?.let { pagerState.animateScrollToPage(it) }
                                 }
                             }
                         )
@@ -502,7 +555,7 @@ fun MainScreen(
                             onAction = moneyViewModel::onAction,
                             onNavigateToCashFlow = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(PAGE_CASH_FLOW)
+                                    indexOfPage(PAGE_CASH_FLOW)?.let { pagerState.animateScrollToPage(it) }
                                 }
                             }
                         )

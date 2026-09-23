@@ -157,7 +157,7 @@ class DemoDataManager @Inject constructor(
         val updatedAccounts = current.accounts.map { acc ->
             if (acc.account.equals(accountName, ignoreCase = true)) {
                 val delta = if (newTx.type == "Credit") amount else -amount
-                val newBal = acc.balance + delta
+                val newBal = (acc.balance ?: 0.0) + delta
                 val newRealBal = acc.realBalance?.let { it + delta } ?: newBal
                 acc.copy(balance = newBal, realBalance = newRealBal)
             } else {
@@ -212,7 +212,7 @@ class DemoDataManager @Inject constructor(
         // 1. Revert old transaction effect on old account
         // 2. Apply new transaction effect on new account
         val updatedAccounts = current.accounts.map { acc ->
-            var bal = acc.balance
+            var bal = acc.balance ?: 0.0
             var realBal = acc.realBalance
 
             // Revert old
@@ -257,7 +257,7 @@ class DemoDataManager @Inject constructor(
         val updatedAccounts = current.accounts.map { acc ->
             if (acc.account.equals(oldTx.account, ignoreCase = true)) {
                 val oldDelta = if (oldTx.type == "Credit") -oldTx.amount else oldTx.amount
-                val newBal = acc.balance + oldDelta
+                val newBal = (acc.balance ?: 0.0) + oldDelta
                 val newRealBal = acc.realBalance?.let { it + oldDelta } ?: newBal
                 acc.copy(balance = newBal, realBalance = newRealBal)
             } else {

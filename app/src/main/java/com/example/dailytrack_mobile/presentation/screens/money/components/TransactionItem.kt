@@ -91,6 +91,7 @@ fun SwipeableTransactionItem(
     onDelete: () -> Unit,
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
+    swipeEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
@@ -200,7 +201,7 @@ fun SwipeableTransactionItem(
         }
 
         // ── Foreground Transaction Card ──────────────────────────────────────
-        val dragModifier = if (!isSelectionMode) {
+        val dragModifier = if (!isSelectionMode && swipeEnabled) {
             Modifier.pointerInput(transaction.id) {
                 detectHorizontalDragGestures(
                     onDragStart = {

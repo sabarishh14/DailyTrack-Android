@@ -80,10 +80,16 @@ internal fun SyncSettingsSubScreen(
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // Whole-ledger actions need unrestricted money edit; see ACCESS_CONTROL.md.
+    val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+    val canPushTransactions = access.fullMoneyAccess
+    val canPushInvestments = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
+    val canReconcile = access.fullMoneyAccess
+    val canImportLetterboxd = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
 
     // Checking the Sheets queue is a network call, so it waits until the screen
     // that shows it is actually open.
-    LaunchedEffect(Unit) { onAction(SettingsAction.OnSyncScreenOpened) }
+    LaunchedEffect(Unit) { if (canPushTransactions) onAction(SettingsAction.OnSyncScreenOpened) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -191,15 +197,15 @@ internal fun SyncSettingsSubScreen(
             // app's data outward, which is a different enough intent to warrant
             // its own heading rather than more rows in the same card.
             // -----------------------------------------------------------------
-            item {
+            if (canPushTransactions || canPushInvestments) item {
                 Spacer(Modifier.height(8.dp))
                 SettingsSectionLabel("Push to Sheets")
             }
 
-            item {
+            if (canPushTransactions || canPushInvestments) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val pendingCount = state.pendingSheetSyncCount
-                    SettingsCard {
+                    if (canPushTransactions) SettingsCard {
                         SyncActionItem(
                             icon = Icons.Default.UploadFile,
                             title = "Transactions",
@@ -212,7 +218,7 @@ internal fun SyncSettingsSubScreen(
                             onClick = { onAction(SettingsAction.OnPushTransactionsToSheets) }
                         )
                     }
-                    SettingsCard {
+                    if (canPushInvestments) SettingsCard {
                         SyncActionItem(
                             icon = Icons.Default.ShowChart,
                             title = "Investments",
@@ -227,14 +233,14 @@ internal fun SyncSettingsSubScreen(
             // -----------------------------------------------------------------
             // Imports & reconciliation
             // -----------------------------------------------------------------
-            item {
+            if (canReconcile || canImportLetterboxd) item {
                 Spacer(Modifier.height(8.dp))
                 SettingsSectionLabel("Import & reconcile")
             }
 
-            item {
+            if (canReconcile || canImportLetterboxd) item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsCard {
+                    if (canReconcile) SettingsCard {
                         SyncActionItem(
                             icon = Icons.Default.Balance,
                             title = "Reconcile Balances",
@@ -243,7 +249,7 @@ internal fun SyncSettingsSubScreen(
                             onClick = { onAction(SettingsAction.OnReconcileBalancesSheetVisible(true)) }
                         )
                     }
-                    SettingsCard {
+                    if (canImportLetterboxd) SettingsCard {
                         SyncActionItem(
                             icon = Icons.Default.Movie,
                             title = "Import from Letterboxd",

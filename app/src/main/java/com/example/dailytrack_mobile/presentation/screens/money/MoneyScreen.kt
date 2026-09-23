@@ -130,7 +130,8 @@ fun MoneyDialogsAndSheets(
             },
             onDismiss = {
                 onAction(MoneyAction.DismissDialogs)
-            }
+            },
+            canEdit = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
         )
     }
 

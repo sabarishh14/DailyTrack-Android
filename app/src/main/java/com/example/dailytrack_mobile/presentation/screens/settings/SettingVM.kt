@@ -609,7 +609,7 @@ class SettingsVM @Inject constructor(
                                 .map { dto ->
                                     com.example.dailytrack_mobile.presentation.screens.money.AccountInfo(
                                         account = dto.account,
-                                        balance = dto.balance,
+                                        balance = dto.balance ?: 0.0,
                                         realBalance = dto.realBalance,
                                         balanceTracked = dto.balanceTracked
                                     )

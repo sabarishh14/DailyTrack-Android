@@ -128,7 +128,9 @@ fun HomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                IconButton(
+                if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+                        .canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
+                ) IconButton(
                     onClick = onNavigateToAnalytics,
                     modifier = Modifier.size(36.dp)
                 ) {

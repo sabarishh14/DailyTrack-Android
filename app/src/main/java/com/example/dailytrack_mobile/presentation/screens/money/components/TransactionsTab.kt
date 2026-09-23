@@ -45,6 +45,7 @@ fun TransactionsTab(
     state: MoneyState,
     onAction: (MoneyAction) -> Unit
 ) {
+    val canEdit = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
     val dims = Dimens.current
     val filterState = state.analysisFilterState
 
@@ -269,6 +270,8 @@ fun TransactionsTab(
                         ) { transaction ->
                             val isSelected = transaction.id in state.selectedTransactionIds
                             SwipeableTransactionItem(
+                                // View-only users: no swipe actions and no bulk selection.
+                                swipeEnabled = canEdit,
                                 transaction = transaction,
                                 isSwiped = swipedTransactionId == transaction.id,
                                 onSwipeStateChanged = { isSwiped ->
@@ -277,7 +280,7 @@ fun TransactionsTab(
                                 isSelected = isSelected,
                                 isSelectionMode = state.isSelectionMode,
                                 onLongClick = {
-                                    onAction(MoneyAction.ToggleTransactionSelection(transaction.id))
+                                    if (canEdit) onAction(MoneyAction.ToggleTransactionSelection(transaction.id))
                                 },
                                 onClick = {
                                     if (state.isSelectionMode) {
