@@ -7,15 +7,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material3.*
@@ -27,6 +24,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dailytrack_mobile.presentation.screens.money.ChartColors
@@ -38,7 +37,7 @@ import java.util.Date
 import java.util.Locale
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TransactionDetailBottomSheet(
     transaction: Transaction,
@@ -79,15 +78,17 @@ fun TransactionDetailBottomSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = { BottomSheetDefaults.DragHandle() },
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
+        // Sized to its content, capped so a long split list scrolls instead of covering the screen.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.79f))
+                .heightIn(max = rememberSheetHeight(0.9f))
         ) {
             // ── Top Bar Header ───────────────────────────────────────────
             Row(
@@ -116,10 +117,10 @@ fun TransactionDetailBottomSheet(
             // ── Scrollable Body ──────────────────────────────────────────
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingLarge),
-                verticalArrangement = Arrangement.spacedBy(dims.sectionSpacing)
+                    .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingMedium),
+                verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
             ) {
                 // ── Hero Amount Card ─────────────────────────────────────
                 Card(
@@ -133,37 +134,38 @@ fun TransactionDetailBottomSheet(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(dims.screenHorizontalPadding),
+                            .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingLarge),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
+                        verticalArrangement = Arrangement.spacedBy(dims.itemSpacingSmall)
                     ) {
                         // Emoji Avatar
                         Box(
                             modifier = Modifier
-                                .size(64.dp)
+                                .size(48.dp)
                                 .clip(CircleShape)
                                 .background(categoryColor.copy(alpha = 0.18f)),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = transaction.emoji,
-                                fontSize = 32.sp
+                                fontSize = 24.sp
                             )
                         }
 
                         // Amount
                         Text(
                             text = (if (isCredit) "+ " else "- ") + formattedAmount,
-                            style = MaterialTheme.typography.headlineMedium.copy(
+                            style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = if (isCredit) ChartColors.IncomeGreen else MaterialTheme.colorScheme.onSurface
-                            )
+                            ),
+                            maxLines = 1
                         )
 
-                        // Title & Type Badges
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Type & exclusion badges; they wrap rather than squeeze on narrow screens.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             val (badgeBg, badgeFg, badgeText) = when {
                                 transaction.type == TransactionType.CREDIT -> Triple(
@@ -205,20 +207,24 @@ fun TransactionDetailBottomSheet(
                                     shape = RoundedCornerShape(dims.buttonCornerRadius)
                                 ) {
                                     Text(
-                                        text = "Excluded",
+                                        text = "Excluded from analytics",
                                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                         color = MaterialTheme.colorScheme.error,
+                                        maxLines = 1,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Title headline
+                        // The note (or category when there is none) — the one place it's shown.
                         Text(
                             text = transaction.title,
                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -243,7 +249,7 @@ fun TransactionDetailBottomSheet(
                             value = "${transaction.emoji}  ${transaction.category}"
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 10.dp),
+                            modifier = Modifier.padding(vertical = 6.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                         )
                         DetailInfoRow(
@@ -252,7 +258,7 @@ fun TransactionDetailBottomSheet(
                             value = transaction.bank
                         )
                         HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 10.dp),
+                            modifier = Modifier.padding(vertical = 6.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                         )
                         DetailInfoRow(
@@ -260,54 +266,6 @@ fun TransactionDetailBottomSheet(
                             label = "Date",
                             value = formattedDate
                         )
-
-                        if (!transaction.note.isNullOrBlank() && transaction.note != transaction.category) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 10.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                            )
-                            DetailInfoRow(
-                                icon = Icons.AutoMirrored.Outlined.Notes,
-                                label = "Note / Description",
-                                value = transaction.note
-                            )
-                        }
-                    }
-                }
-
-                // ── Spending Analyser Setting Info ───────────────────────
-                Surface(
-                    color = if (transaction.isExcluded) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f)
-                            else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shape = RoundedCornerShape(dims.cardCornerRadius),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (transaction.isExcluded) Icons.Default.WarningAmber else Icons.Default.PieChart,
-                            contentDescription = null,
-                            tint = if (transaction.isExcluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (transaction.isExcluded) "Excluded from Analytics" else "Included in Analytics",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = if (transaction.isExcluded) "This transaction is hidden from Spending Analyser charts & stats."
-                                       else "This transaction is accounted for in Spending Analyser charts.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
                 }
 
@@ -366,6 +324,7 @@ fun TransactionDetailBottomSheet(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Row(
+                                        modifier = Modifier.weight(1f),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
@@ -385,7 +344,9 @@ fun TransactionDetailBottomSheet(
                                         Text(
                                             text = member.name,
                                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
 
@@ -502,33 +463,34 @@ private fun DetailInfoRow(
     value: String
 ) {
     val dims = Dimens.current
+    // One line each: the label keeps its width, the value takes the rest and ellipsizes.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(dims.iconSizeSmall)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(dims.iconSizeSmall)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.onSurface
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
     }
 }

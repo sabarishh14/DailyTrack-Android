@@ -10,6 +10,7 @@ import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.NewTransaction
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,10 +26,7 @@ data class AddMoneyFormState(
     val isSaving: Boolean = false,
     val accounts: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
-    val mostUsedExpenseCategories: List<String> = emptyList(),
-    val mostUsedIncomeCategories: List<String> = emptyList(),
-    val recentDescriptions: List<String> = emptyList(),
-    val descriptionsByCategory: Map<String, List<String>> = emptyMap(),
+    val history: EntryHistory = EntryHistory.EMPTY,
     val errorMessage: String? = null
 )
 
@@ -63,10 +61,7 @@ class FormsVM @Inject constructor(
             isLoadingData = true,
             accounts = moneyRepository.getCachedAccounts(),
             categories = moneyRepository.getCachedCategories(),
-            mostUsedExpenseCategories = moneyRepository.getCachedMostUsedExpenseCategories(),
-            mostUsedIncomeCategories = moneyRepository.getCachedMostUsedIncomeCategories(),
-            recentDescriptions = moneyRepository.getAllCachedDescriptions().first,
-            descriptionsByCategory = moneyRepository.getAllCachedDescriptions().second
+            history = moneyRepository.entryHistory()
         )
     )
     val addMoneyState: StateFlow<AddMoneyFormState> = _addMoneyState.asStateFlow()
@@ -94,48 +89,20 @@ class FormsVM @Inject constructor(
             _addMoneyState.update { it.copy(isLoadingData = true) }
             val accountsRes = moneyRepository.getAccounts()
             val categoriesRes = moneyRepository.getCategories()
-            val txsRes = moneyRepository.getTransactions(limit = 500, offset = 0)
-
-            val txs = txsRes.getOrNull()?.transactions ?: emptyList()
-            val usedExpenses = txs.filter { !it.type.equals("Credit", ignoreCase = true) }
-                .groupBy { it.heading }
-                .entries
-                .sortedByDescending { it.value.size }
-                .map { it.key }
-            val usedIncome = txs.filter { it.type.equals("Credit", ignoreCase = true) }
-                .groupBy { it.heading }
-                .entries
-                .sortedByDescending { it.value.size }
-                .map { it.key }
-
-            if (usedExpenses.isNotEmpty() || usedIncome.isNotEmpty()) {
-                moneyRepository.saveMostUsedCategories(usedExpenses, usedIncome)
-            }
-
-            val (cachedRecent, cachedByCat) = moneyRepository.getAllCachedDescriptions()
 
             _addMoneyState.update { state ->
                 state.copy(
-                    isLoadingData = false,
                     accounts = accountsRes.getOrNull()?.map { it.account }?.takeIf { it.isNotEmpty() } ?: state.accounts,
-                    categories = categoriesRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.categories,
-                    mostUsedExpenseCategories = if (usedExpenses.isNotEmpty()) usedExpenses else state.mostUsedExpenseCategories,
-                    mostUsedIncomeCategories = if (usedIncome.isNotEmpty()) usedIncome else state.mostUsedIncomeCategories,
-                    recentDescriptions = cachedRecent,
-                    descriptionsByCategory = cachedByCat
+                    categories = categoriesRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.categories
                 )
             }
 
-            // Progressive background loading for all historical transactions across the database
+            // Suggestions sharpen page by page as the whole history streams in.
             progressiveDescriptionsJob = launch {
-                moneyRepository.fetchAllTransactionsForDescriptions { allDescriptions, byCategory ->
-                    _addMoneyState.update { state ->
-                        state.copy(
-                            recentDescriptions = allDescriptions,
-                            descriptionsByCategory = byCategory
-                        )
-                    }
+                val history = moneyRepository.fetchFullHistory { partial ->
+                    _addMoneyState.update { it.copy(isLoadingData = false, history = partial) }
                 }
+                _addMoneyState.update { it.copy(isLoadingData = false, history = history) }
             }
         }
     }
@@ -209,18 +176,7 @@ class FormsVM @Inject constructor(
                 .onSuccess {
                     // The entries landed, so the draft has served its purpose.
                     transactionDraftStore.clear()
-                    _addMoneyState.update { state ->
-                        var recent = state.recentDescriptions
-                        var byCategory = state.descriptionsByCategory
-                        entries.forEach { e ->
-                            val note = e.note?.trim().orEmpty()
-                            if (note.isNotBlank()) {
-                                recent = (listOf(note) + recent).distinct()
-                                byCategory = byCategory + (e.category to (listOf(note) + byCategory[e.category].orEmpty()).distinct())
-                            }
-                        }
-                        state.copy(isSaving = false, recentDescriptions = recent, descriptionsByCategory = byCategory)
-                    }
+                    _addMoneyState.update { it.copy(isSaving = false, history = moneyRepository.entryHistory()) }
                     onSuccess(entries.size)
                 }
                 .onFailure { error ->

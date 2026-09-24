@@ -90,6 +90,7 @@ fun BudgetManagerSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = { BottomSheetDefaults.DragHandle() },

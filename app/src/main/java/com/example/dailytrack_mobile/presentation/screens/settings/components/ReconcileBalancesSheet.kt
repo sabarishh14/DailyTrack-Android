@@ -91,6 +91,7 @@ fun ReconcileBalancesSheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = {
@@ -334,7 +335,9 @@ private fun ReconcileAccountRow(account: AccountInfo) {
                     Text(
                         text = account.account,
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

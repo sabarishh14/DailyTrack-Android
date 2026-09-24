@@ -10,6 +10,9 @@ import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryType
+import com.example.dailytrack_mobile.presentation.components.transaction.HistoryRow
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharedFlow
@@ -34,8 +37,7 @@ class MoneyRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        private const val KEY_MOST_USED_EXPENSE = "cached_most_used_expense"
-        private const val KEY_MOST_USED_INCOME = "cached_most_used_income"
+        private const val KEY_TYPE_CATEGORIES_PREFIX = "cached_type_categories_"
         private const val KEY_ACCOUNTS = "cached_accounts"
         private const val KEY_CATEGORIES = "cached_categories"
         private const val KEY_DEMO_BUDGETS = "demo_budgets"
@@ -54,115 +56,79 @@ class MoneyRepository @Inject constructor(
     private val cachedTransactions = mutableMapOf<String, TransactionsResponseDto>()
     private var cachedCategories: List<String>? = null
     private var cachedBudgets: List<BudgetDto>? = null
-    private var inMemoryMostUsedExpense = mutableListOf<String>()
-    private var inMemoryMostUsedIncome = mutableListOf<String>()
-    private val cachedAllDescriptions = mutableListOf<String>()
-    private val cachedDescriptionsByCategory = mutableMapOf<String, MutableList<String>>()
-    private var allHistoricalTransactionsFetched = false
+
+    // Every transaction seen so far, by id, for type-aware category and description suggestions.
+    private val historyRows = mutableMapOf<Long, HistoryRow>()
+    private var localHistoryId = -1L
+    private var fullHistoryFetched = false
+    private var savedTypeCategories: Map<EntryType, List<String>> = emptyMap()
 
     init {
         try {
-            inMemoryMostUsedExpense = listCache.read(KEY_MOST_USED_EXPENSE).toMutableList()
-            inMemoryMostUsedIncome = listCache.read(KEY_MOST_USED_INCOME).toMutableList()
             cachedAccountNames = listCache.read(KEY_ACCOUNTS).toMutableList()
             listCache.read(KEY_CATEGORIES).takeIf { it.isNotEmpty() }?.let { cachedCategories = it }
+            savedTypeCategories = EntryType.entries
+                .associateWith { listCache.read(KEY_TYPE_CATEGORIES_PREFIX + it.name) }
+                .filterValues { it.isNotEmpty() }
         } catch (_: Exception) { }
     }
 
-    fun getCachedMostUsedExpenseCategories(): List<String> = synchronized(this) { inMemoryMostUsedExpense.toList() }
-    fun getCachedMostUsedIncomeCategories(): List<String> = synchronized(this) { inMemoryMostUsedIncome.toList() }
     fun getCachedAccounts(): List<String> = synchronized(this) { (cachedAccounts?.map { it.account } ?: cachedAccountNames).toList() }
     fun getCachedCategories(): List<String> = synchronized(this) { cachedCategories ?: emptyList() }
-
-    fun saveMostUsedCategories(expenses: List<String>, income: List<String>) {
-        synchronized(this) {
-            if (expenses.isNotEmpty()) {
-                inMemoryMostUsedExpense = expenses.toMutableList()
-                listCache.write(KEY_MOST_USED_EXPENSE, expenses)
-            }
-            if (income.isNotEmpty()) {
-                inMemoryMostUsedIncome = income.toMutableList()
-                listCache.write(KEY_MOST_USED_INCOME, income)
-            }
-        }
-    }
 
     fun clearCache() {
         cachedTransactions.clear()
         cachedBudgets = null
     }
 
-    fun recordSingleDescription(category: String, note: String) {
-        val trimmed = note.trim()
-        if (trimmed.isNotBlank()) {
-            synchronized(this) {
-                cachedAllDescriptions.remove(trimmed)
-                cachedAllDescriptions.add(0, trimmed)
-                val catKey = category.trim()
-                if (catKey.isNotBlank()) {
-                    val list = cachedDescriptionsByCategory.getOrPut(catKey) { mutableListOf() }
-                    list.remove(trimmed)
-                    list.add(0, trimmed)
-                }
-            }
-        }
+    /** Suggestions from what has been seen so far; until anything has, the per-type categories saved last time. */
+    fun entryHistory(): EntryHistory = synchronized(this) {
+        if (historyRows.isEmpty()) EntryHistory(categories = savedTypeCategories)
+        else EntryHistory.from(historyRows.values.toList())
     }
 
-    fun recordTransactions(txs: List<TransactionDto>) {
+    private fun recordTransactions(txs: List<TransactionDto>) {
         synchronized(this) {
-            for (tx in txs) {
-                val desc = tx.description?.trim()
-                if (!desc.isNullOrBlank()) {
-                    if (!cachedAllDescriptions.contains(desc)) {
-                        cachedAllDescriptions.add(desc)
-                    }
-                    val catKey = tx.heading.trim()
-                    if (catKey.isNotBlank()) {
-                        val list = cachedDescriptionsByCategory.getOrPut(catKey) { mutableListOf() }
-                        if (!list.contains(desc)) {
-                            list.add(desc)
-                        }
-                    }
-                }
-            }
+            txs.forEach { historyRows[it.id] = HistoryRow(it.type, it.heading, it.description, it.date.take(10)) }
         }
     }
 
-    fun getAllCachedDescriptions(): Pair<List<String>, Map<String, List<String>>> {
+    /** A just-saved entry, so it shows up in suggestions before the next fetch. */
+    private fun recordLocal(type: String, category: String, note: String?, date: String, id: Long? = null) {
         synchronized(this) {
-            return Pair(
-                cachedAllDescriptions.toList(),
-                cachedDescriptionsByCategory.mapValues { it.value.toList() }
-            )
+            historyRows[id ?: localHistoryId--] = HistoryRow(type, category, note, date.take(10))
         }
     }
 
-    suspend fun fetchAllTransactionsForDescriptions(
+    private fun forgetTransactions(ids: Collection<Long>) {
+        synchronized(this) { ids.forEach { historyRows.remove(it) } }
+    }
+
+    /** Pages through every transaction once, reporting suggestions after each page. */
+    suspend fun fetchFullHistory(
         forceRefresh: Boolean = false,
-        onBatchLoaded: ((List<String>, Map<String, List<String>>) -> Unit)? = null
-    ): Pair<List<String>, Map<String, List<String>>> {
-        if (!forceRefresh && allHistoricalTransactionsFetched && cachedAllDescriptions.isNotEmpty()) {
-            return getAllCachedDescriptions()
-        }
+        onBatchLoaded: ((EntryHistory) -> Unit)? = null
+    ): EntryHistory {
+        if (!forceRefresh && fullHistoryFetched) return entryHistory()
 
         var offset = 0
         var hasMore = true
-
         while (hasMore) {
             val result = getTransactions(limit = 500, offset = offset, forceRefresh = forceRefresh).getOrNull()
             if (result == null || result.transactions.isEmpty()) break
-            
-            recordTransactions(result.transactions)
-            
-            val currentCached = getAllCachedDescriptions()
-            onBatchLoaded?.invoke(currentCached.first, currentCached.second)
-
+            onBatchLoaded?.invoke(entryHistory())
             hasMore = result.hasMore
             offset += 500
         }
 
-        allHistoricalTransactionsFetched = true
-        return getAllCachedDescriptions()
+        fullHistoryFetched = !hasMore
+        val history = entryHistory()
+        if (fullHistoryFetched) {
+            try {
+                history.categoriesByType.forEach { (type, list) -> listCache.write(KEY_TYPE_CATEGORIES_PREFIX + type.name, list) }
+            } catch (_: Exception) { }
+        }
+        return history
     }
 
     suspend fun getAccounts(forceRefresh: Boolean = false): Result<List<AccountDto>> = runCatching {
@@ -251,9 +217,7 @@ class MoneyRepository @Inject constructor(
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to add transactions")
             }
-            entries.forEach { e ->
-                if (!e.note.isNullOrBlank()) recordSingleDescription(category = e.category, note = e.note)
-            }
+            entries.forEach { e -> recordLocal(e.type, e.category, e.note, e.date) }
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
@@ -292,9 +256,7 @@ class MoneyRepository @Inject constructor(
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to add transaction")
             }
-            if (!note.isNullOrBlank()) {
-                recordSingleDescription(category = category, note = note)
-            }
+            recordLocal(type, category, note, date)
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
@@ -321,9 +283,7 @@ class MoneyRepository @Inject constructor(
                 date = date,
                 excludeAnalytics = excludeAnalytics
             )
-            if (!note.isNullOrBlank()) {
-                recordSingleDescription(category = category, note = note)
-            }
+            recordLocal(type, category, note, date, id)
         } else {
             val request = AddTransactionRequestDto(
                 account = accountName,
@@ -338,9 +298,7 @@ class MoneyRepository @Inject constructor(
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to update transaction")
             }
-            if (!note.isNullOrBlank()) {
-                recordSingleDescription(category = category, note = note)
-            }
+            recordLocal(type, category, note, date, id)
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
@@ -354,6 +312,7 @@ class MoneyRepository @Inject constructor(
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to delete transaction")
             }
+            forgetTransactions(listOf(id))
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
@@ -367,6 +326,7 @@ class MoneyRepository @Inject constructor(
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to bulk delete transactions")
             }
+            forgetTransactions(ids)
             clearCache()
             demoDataManager.notifyDataUpdated()
         }
@@ -385,20 +345,14 @@ class MoneyRepository @Inject constructor(
                     date = item.date,
                     excludeAnalytics = item.excludeAnalytics
                 )
-                if (!item.description.isNullOrBlank()) {
-                    recordSingleDescription(category = item.heading, note = item.description)
-                }
+                recordLocal(item.type, item.heading, item.description, item.date, item.id)
             }
         } else {
             val response = api.bulkEditTransactions(updates)
             if (!response.success) {
                 throw Exception(response.message ?: "Failed to bulk edit transactions")
             }
-            updates.forEach { item ->
-                if (!item.description.isNullOrBlank()) {
-                    recordSingleDescription(category = item.heading, note = item.description)
-                }
-            }
+            updates.forEach { item -> recordLocal(item.type, item.heading, item.description, item.date, item.id) }
             clearCache()
             demoDataManager.notifyDataUpdated()
         }

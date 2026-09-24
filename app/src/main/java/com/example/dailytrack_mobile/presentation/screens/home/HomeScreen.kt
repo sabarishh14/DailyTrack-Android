@@ -613,6 +613,7 @@ private fun BankAccountRow(account: AccountInfo) {
         verticalAlignment     = Alignment.CenterVertically
     ) {
         Row(
+            modifier              = Modifier.weight(1f),
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge)
         ) {
@@ -631,15 +632,20 @@ private fun BankAccountRow(account: AccountInfo) {
                 )
             }
             Text(
-                text  = account.account,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
+                text     = account.account,
+                style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                color    = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
+        Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
         Text(
-            text  = formatCurrencyFull(account.balance),
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
+            text     = formatCurrencyFull(account.balance),
+            style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+            color    = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

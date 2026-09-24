@@ -792,16 +792,15 @@ fun EntrySuggestionBar(
     }
 }
 
-/** Past descriptions for [category] first, then everything else, filtered by [query]. */
+/** Past descriptions for this [type] and [category] (the type alone until one is picked), filtered by [query]. */
 fun rankDescriptionSuggestions(
+    type: EntryType,
     category: String,
     query: String,
-    recentDescriptions: List<String>,
-    descriptionsByCategory: Map<String, List<String>>,
+    history: EntryHistory,
     limit: Int = 50
 ): List<String> {
-    val categoryList = if (category.isNotBlank()) descriptionsByCategory[category.trim()].orEmpty() else emptyList()
-    val combined = (categoryList + recentDescriptions).filter { it.isNotBlank() }.distinct()
+    val combined = history.descriptionsFor(type, category)
     val q = query.trim()
     if (q.isBlank()) return combined.take(limit)
     val (startsWith, rest) = combined

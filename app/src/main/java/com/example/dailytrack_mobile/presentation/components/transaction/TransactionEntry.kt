@@ -106,6 +106,57 @@ class TransactionEntryState(
     }
 }
 
+/** One past transaction as far as suggestions care. [date] is yyyy-MM-dd. */
+data class HistoryRow(val type: String, val category: String, val description: String?, val date: String)
+
+/**
+ * What past transactions say about each type: the categories it has been used
+ * with and how those were described, most used first (ties go to the newest).
+ */
+class EntryHistory(
+    private val categories: Map<EntryType, List<String>> = emptyMap(),
+    private val descriptionsByType: Map<EntryType, List<String>> = emptyMap(),
+    private val descriptionsByCategory: Map<Pair<EntryType, String>, List<String>> = emptyMap()
+) {
+    /** Categories [type] has been used with; [fallback] while it has none yet. */
+    fun categoriesFor(type: EntryType, fallback: List<String> = emptyList()): List<String> =
+        categories[type].orEmpty().ifEmpty { fallback }
+
+    fun hasCategories(type: EntryType): Boolean = !categories[type].isNullOrEmpty()
+
+    /** Descriptions used for [type] + [category], or for [type] alone while no category is picked. */
+    fun descriptionsFor(type: EntryType, category: String): List<String> {
+        val c = category.trim()
+        return if (c.isEmpty()) descriptionsByType[type].orEmpty()
+        else descriptionsByCategory[type to c.lowercase()].orEmpty()
+    }
+
+    val categoriesByType: Map<EntryType, List<String>> get() = categories
+
+    companion object {
+        val EMPTY = EntryHistory()
+
+        fun from(rows: List<HistoryRow>): EntryHistory {
+            val parsed = rows.sortedByDescending { it.date }.mapNotNull { r ->
+                val category = r.category.trim()
+                if (category.isEmpty()) null
+                else Triple(EntryType.fromDb(r.type), category, r.description?.trim().orEmpty())
+            }
+            val described = parsed.filter { it.third.isNotEmpty() }
+            return EntryHistory(
+                categories = parsed.groupBy({ it.first }, { it.second }).mapValues { mostUsedFirst(it.value) },
+                descriptionsByType = described.groupBy({ it.first }, { it.third }).mapValues { mostUsedFirst(it.value) },
+                descriptionsByCategory = described.groupBy({ it.first to it.second.lowercase() }, { it.third })
+                    .mapValues { mostUsedFirst(it.value) }
+            )
+        }
+
+        // groupingBy keeps first-seen order, and the sort is stable, so equal counts stay newest first.
+        private fun mostUsedFirst(values: List<String>): List<String> =
+            values.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }
+    }
+}
+
 /** Human list: "amount", "amount & category", "amount, category & account". */
 fun List<String>.joinAsSentence(): String = when (size) {
     0 -> ""

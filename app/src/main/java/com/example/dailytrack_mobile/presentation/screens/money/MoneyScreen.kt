@@ -17,6 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRefreshBox
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
+import com.example.dailytrack_mobile.presentation.components.transaction.HistoryRow
 import com.example.dailytrack_mobile.presentation.screens.money.components.AnalysisTab
 import com.example.dailytrack_mobile.presentation.screens.money.components.BulkDeleteConfirmationDialog
 import com.example.dailytrack_mobile.presentation.screens.money.components.BudgetManagerSheet
@@ -135,19 +137,9 @@ fun MoneyDialogsAndSheets(
         )
     }
 
-    // Historical descriptions and contextual descriptions by category
-    val allDescriptions = remember(state.transactions) {
-        state.transactions
-            .mapNotNull { it.note?.takeIf { n -> n.isNotBlank() } ?: it.title.takeIf { t -> t != it.category && t.isNotBlank() } }
-            .distinct()
-    }
-    val descriptionsByCategory = remember(state.transactions) {
-        state.transactions
-            .filter { (it.note?.isNotBlank() == true) || (it.title != it.category && it.title.isNotBlank()) }
-            .groupBy { it.category }
-            .mapValues { (_, txs) ->
-                txs.mapNotNull { it.note?.takeIf { n -> n.isNotBlank() } ?: it.title.takeIf { t -> t != it.category && t.isNotBlank() } }.distinct()
-            }
+    // Categories and descriptions per type, from the whole history as it streams in
+    val entryHistory = remember(state.transactions) {
+        EntryHistory.from(state.transactions.map { HistoryRow(it.rawType, it.category, it.note, it.rawDate) })
     }
 
     // Edit Transaction Dialog
@@ -156,9 +148,7 @@ fun MoneyDialogsAndSheets(
             transaction = tx,
             availableAccounts = state.allAvailableAccounts,
             availableCategories = state.allAvailableCategories,
-            mostUsedCategories = state.mostUsedCategories,
-            recentDescriptions = allDescriptions,
-            descriptionsByCategory = descriptionsByCategory,
+            history = entryHistory,
             isUpdating = state.isUpdating,
             onSave = { id, type, category, amount, note, accountName, date, excludeAnalytics ->
                 onAction(
@@ -234,8 +224,7 @@ fun MoneyDialogsAndSheets(
             transactions = state.selectedTransactions,
             availableAccounts = state.allAvailableAccounts,
             availableCategories = state.allAvailableCategories,
-            mostUsedCategories = state.mostUsedCategories,
-            recentDescriptions = allDescriptions,
+            history = entryHistory,
             isUpdating = state.isBulkUpdating,
             onSave = { updates ->
                 onAction(MoneyAction.ExecuteBulkEdit(updates))

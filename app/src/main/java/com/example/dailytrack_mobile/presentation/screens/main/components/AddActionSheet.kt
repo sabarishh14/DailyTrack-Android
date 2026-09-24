@@ -72,6 +72,7 @@ val dims = Dimens.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {

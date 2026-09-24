@@ -82,6 +82,7 @@ internal fun CashFlowBreakdownCard(
     periodLabel: String,
     hasActiveFilters: Boolean = false,
     isLoading: Boolean = false,
+    onDrilldownChanged: (categories: Set<String>?) -> Unit = {},
     onViewTransactions: (String?) -> Unit
 ) {
     val dims = Dimens.current
@@ -222,6 +223,17 @@ internal fun CashFlowBreakdownCard(
         if (categories.size <= 10) emptyList() else categories.drop(9)
     }
     val othersTotal = remember(otherCategoriesRaw) { otherCategoriesRaw.sumOf { it.amount } }
+
+    // Lets the summary row below follow whatever the chart is drilled into (null = everything).
+    LaunchedEffect(activeDrilldownCategory, otherCategoriesRaw) {
+        onDrilldownChanged(
+            when (activeDrilldownCategory) {
+                null -> null
+                "__OTHERS__" -> otherCategoriesRaw.map { it.name }.toSet()
+                else -> setOf(activeDrilldownCategory!!)
+            }
+        )
+    }
 
     val otherCategories = remember(otherCategoriesRaw, primaryColor, isDtOg) {
         if (otherCategoriesRaw.isEmpty()) emptyList()

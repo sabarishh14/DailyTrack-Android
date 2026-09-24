@@ -169,6 +169,10 @@ fun AnalysisTab(
     val categories = state.spendingAnalyzerData
     val filterState = state.analysisFilterState
     val isInitialLoading = state.isLoading && state.transactions.isEmpty()
+    var drilldownCategories by remember { mutableStateOf<Set<String>?>(null) }
+    val drilldownTransactions = drilldownCategories?.takeIf { categories.isNotEmpty() }?.let { selected ->
+        state.filteredAnalysisTransactions.filter { tx -> selected.any { it.equals(tx.category, ignoreCase = true) } }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -212,6 +216,7 @@ fun AnalysisTab(
                     periodLabel = periodTitle,
                     hasActiveFilters = filterState.hasActiveFilters,
                     isLoading = false,
+                    onDrilldownChanged = { drilldownCategories = it },
                     onViewTransactions = { category ->
                         if (category != null) {
                             onAction(MoneyAction.ViewCategoryTransactions(category))
@@ -236,9 +241,15 @@ fun AnalysisTab(
                 else -> filterState.formattedDateRange() ?: "All time"
             }
             IncomeExpenseRow(
-                income = state.filteredTotalIncome,
-                expenses = state.filteredTotalExpenses,
-                periodLabel = periodSubtitle,
+                income = drilldownTransactions?.filter { it.type == TransactionType.CREDIT }?.sumOf { it.amount }
+                    ?: state.filteredTotalIncome,
+                expenses = drilldownTransactions?.filter { it.type == TransactionType.DEBIT }?.sumOf { it.amount }
+                    ?: state.filteredTotalExpenses,
+                periodLabel = when {
+                    drilldownTransactions == null -> periodSubtitle
+                    drilldownCategories?.size == 1 -> "${drilldownCategories!!.first()} · $periodSubtitle"
+                    else -> "Other categories · $periodSubtitle"
+                },
                 isLoading = isInitialLoading
             )
         }

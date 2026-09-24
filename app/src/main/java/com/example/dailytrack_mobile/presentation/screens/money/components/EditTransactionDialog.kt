@@ -24,6 +24,7 @@ import com.example.dailytrack_mobile.presentation.components.transaction.EntryCa
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryDateAccountRow
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryDescriptionCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryExcludeCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
 import com.example.dailytrack_mobile.presentation.components.transaction.EntrySuggestionBar
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryType
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryTypeSelector
@@ -62,24 +63,11 @@ internal fun Transaction.toEntryState(): TransactionEntryState = TransactionEntr
     excludeAnalytics = isExcluded
 )
 
-/** Top pills for the edit forms: the current category first, then the most used ones that fit the type. */
-internal fun editCategoryPills(
-    current: String,
-    type: EntryType,
-    mostUsed: List<String>,
-    all: List<String>
-): List<String> {
-    val source = mostUsed.ifEmpty { all }
-    val incomeish = listOf("Salary", "Freelance", "Investment", "Gift", "Other")
-    val filtered = if (type == EntryType.INCOME) {
-        source.filter { c -> incomeish.any { it.equals(c, ignoreCase = true) } }.ifEmpty { incomeish }
-    } else {
-        source.filter { !it.equals("Salary", ignoreCase = true) && !it.equals("Freelance", ignoreCase = true) }
-    }
-    return (listOfNotNull(current.takeIf { it.isNotBlank() }) + filtered)
+/** Top pills for the edit forms: the current category first, then the ones its type is most used with. */
+internal fun editCategoryPills(current: String, typeCategories: List<String>): List<String> =
+    (listOfNotNull(current.takeIf { it.isNotBlank() }) + typeCategories)
         .distinctBy { it.lowercase() }
         .take(6)
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,9 +75,7 @@ fun EditTransactionDialog(
     transaction: Transaction,
     availableAccounts: List<String>,
     availableCategories: List<String>,
-    mostUsedCategories: List<String> = emptyList(),
-    recentDescriptions: List<String> = emptyList(),
-    descriptionsByCategory: Map<String, List<String>> = emptyMap(),
+    history: EntryHistory = EntryHistory.EMPTY,
     isUpdating: Boolean,
     onSave: (
         id: Long,
@@ -118,11 +104,10 @@ fun EditTransactionDialog(
         sortAccountsCanonical(availableAccounts.ifEmpty { defaultAccounts })
     }
     val allCategories = remember(availableCategories) { availableCategories.ifEmpty { defaultCategories } }
-    val categoryPills = remember(entry.type, entry.category, mostUsedCategories, allCategories) {
-        editCategoryPills(entry.category, entry.type, mostUsedCategories, allCategories)
-    }
-    val noteSuggestions = remember(entry.category, entry.note, recentDescriptions, descriptionsByCategory) {
-        rankDescriptionSuggestions(entry.category, entry.note, recentDescriptions, descriptionsByCategory)
+    val typeCategories = remember(entry.type, history, allCategories) { history.categoriesFor(entry.type, allCategories) }
+    val categoryPills = remember(entry.category, typeCategories) { editCategoryPills(entry.category, typeCategories) }
+    val noteSuggestions = remember(entry.type, entry.category, entry.note, history) {
+        rankDescriptionSuggestions(entry.type, entry.category, entry.note, history)
     }
 
     BackHandler(enabled = isNoteFocused) { focusManager.clearFocus() }
@@ -145,7 +130,7 @@ fun EditTransactionDialog(
 
     if (showCategoryPicker) {
         CategoryPickerDialog(
-            allCategories = allCategories,
+            allCategories = typeCategories,
             recentCategories = categoryPills,
             currentCategory = entry.category,
             onCategorySelected = {
@@ -170,6 +155,7 @@ fun EditTransactionDialog(
 
     ModalBottomSheet(
         onDismissRequest = { if (!isUpdating) onDismiss() },
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() },
@@ -202,12 +188,15 @@ fun EditTransactionDialog(
                     Text(
                         text = "Edit Transaction",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1
                     )
                     Text(
                         text = "#${transaction.id} · ${transaction.bank}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
                 IconButton(onClick = onDismiss, enabled = !isUpdating) {
@@ -263,7 +252,7 @@ fun EditTransactionDialog(
                 EntrySuggestionBar(
                     category = entry.category,
                     suggestions = noteSuggestions,
-                    categorySuggestions = descriptionsByCategory[entry.category.trim()].orEmpty(),
+                    categorySuggestions = history.descriptionsFor(entry.type, entry.category),
                     onPick = {
                         entry.note = it
                         focusManager.clearFocus()

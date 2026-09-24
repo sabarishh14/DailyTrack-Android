@@ -90,6 +90,7 @@ fun CategoryVisibilitySheet(
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = {

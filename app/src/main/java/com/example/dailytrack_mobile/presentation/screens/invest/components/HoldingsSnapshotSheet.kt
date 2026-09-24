@@ -76,6 +76,7 @@ fun HoldingsSnapshotSheet(
 
     ModalBottomSheet(
         onDismissRequest = { onAction(InvestAction.CloseHoldingsSnapshot) },
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         dragHandle = { BottomSheetDefaults.DragHandle() },

@@ -451,7 +451,9 @@ internal fun LegendItem(
                 Text(
                     text = "₹${formatCompact(category.amount)}",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 if (!percentageText.isNullOrBlank()) {
                     Text(
@@ -460,7 +462,9 @@ internal fun LegendItem(
                             fontSize = 9.5.sp,
                             fontWeight = FontWeight.Normal
                         ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }

@@ -422,24 +422,31 @@ fun TransactionCardSurface(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                // Stays on one line: the account name gives way (ellipsis) before date or badge do.
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
+                    horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingSmall),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = transaction.date,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Text(
                         text = "•",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        maxLines = 1
                     )
                     Text(
                         text = transaction.bank,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
 
                     if (transaction.isExcluded) {
@@ -454,6 +461,8 @@ fun TransactionCardSurface(
                                     fontSize = 9.sp
                                 ),
                                 color = MaterialTheme.colorScheme.error,
+                                maxLines = 1,
+                                softWrap = false,
                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
@@ -470,7 +479,9 @@ fun TransactionCardSurface(
                     fontWeight = FontWeight.Bold
                 ),
                 color = if (transaction.type == TransactionType.CREDIT) ChartColors.IncomeGreen
-                else MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }

@@ -78,7 +78,7 @@ private val defaultAccounts = listOf(
     "Cash", "KOTAK", "IDBI", "FEDERAL", "CUB", "INDIAN", "ICICI", "HDFC", "SBI", "Axis", "CC-PINNACLE 6360"
 )
 
-private val addTypes = listOf(EntryType.EXPENSE, EntryType.INCOME)
+private val addTypes = EntryType.entries
 
 private fun TransactionDraft.toEntry(): TransactionEntryState = TransactionEntryState(
     type = EntryType.entries.firstOrNull { it.name == type } ?: EntryType.EXPENSE,
@@ -187,19 +187,8 @@ fun AddMoneyScreen(
         formState.categories.ifEmpty { (defaultExpenseCategories + defaultIncomeCategories).distinct() }
     }
 
-    fun categoriesFor(type: EntryType): List<String> {
-        val mostUsed = if (type == EntryType.INCOME) formState.mostUsedIncomeCategories else formState.mostUsedExpenseCategories
-        val base = if (type == EntryType.INCOME) defaultIncomeCategories else defaultExpenseCategories
-        val combined = (mostUsed + base + allCategories).distinct()
-        return if (type == EntryType.INCOME) {
-            combined.filter { c ->
-                listOf("Salary", "Freelance", "Investment", "Gift", "Other").any { it.equals(c, ignoreCase = true) } ||
-                    mostUsed.contains(c)
-            }
-        } else {
-            combined.filter { c -> !c.equals("Salary", ignoreCase = true) && !c.equals("Freelance", ignoreCase = true) }
-        }
-    }
+    // Only what this type has been used with before; new ones can still be typed in the search dialog.
+    fun categoriesFor(type: EntryType): List<String> = formState.history.categoriesFor(type, allCategories)
 
     // ── Entry actions ────────────────────────────────────────────────────────
 
@@ -332,10 +321,10 @@ fun AddMoneyScreen(
 
     val descriptionSuggestions = active?.let {
         rankDescriptionSuggestions(
+            type = it.type,
             category = it.category,
             query = it.note,
-            recentDescriptions = formState.recentDescriptions,
-            descriptionsByCategory = formState.descriptionsByCategory
+            history = formState.history
         )
     }.orEmpty()
 
@@ -442,14 +431,11 @@ fun AddMoneyScreen(
                                 entry = entry,
                                 number = index + 1,
                                 total = entries.size,
-                                categoryPills = remember(entry.type, entry.category, formState.categories, formState.mostUsedExpenseCategories, formState.mostUsedIncomeCategories) {
+                                categoryPills = remember(entry.type, entry.category, formState.categories, formState.history) {
                                     val top = categoriesFor(entry.type).take(6)
                                     if (entry.category.isNotBlank() && top.none { it.equals(entry.category, ignoreCase = true) }) top + entry.category else top
                                 },
-                                isCategoriesLoading = formState.isLoadingData && (
-                                    if (entry.type == EntryType.INCOME) formState.mostUsedIncomeCategories.isEmpty()
-                                    else formState.mostUsedExpenseCategories.isEmpty()
-                                ),
+                                isCategoriesLoading = formState.isLoadingData && !formState.history.hasCategories(entry.type),
                                 amountFocusRequester = amountFocusRequester,
                                 topRequester = editorTopRequester,
                                 descriptionRequester = descriptionRequester,
@@ -602,7 +588,7 @@ fun AddMoneyScreen(
             EntrySuggestionBar(
                 category = category,
                 suggestions = descriptionSuggestions,
-                categorySuggestions = formState.descriptionsByCategory[category.trim()].orEmpty(),
+                categorySuggestions = active?.let { formState.history.descriptionsFor(it.type, category) }.orEmpty(),
                 onPick = { suggestion ->
                     active?.note = suggestion
                     focusManager.clearFocus()

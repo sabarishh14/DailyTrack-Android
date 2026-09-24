@@ -45,11 +45,13 @@ import com.example.dailytrack_mobile.presentation.components.transaction.EntryDa
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryDescriptionCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryEditorHeader
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryExcludeCard
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
 import com.example.dailytrack_mobile.presentation.components.transaction.EntrySummaryCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryType
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryTypeSelector
 import com.example.dailytrack_mobile.presentation.components.transaction.TransactionEntryState
 import com.example.dailytrack_mobile.presentation.components.transaction.entryTypeAccent
+import com.example.dailytrack_mobile.presentation.components.transaction.rankDescriptionSuggestions
 import java.text.SimpleDateFormat
 import java.util.*
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
@@ -68,8 +70,7 @@ fun BulkEditTransactionsSheet(
     transactions: List<Transaction>,
     availableAccounts: List<String>,
     availableCategories: List<String>,
-    mostUsedCategories: List<String> = emptyList(),
-    recentDescriptions: List<String> = emptyList(),
+    history: EntryHistory = EntryHistory.EMPTY,
     isUpdating: Boolean,
     onSave: (List<BulkEditTransactionItemDto>) -> Unit,
     onDismiss: () -> Unit
@@ -98,10 +99,12 @@ fun BulkEditTransactionsSheet(
     val allCategories = remember(availableCategories) {
         if (availableCategories.isNotEmpty()) availableCategories else defaultCategories
     }
-    val recentCategories = remember(mostUsedCategories, allCategories) {
-        val source = if (mostUsedCategories.isNotEmpty()) mostUsedCategories else allCategories
-        source.distinct().take(8)
+    // Batch changes cover every selected type, so offer what any of them has been used with.
+    val selectedTypes = items.map { it.type }.distinct()
+    val batchCategories = remember(selectedTypes, history, allCategories) {
+        selectedTypes.flatMap { history.categoriesFor(it, allCategories) }.distinct()
     }
+    val recentCategories = batchCategories.take(8)
 
     val totalAmount = items.sumOf { it.evaluatedAmount ?: 0.0 }
 
@@ -133,25 +136,17 @@ fun BulkEditTransactionsSheet(
         else -> ""
     }
 
-    val defaultFallbackSuggestions = remember {
-        listOf(
-            "Food & Dining", "Grocery", "Uber / Auto", "Swiggy / Zomato",
-            "Amazon / Shopping", "Mobile Recharge", "Electricity Bill", "Fuel / Petrol",
-            "Medical / Health", "Entertainment", "Rent", "Salary"
-        )
-    }
-
-    val descriptionSuggestions = remember(currentDescriptionText, recentDescriptions, items.map { it.note }) {
-        val existing = (recentDescriptions + items.map { it.note }.filter { it.isNotBlank() } + defaultFallbackSuggestions).distinct()
-        val query = currentDescriptionText.trim()
-        if (query.isBlank()) {
-            existing.take(40)
-        } else {
-            val (startsWith, contains) = existing
-                .filter { !it.equals(query, ignoreCase = true) }
-                .partition { it.startsWith(query, ignoreCase = true) }
-            (startsWith + contains.filter { it.contains(query, ignoreCase = true) }).take(40)
-        }
+    // One item's note follows its own type + category; the batch note follows every selected type,
+    // narrowed to the category when they all share one.
+    val descriptionTarget = activeDescriptionTargetItem
+    val sharedCategory = items.map { it.category.trim() }.distinct().singleOrNull().orEmpty()
+    val descriptionSuggestions = if (descriptionTarget != null) {
+        rankDescriptionSuggestions(descriptionTarget.type, descriptionTarget.category, currentDescriptionText, history, limit = 40)
+    } else {
+        selectedTypes
+            .flatMap { rankDescriptionSuggestions(it, sharedCategory, currentDescriptionText, history, limit = 40) }
+            .distinct()
+            .take(40)
     }
 
     // Global Date Picker for Batch Apply
@@ -210,7 +205,7 @@ fun BulkEditTransactionsSheet(
     // ── Batch & Individual Category Picker Dialog ─────────────────────
     if (showBatchCategoryPicker) {
         CategoryPickerDialog(
-            allCategories = allCategories,
+            allCategories = batchCategories,
             recentCategories = recentCategories,
             onCategorySelected = { cat ->
                 items.forEach { it.category = cat }
@@ -222,9 +217,10 @@ fun BulkEditTransactionsSheet(
     }
 
     categoryPickerTargetItem?.let { target ->
+        val targetCategories = history.categoriesFor(target.type, allCategories)
         CategoryPickerDialog(
-            allCategories = allCategories,
-            recentCategories = recentCategories,
+            allCategories = targetCategories,
+            recentCategories = editCategoryPills(target.category, targetCategories),
             onCategorySelected = { cat ->
                 target.category = cat
                 categoryPickerTargetItem = null
@@ -261,6 +257,7 @@ fun BulkEditTransactionsSheet(
 
     ModalBottomSheet(
         onDismissRequest = { if (!isUpdating) onDismiss() },
+        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() },
@@ -928,7 +925,7 @@ fun BulkEditTransactionsSheet(
                                         onAccountClick = { accountPickerTargetItem = item }
                                     )
                                     EntryCategoryPills(
-                                        pills = editCategoryPills(item.category, item.type, mostUsedCategories, allCategories),
+                                        pills = editCategoryPills(item.category, history.categoriesFor(item.type, allCategories)),
                                         selected = item.category,
                                         onSelect = { item.category = it },
                                         onMore = { categoryPickerTargetItem = item }

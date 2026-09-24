@@ -373,15 +373,20 @@ internal fun HoldingItem(holding: InvestmentHolding) {
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.SemiBold
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = "Invested: ${formatCompact(holding.invested)}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
                 )
             }
+
+            Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
 
             // Current value + P&L
             Column(horizontalAlignment = Alignment.End) {
@@ -390,7 +395,9 @@ internal fun HoldingItem(holding: InvestmentHolding) {
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontWeight = FontWeight.Bold
                     ),
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -398,7 +405,9 @@ internal fun HoldingItem(holding: InvestmentHolding) {
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = FontWeight.SemiBold
                     ),
-                    color = if (holding.isGain) InvestColors.GainGreen else InvestColors.LossRed
+                    color = if (holding.isGain) InvestColors.GainGreen else InvestColors.LossRed,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
         }
