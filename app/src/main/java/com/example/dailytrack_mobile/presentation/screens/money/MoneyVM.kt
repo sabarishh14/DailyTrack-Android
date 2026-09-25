@@ -704,6 +704,7 @@ private fun com.example.dailytrack_mobile.data.remote.dto.TransactionDto.toDomai
                     SplitMember(name = m.name, amount = m.amount, paid = m.paid)
                 }
             )
-        }
+        },
+        balanceAfter = balanceAfter
     )
 }

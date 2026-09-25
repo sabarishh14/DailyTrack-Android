@@ -28,7 +28,9 @@ data class TransactionDto(
     @Json(name = "description") val description: String?,
     @Json(name = "amount") val amount: Double,
     @Json(name = "exclude_analytics") val excludeAnalytics: Boolean,
-    @Json(name = "split") val split: SplitDto?
+    @Json(name = "split") val split: SplitDto?,
+    // Account balance right after this transaction; only when asked for and allowed.
+    @Json(name = "balance_after") val balanceAfter: Double? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -60,7 +62,18 @@ data class AddTransactionRequestDto(
 @JsonClass(generateAdapter = true)
 data class ApiResponseDto(
     @Json(name = "success") val success: Boolean,
-    @Json(name = "message") val message: String? = null
+    @Json(name = "message") val message: String? = null,
+    // Only on adds: what each touched, tracked account holds now.
+    @Json(name = "balances") val balances: List<BalanceChangeDto>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class BalanceChangeDto(
+    @Json(name = "account") val account: String,
+    @Json(name = "before") val before: Double,
+    @Json(name = "after") val after: Double,
+    @Json(name = "min_balance") val minBalance: Double? = null,
+    @Json(name = "below_min") val belowMin: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)

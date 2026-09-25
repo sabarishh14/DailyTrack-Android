@@ -5,6 +5,7 @@ import com.example.dailytrack_mobile.data.local.demo.DemoDataManager
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
 import com.example.dailytrack_mobile.data.remote.dto.AddTransactionRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
@@ -18,6 +19,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharedFlow
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** Credit cards aren't balance-tracked (mirrors the backend's is_cc_account). */
+fun isCcAccount(name: String?): Boolean = name?.trim()?.uppercase()?.startsWith("CC") == true
 
 /** One entry of a batch being added. [type] is the DB value ("Debit", "Credit", …). */
 data class NewTransaction(
@@ -73,6 +77,7 @@ class MoneyRepository @Inject constructor(
         } catch (_: Exception) { }
     }
 
+    fun getCachedAccountDetails(): List<AccountDto> = synchronized(this) { cachedAccounts.orEmpty().toList() }
     fun getCachedAccounts(): List<String> = synchronized(this) { (cachedAccounts?.map { it.account } ?: cachedAccountNames).toList() }
     fun getCachedCategories(): List<String> = synchronized(this) { cachedCategories ?: emptyList() }
 
@@ -186,10 +191,15 @@ class MoneyRepository @Inject constructor(
         }
     }
 
-    /** Saves a batch in one request, so either every entry lands or none do. */
-    suspend fun addTransactions(entries: List<NewTransaction>): Result<Unit> = runCatching {
+    /**
+     * Saves a batch in one request, so either every entry lands or none do.
+     * Returns what each touched, tracked account holds afterwards.
+     */
+    suspend fun addTransactions(entries: List<NewTransaction>): Result<List<BalanceChangeDto>> = runCatching {
         require(entries.isNotEmpty()) { "Nothing to save" }
         if (demoDataManager.isDemoModeEnabled()) {
+            val touched = entries.map { it.accountName }.toSet()
+            val before = demoDataManager.getAccounts().filter { it.account in touched }.associateBy { it.account }
             entries.forEach { e ->
                 demoDataManager.addTransaction(
                     type = e.type,
@@ -201,6 +211,13 @@ class MoneyRepository @Inject constructor(
                     excludeAnalytics = e.excludeAnalytics
                 )
             }
+            demoDataManager.getAccounts()
+                .filter { it.account in before && it.balanceTracked && !isCcAccount(it.account) }
+                .map { after ->
+                    val b = before.getValue(after.account).balance ?: 0.0
+                    val a = after.balance ?: 0.0
+                    BalanceChangeDto(after.account, b, a, after.minBalance, after.minBalance != null && a < after.minBalance)
+                }
         } else {
             val request = entries.map { e ->
                 AddTransactionRequestDto(
@@ -219,7 +236,37 @@ class MoneyRepository @Inject constructor(
             }
             entries.forEach { e -> recordLocal(e.type, e.category, e.note, e.date) }
             clearCache()
+            val balances = response.balances.orEmpty()
+            applyBalanceChanges(balances)
             demoDataManager.notifyDataUpdated()
+            balances
+        }
+    }
+
+    /** Sets or clears ([min] null) the balance an account shouldn't go under. */
+    suspend fun setMinBalance(account: String, min: Double?): Result<Unit> = runCatching {
+        check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
+        val response = api.updateAccount(mapOf("account" to account, "min_balance" to (min ?: "")))
+        if (!response.success) throw Exception(response.message ?: "Couldn't save the minimum")
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.map { if (it.account == account) it.copy(minBalance = min) else it }
+        }
+    }
+
+    /** Lets the server push low-balance alerts to this phone. Best effort. */
+    suspend fun registerPushToken(token: String) {
+        if (demoDataManager.isDemoModeEnabled()) return
+        runCatching { api.registerDevice(mapOf("token" to token)) }
+    }
+
+    /** Keeps cached balances current so the next entry's preview starts from the right number. */
+    private fun applyBalanceChanges(changes: List<BalanceChangeDto>) {
+        if (changes.isEmpty()) return
+        val byAccount = changes.associateBy { it.account }
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.map { acc ->
+                byAccount[acc.account]?.let { acc.copy(balance = it.after) } ?: acc
+            }
         }
     }
 

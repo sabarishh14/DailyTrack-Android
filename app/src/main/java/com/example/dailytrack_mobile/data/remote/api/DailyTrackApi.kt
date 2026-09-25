@@ -48,11 +48,20 @@ interface DailyTrackApi {
     @GET("/api/accounts")
     suspend fun getAccounts(): List<AccountDto>
 
+    /** Account settings; send only the fields to change. "" clears min_balance. */
+    @PUT("/api/accounts")
+    suspend fun updateAccount(@Body body: Map<String, @JvmSuppressWildcards Any>): ApiResponseDto
+
+    /** Registers this phone for push alerts (low balance). */
+    @POST("/api/devices")
+    suspend fun registerDevice(@Body body: Map<String, String>): ApiResponseDto
+
     @GET("/api/transactions")
     suspend fun getTransactions(
         @Query("limit") limit: Int = 100,
         @Query("offset") offset: Int = 0,
-        @Query("month") month: String? = null
+        @Query("month") month: String? = null,
+        @Query("with_balances") withBalances: Int = 1
     ): TransactionsResponseDto
 
     @POST("/api/transactions")

@@ -25,8 +25,8 @@ android {
         applicationId = "com.example.dailytrack_mobile"
         minSdk = 27
         targetSdk = 37
-        versionCode = 17
-        versionName = "1.0.16"
+        versionCode = 18
+        versionName = "1.0.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -113,6 +113,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)

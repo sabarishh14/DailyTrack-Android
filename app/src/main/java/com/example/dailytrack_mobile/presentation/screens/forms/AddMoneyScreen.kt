@@ -34,7 +34,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
+import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.repository.NewTransaction
+import com.example.dailytrack_mobile.presentation.components.transaction.BalanceProjection
+import com.example.dailytrack_mobile.presentation.components.transaction.EntryBalancePreview
+import com.example.dailytrack_mobile.presentation.components.transaction.projectBalances
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryAmountCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryCategoryPills
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryDateAccountRow
@@ -105,7 +109,7 @@ private fun TransactionEntryState.toDraft(today: String): TransactionDraft = Tra
 fun AddMoneyScreen(
     formsVM: FormsVM = hiltViewModel(),
     onDirtyStateChanged: (Boolean) -> Unit = {},
-    onSaveSuccess: (count: Int) -> Unit = {}
+    onSaveSuccess: (count: Int, balances: List<BalanceChangeDto>) -> Unit = { _, _ -> }
 ) {
     val formState by formsVM.addMoneyState.collectAsState()
     val focusManager = LocalFocusManager.current
@@ -115,6 +119,9 @@ fun AddMoneyScreen(
     // Anything left half-typed last time seeds the form, so backing out of the
     // screen — or the process being killed behind a banking app — costs nothing.
     val restoredDrafts = remember { formsVM.consumeSavedDrafts() }
+
+    // The balance preview must start from today's numbers, not the last visit's.
+    LaunchedEffect(Unit) { formsVM.refreshAccounts() }
     var showDraftBanner by remember { mutableStateOf(restoredDrafts.isNotEmpty()) }
 
     val entries = remember {
@@ -328,6 +335,9 @@ fun AddMoneyScreen(
         )
     }.orEmpty()
 
+    // What each entry leaves in its account, stacking entries on the same one.
+    val projections = projectBalances(entries, formState.accountDetails)
+
     val toSave = entries.filterNot { it.isBlank }
     val firstIncomplete = toSave.firstOrNull { !it.isComplete }
     val canSave = !formState.isSaving && toSave.isNotEmpty() && firstIncomplete == null
@@ -341,7 +351,9 @@ fun AddMoneyScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = dims.screenHorizontalPadding, vertical = 12.dp)
+                // Save is the last thing on the page: just a small margin under it
+                // (the gesture-bar inset is added by the scaffold).
+                .padding(start = dims.screenHorizontalPadding, end = dims.screenHorizontalPadding, top = 12.dp, bottom = 8.dp)
                 .padding(bottom = if (showSuggestions && descriptionSuggestions.isNotEmpty()) 84.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -431,6 +443,7 @@ fun AddMoneyScreen(
                                 entry = entry,
                                 number = index + 1,
                                 total = entries.size,
+                                balanceProjection = projections[entry.id],
                                 categoryPills = remember(entry.type, entry.category, formState.categories, formState.history) {
                                     val top = categoriesFor(entry.type).take(6)
                                     if (entry.category.isNotBlank() && top.none { it.equals(entry.category, ignoreCase = true) }) top + entry.category else top
@@ -573,8 +586,6 @@ fun AddMoneyScreen(
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 )
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
 
         // Docked directly above the soft keyboard while a description is typed.
@@ -609,6 +620,7 @@ private fun EntryEditor(
     entry: TransactionEntryState,
     number: Int,
     total: Int,
+    balanceProjection: BalanceProjection?,
     categoryPills: List<String>,
     isCategoriesLoading: Boolean,
     amountFocusRequester: FocusRequester,
@@ -628,7 +640,7 @@ private fun EntryEditor(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = if (total > 1) 6.dp else 0.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column(
             modifier = Modifier.bringIntoViewRequester(topRequester),
@@ -660,6 +672,17 @@ private fun EntryEditor(
             onAccountClick = onAccountClick
         )
 
+        AnimatedVisibility(
+            visible = balanceProjection != null,
+            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
+        ) {
+            // Keeps showing the last projection while it animates away.
+            var shown by remember { mutableStateOf(balanceProjection) }
+            if (balanceProjection != null) shown = balanceProjection
+            shown?.let { EntryBalancePreview(it) }
+        }
+
         EntryCategoryPills(
             pills = categoryPills,
             selected = entry.category,
@@ -670,7 +693,7 @@ private fun EntryEditor(
 
         Column(
             modifier = Modifier.bringIntoViewRequester(descriptionRequester),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             EntryDescriptionCard(
                 note = entry.note,

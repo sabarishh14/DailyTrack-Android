@@ -53,6 +53,16 @@ class AppLockManager(private val context: Context) {
     @Volatile
     private var lastBackgroundTimestampMemory: Long = 0L
 
+    // Process-lifetime flag: true while the user is inside an unlocked session. Lets a recreated
+    // activity (e.g. a launcher shortcut, which relaunches with CLEAR_TASK) skip the lock prompt.
+    @Volatile
+    var isSessionUnlocked: Boolean = false
+
+    // Identity of the activity instance currently in the foreground. When a relaunch replaces the
+    // activity, the old instance's late ON_STOP must not be treated as the app going to background.
+    @Volatile
+    var foregroundActivityId: Int = 0
+
     init {
         // Fast sync cache initialization from DataStore on very first run if not already present
         if (!syncPrefs.contains("app_lock_enabled")) {
@@ -91,9 +101,11 @@ class AppLockManager(private val context: Context) {
 
     fun shouldLockOnColdStart(): Boolean {
         if (!isAppLockEnabledSync()) return false
+        val lastBg = getLastBackgroundTimestampSync()
+        // Activity recreated while the user was already in the unlocked app (never backgrounded since unlock)
+        if (isSessionUnlocked && lastBg == 0L) return false
         val timeout = getLockTimeoutSync()
         if (timeout == LockTimeout.IMMEDIATELY) return true
-        val lastBg = getLastBackgroundTimestampSync()
         if (lastBg == 0L) return true
         val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
         return elapsedSeconds >= timeout.seconds
@@ -101,8 +113,9 @@ class AppLockManager(private val context: Context) {
 
     fun shouldLockOnResume(timeout: LockTimeout): Boolean {
         if (!isAppLockEnabledSync()) return false
-        if (timeout == LockTimeout.IMMEDIATELY) return true
         val lastBg = getLastBackgroundTimestampSync()
+        if (isSessionUnlocked && lastBg == 0L) return false
+        if (timeout == LockTimeout.IMMEDIATELY) return true
         if (lastBg == 0L) return false
         val elapsedSeconds = (System.currentTimeMillis() - lastBg) / 1000
         return elapsedSeconds >= timeout.seconds
@@ -157,9 +170,13 @@ class AppLockManager(private val context: Context) {
         return LockTimeout.fromString(timeoutStr)
     }
 
-    suspend fun setLastBackgroundTimestamp(timestamp: Long) {
+    fun setLastBackgroundTimestampSync(timestamp: Long) {
         lastBackgroundTimestampMemory = timestamp
         syncPrefs.edit().putLong("app_lock_last_bg", timestamp).apply()
+    }
+
+    suspend fun setLastBackgroundTimestamp(timestamp: Long) {
+        setLastBackgroundTimestampSync(timestamp)
         context.dataStore.edit { preferences ->
             preferences[KEY_LAST_BACKGROUND_TIMESTAMP] = timestamp
         }

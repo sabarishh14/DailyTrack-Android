@@ -116,69 +116,52 @@ internal fun AnalysisFilterRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Main Filter Button with Badge (Always visible at start!)
-            FilterChip(
-                selected = filterState.hasActiveFilters,
+            // Filters: icon only, with the active count beside it.
+            Surface(
                 onClick = onOpenFilterSheet,
-                label = {
-                    Text(
-                        text = "Filters",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                },
-                leadingIcon = {
+                shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp),
+                color = if (filterState.hasActiveFilters) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                modifier = Modifier.height(32.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Tune,
                         contentDescription = "Filters",
+                        tint = if (filterState.hasActiveFilters) MaterialTheme.colorScheme.primary
+                               else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(16.dp)
                     )
-                },
-                trailingIcon = if (filterState.hasActiveFilters) {
-                    {
-                        Badge(
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ) {
-                            Text(
-                                text = "${filterState.activeFilterCount}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
+                    if (filterState.hasActiveFilters) {
+                        Text(
+                            text = "${filterState.activeFilterCount}",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
-                } else null,
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    labelColor = MaterialTheme.colorScheme.onSurface,
-                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    selectedLeadingIconColor = MaterialTheme.colorScheme.primary
-                ),
-                shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp)
-            )
+                }
+            }
 
-            // Clear Button (Visible when active filters exist)
+            // Clear: icon only, while anything is filtered.
             if (filterState.hasActiveFilters) {
                 Surface(
                     onClick = { onAction(MoneyAction.ResetAnalysisFilters) },
                     shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp),
                     color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
-                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f))
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                    modifier = Modifier.size(32.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Close,
                             contentDescription = "Clear all filters",
                             tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = "Clear",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onErrorContainer
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }

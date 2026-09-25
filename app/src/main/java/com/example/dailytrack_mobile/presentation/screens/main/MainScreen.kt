@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.main
 
+import com.example.dailytrack_mobile.presentation.components.transaction.balanceSummaryLine
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
@@ -248,7 +249,7 @@ fun MainScreen(
     }
 
     // Handles form save completion
-    fun onFormSaved(message: String, destinationRoute: String = Routes.Home.route) {
+    fun onFormSaved(message: String, destinationRoute: String = Routes.Home.route, long: Boolean = false) {
         isCurrentFormDirty = false
         preselectedMediaForAddMovie = null
         val destPage = if (destinationRoute == Routes.Money.route) {
@@ -271,7 +272,7 @@ fun MainScreen(
         coroutineScope.launch {
             snackbarHostState.showSnackbar(
                 message = message,
-                duration = SnackbarDuration.Short
+                duration = if (long) SnackbarDuration.Long else SnackbarDuration.Short
             )
         }
     }
@@ -586,9 +587,10 @@ fun MainScreen(
                     )
                     Routes.AddMoney.route -> AddMoneyScreen(
                         onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { count ->
-                            val message = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
-                            onFormSaved(message, Routes.Money.route)
+                        onSaveSuccess = { count, balances ->
+                            val saved = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
+                            val message = balanceSummaryLine(balances)?.let { "$saved\n$it" } ?: saved
+                            onFormSaved(message, Routes.Money.route, long = balances.any { it.belowMin })
                         }
                     )
                     Routes.AddActivity.route -> AddActivityScreen(

@@ -69,6 +69,20 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRefreshBox
+import com.example.dailytrack_mobile.presentation.components.transaction.BalanceLevel
+import com.example.dailytrack_mobile.presentation.components.transaction.balanceLevel
+import com.example.dailytrack_mobile.presentation.components.transaction.balanceLevelColor
+import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.core.content.ContextCompat
 import com.example.dailytrack_mobile.presentation.components.MonthYearPickerDialog
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -160,6 +174,24 @@ fun HomeScreen(
     }
     val totalNetWorth = apiBankBalance + homeState.investmentTotalCurrent
 
+    val context = LocalContext.current
+    LaunchedEffect(homeState.notice) {
+        homeState.notice?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.onAction(HomeAction.ClearNotice)
+        }
+    }
+    // A minimum is only useful if its alert can show, so ask when one is first set.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val setMinBalance: (String, Double?) -> Unit = { account, min ->
+        viewModel.onAction(HomeAction.SetMinBalance(account, min))
+        if (min != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     DailyTrackPullToRefreshBox(
         isRefreshing = homeState.isRefreshing,
         onRefresh = { viewModel.onAction(HomeAction.Refresh(forceRefresh = true)) },
@@ -175,7 +207,8 @@ fun HomeScreen(
                 top    = dims.screenTopPadding,
                 bottom = dims.screenBottomPadding
             ),
-            verticalArrangement = Arrangement.spacedBy(dims.sectionSpacing)
+            // Home is a stack of mostly-collapsed cards; tighter gaps keep all of them on one screen.
+            verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
         ) {
             if (!canMoney && !canInvest) item {
                 NothingSharedCard(
@@ -198,7 +231,8 @@ fun HomeScreen(
                 BankAccountsSection(
                     accounts = apiAccounts,
                     totalBankBalance = apiBankBalance,
-                    isLoading = homeState.isLoading
+                    isLoading = homeState.isLoading,
+                    onSetMinBalance = if (access.fullMoneyAccess) setMinBalance else null
                 )
             }
             if (canMoney) item {
@@ -421,11 +455,29 @@ private fun NetWorthSection(
 private fun BankAccountsSection(
     accounts: List<AccountInfo>,
     totalBankBalance: Double,
-    isLoading: Boolean
+    isLoading: Boolean,
+    /** Null for users who can't change account settings: cards then aren't tappable. */
+    onSetMinBalance: ((String, Double?) -> Unit)? = null
 ) {
     val dims = Dimens.current
     var isExpanded by rememberSaveable { mutableStateOf(false) }
     var isGridView by rememberSaveable { mutableStateOf(true) }
+    var editingMinFor by remember { mutableStateOf<AccountInfo?>(null) }
+
+    editingMinFor?.let { account ->
+        MinBalanceDialog(
+            account = account,
+            onSave = { min ->
+                onSetMinBalance?.invoke(account.account, min)
+                editingMinFor = null
+            },
+            onDismiss = { editingMinFor = null }
+        )
+    }
+    // Credit cards aren't balance-tracked, so a floor means nothing for them.
+    val onAccountClick: ((AccountInfo) -> Unit)? = onSetMinBalance?.let {
+        { account: AccountInfo -> if (!account.account.startsWith("CC", ignoreCase = true)) editingMinFor = account }
+    }
 
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge)) {
@@ -549,6 +601,7 @@ private fun BankAccountsSection(
                                             rowAccounts.forEach { account ->
                                                 BankAccountCard(
                                                     account  = account,
+                                                    onClick  = onAccountClick?.let { click -> { click(account) } },
                                                     modifier = Modifier.weight(1f)
                                                 )
                                             }
@@ -562,7 +615,7 @@ private fun BankAccountsSection(
                                 // Sleek list view of bank accounts
                                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                                     accounts.forEachIndexed { idx, account ->
-                                        BankAccountRow(account = account)
+                                        BankAccountRow(account = account, onClick = onAccountClick?.let { click -> { click(account) } })
                                         if (idx < accounts.lastIndex) {
                                             HorizontalDivider(
                                                 modifier  = Modifier.padding(vertical = dims.itemSpacingMedium),
@@ -604,11 +657,14 @@ private fun BankAccountsSection(
 }
 
 @Composable
-private fun BankAccountRow(account: AccountInfo) {
+private fun BankAccountRow(account: AccountInfo, onClick: (() -> Unit)? = null) {
     val dims = Dimens.current
     val isCreditCard = account.account.startsWith("CC-", ignoreCase = true)
+    val level = account.minBalance?.let { balanceLevel(account.balance, it) }
     Row(
-        modifier              = Modifier.fillMaxWidth(),
+        modifier              = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment     = Alignment.CenterVertically
     ) {
@@ -631,19 +687,22 @@ private fun BankAccountRow(account: AccountInfo) {
                     modifier           = Modifier.size(dims.iconSizeSmall + 2.dp)
                 )
             }
-            Text(
-                text     = account.account,
-                style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color    = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Column {
+                Text(
+                    text     = account.account,
+                    style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color    = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                MinBalanceCaption(account, level)
+            }
         }
         Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
         Text(
             text     = formatCurrencyFull(account.balance),
             style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-            color    = MaterialTheme.colorScheme.onSurface,
+            color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else balanceLevelColor(level),
             maxLines = 1,
             softWrap = false
         )
@@ -653,18 +712,25 @@ private fun BankAccountRow(account: AccountInfo) {
 @Composable
 private fun BankAccountCard(
     account: AccountInfo,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
     val isCreditCard = account.account.startsWith("CC-", ignoreCase = true)
+    val level = account.minBalance?.let { balanceLevel(account.balance, it) }
     Card(
+        onClick   = onClick ?: {},
+        enabled   = onClick != null,
         modifier  = modifier,
         shape     = RoundedCornerShape(12.dp),
+        // Same look whether or not it's tappable (a disabled Card would fade).
         colors    = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f)
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+            disabledContentColor = MaterialTheme.colorScheme.onSurface
         ),
         border    = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp, disabledElevation = 0.dp)
     ) {
         Column(
             modifier            = Modifier
@@ -698,13 +764,91 @@ private fun BankAccountCard(
                 Text(
                     text     = formatCurrencyFull(account.balance),
                     style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color    = MaterialTheme.colorScheme.primary,
+                    color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.primary else balanceLevelColor(level),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                MinBalanceCaption(account, level)
             }
         }
     }
+}
+
+/** "Min ₹2,000", or "⚠ ₹150 under ₹2,000 min" once the balance is below it. */
+@Composable
+private fun MinBalanceCaption(account: AccountInfo, level: BalanceLevel?) {
+    val min = account.minBalance ?: return
+    Text(
+        text = if (level == BalanceLevel.DANGER) "⚠ ${formatCurrencyFull(min - account.balance)} under ${formatCurrencyFull(min)} min"
+        else "Min ${formatCurrencyFull(min)}",
+        style = MaterialTheme.typography.labelSmall,
+        color = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+        else balanceLevelColor(level),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/** Set, change or remove the balance an account shouldn't drop below. */
+@Composable
+private fun MinBalanceDialog(
+    account: AccountInfo,
+    onSave: (Double?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf(account.minBalance?.let { "%.0f".format(it) } ?: "") }
+    val value = text.trim().toDoubleOrNull()
+    val accent = bankColor(account.account) ?: MaterialTheme.colorScheme.primary
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(accent.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.AccountBalance, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+            }
+        },
+        title = { Text("Minimum for ${account.account}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Get an alert when a transaction takes this account below it. " +
+                        "Balance now: ${formatCurrencyFull(account.balance)}.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { new -> text = new.filter { it.isDigit() || it == '.' } },
+                    prefix = { Text("₹") },
+                    placeholder = { Text("2000") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(value) }, enabled = value != null && value > 0) {
+                Text("Save", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            Row {
+                if (account.minBalance != null) {
+                    TextButton(onClick = { onSave(null) }) {
+                        Text("Remove", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+            }
+        }
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -741,7 +885,7 @@ private fun BudgetsSummaryCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(dims.cardInnerPadding),
+                .padding(horizontal = dims.cardInnerPadding, vertical = dims.cardInnerPadding * 0.6f),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -996,7 +1140,6 @@ private fun FlowSection(
 ) {
     val dims = Dimens.current
     val accentColor = if (isIncome) GainGreen else LossRed
-    val total       = flows.sumOf { it.amount }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var isExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -1059,44 +1202,7 @@ private fun FlowSection(
                               animationSpec = tween(240, easing = FastOutSlowInEasing)
                           )
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge)) {
-                    // Total row
-                    Row(
-                        modifier              = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment     = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text  = "Total ${if (isIncome) "Inflow" else "Outflow"}",
-                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text  = formatCurrencyFull(total),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = accentColor
-                        )
-                    }
-
-                    HorizontalDivider(
-                        thickness = 0.5.dp,
-                        color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                    )
-
-                    // Flow breakdown items
-                    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                        flows.forEachIndexed { idx, flow ->
-                            FlowRow(flow = flow, accentColor = accentColor)
-                            if (idx < flows.lastIndex) {
-                                HorizontalDivider(
-                                    modifier  = Modifier.padding(vertical = dims.itemSpacingMedium),
-                                    thickness = 0.5.dp,
-                                    color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                                )
-                            }
-                        }
-                    }
-                }
+                FlowBlock(label = if (isIncome) "Inflow" else "Outflow", flows = flows, accentColor = accentColor)
             }
         }
     }
@@ -1111,6 +1217,39 @@ private fun FlowSection(
                 onDateChange(m ?: selectedMonth, y)
             }
         )
+    }
+}
+
+/** "Total Inflow ₹X" and the accounts it came through. */
+@Composable
+private fun FlowBlock(label: String, flows: List<FlowBreakdown>, accentColor: Color) {
+    val dims = Dimens.current
+    Column(verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)) {
+        Row(
+            modifier              = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            Text(
+                text  = "Total $label",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text  = formatCurrencyFull(flows.sumOf { it.amount }),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = accentColor
+            )
+        }
+        flows.forEachIndexed { idx, flow ->
+            if (idx > 0) {
+                HorizontalDivider(
+                    thickness = 0.5.dp,
+                    color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                )
+            }
+            FlowRow(flow = flow, accentColor = accentColor)
+        }
     }
 }
 
@@ -1179,7 +1318,7 @@ private fun SectionCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(dims.cardInnerPadding),
+                    .padding(horizontal = dims.cardInnerPadding, vertical = dims.cardInnerPadding * 0.7f),
                 content  = content
             )
         }
@@ -1195,7 +1334,7 @@ private fun SectionCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(dims.cardInnerPadding),
+                    .padding(horizontal = dims.cardInnerPadding, vertical = dims.cardInnerPadding * 0.7f),
                 content  = content
             )
         }

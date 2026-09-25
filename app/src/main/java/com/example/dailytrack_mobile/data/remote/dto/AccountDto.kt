@@ -9,5 +9,7 @@ data class AccountDto(
     // null when the user's category scope hides balances (see ACCESS_CONTROL.md)
     @Json(name = "balance") val balance: Double?,
     @Json(name = "real_balance") val realBalance: Double?,
-    @Json(name = "balance_tracked") val balanceTracked: Boolean
+    @Json(name = "balance_tracked") val balanceTracked: Boolean,
+    // Floor the user wants to keep; null when unset or balances are hidden.
+    @Json(name = "min_balance") val minBalance: Double? = null
 )

@@ -68,7 +68,9 @@ data class AccountInfo(
     val account: String,
     val balance: Double,
     val realBalance: Double?,
-    val balanceTracked: Boolean
+    val balanceTracked: Boolean,
+    /** Floor set for this account; null when there is none. */
+    val minBalance: Double? = null
 ) {
     /** Returns the verified balance if available, otherwise the ledger balance */
     val displayBalance: Double get() = realBalance ?: balance
@@ -90,7 +92,9 @@ data class Transaction(
     val monthStr: String = "",
     val rawDate: String = "",
     val rawType: String = "",
-    val split: SplitInfo? = null
+    val split: SplitInfo? = null,
+    /** The account's balance right after this transaction, when known. */
+    val balanceAfter: Double? = null
 ) {
     val isSavings: Boolean
         get() = type == TransactionType.SAVINGS ||

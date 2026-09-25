@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -48,6 +50,13 @@ fun TransactionsTab(
     val canEdit = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
     val dims = Dimens.current
     val filterState = state.analysisFilterState
+    val balancesAllowed = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.balancesVisible
+
+    // "Show balances": each row's account balance after it, like a bank statement.
+    // Remembered on this phone only.
+    val context = LocalContext.current
+    val uiPrefs = remember { context.getSharedPreferences("money_ui", android.content.Context.MODE_PRIVATE) }
+    var showBalances by remember { mutableStateOf(uiPrefs.getBoolean("show_tx_balances", false)) }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -73,6 +82,16 @@ fun TransactionsTab(
                     onQueryChange = { onAction(MoneyAction.UpdateSearchQuery(it)) },
                     modifier = Modifier.weight(1f)
                 )
+
+                if (balancesAllowed) {
+                    BalancesToggleButton(
+                        active = showBalances,
+                        onClick = {
+                            showBalances = !showBalances
+                            uiPrefs.edit().putBoolean("show_tx_balances", showBalances).apply()
+                        }
+                    )
+                }
 
                 FilterButtonWithBadge(
                     activeCount = filterState.activeFilterCount,
@@ -272,6 +291,7 @@ fun TransactionsTab(
                             SwipeableTransactionItem(
                                 // View-only users: no swipe actions and no bulk selection.
                                 swipeEnabled = canEdit,
+                                showBalance = balancesAllowed && showBalances,
                                 transaction = transaction,
                                 isSwiped = swipedTransactionId == transaction.id,
                                 onSwipeStateChanged = { isSwiped ->
@@ -499,6 +519,29 @@ private fun FilterButtonWithBadge(
                     )
                 }
             }
+        }
+    }
+}
+
+/** Same shape as the filter button beside it; lit while balances show. */
+@Composable
+private fun BalancesToggleButton(active: Boolean, onClick: () -> Unit) {
+    val dims = Dimens.current
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(dims.cardCornerRadius - 4.dp),
+        color = if (active) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.height(dims.searchBarHeight)
+    ) {
+        Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Default.AccountBalanceWallet,
+                contentDescription = if (active) "Hide balances" else "Show balances",
+                tint = if (active) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

@@ -134,6 +134,10 @@ class MainActivity : FragmentActivity() {
             var isAppLocked by rememberSaveable { mutableStateOf(shouldInitiallyLock) }
             val coroutineScope = rememberCoroutineScope()
 
+            LaunchedEffect(isAppLocked) {
+                appLockManager.isSessionUnlocked = !isAppLocked
+            }
+
             // Runtime lock check when app lock toggle or timeout setting changes
             LaunchedEffect(state.isAppLockEnabled, state.lockTimeout) {
                 if (state.isAppLockEnabled && !isAppLocked) {
@@ -173,11 +177,15 @@ class MainActivity : FragmentActivity() {
                 }
             }
             DisposableEffect(lifecycleOwner, state.isAppLockEnabled, state.lockTimeout) {
+                val activityId = System.identityHashCode(this@MainActivity)
                 val observer = LifecycleEventObserver { _, event ->
                     if (state.isAppLockEnabled) {
                         when (event) {
                             Lifecycle.Event.ON_STOP -> {
+                                // A newer activity instance (e.g. shortcut relaunch) already took over
+                                if (appLockManager.foregroundActivityId != activityId) return@LifecycleEventObserver
                                 val now = System.currentTimeMillis()
+                                appLockManager.setLastBackgroundTimestampSync(now)
                                 coroutineScope.launch {
                                     appLockManager.setLastBackgroundTimestamp(now)
                                 }
@@ -186,8 +194,14 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
                             Lifecycle.Event.ON_START -> {
+                                appLockManager.foregroundActivityId = activityId
                                 if (appLockManager.shouldLockOnResume(state.lockTimeout)) {
                                     isAppLocked = true
+                                } else if (!isAppLocked) {
+                                    // Back within the timeout: the background timestamp no longer applies
+                                    coroutineScope.launch {
+                                        appLockManager.clearLastBackgroundTimestamp()
+                                    }
                                 }
                             }
                             else -> {}

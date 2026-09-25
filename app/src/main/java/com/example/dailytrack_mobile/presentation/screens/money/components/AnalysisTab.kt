@@ -182,7 +182,8 @@ fun AnalysisTab(
             top = dims.itemSpacingMedium,
             bottom = dims.screenBottomPadding
         ),
-        verticalArrangement = Arrangement.spacedBy(dims.sectionSpacing)
+        // Tight enough that filters, chart, categories and totals share one screen.
+        verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
     ) {
         // Active Filter Bar / Trigger Header
         item {

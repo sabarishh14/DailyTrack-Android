@@ -92,6 +92,7 @@ fun SwipeableTransactionItem(
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
     swipeEnabled: Boolean = true,
+    showBalance: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
@@ -276,7 +277,8 @@ fun SwipeableTransactionItem(
             TransactionCardSurface(
                 transaction = transaction,
                 isSelected = isSelected,
-                isSelectionMode = isSelectionMode
+                isSelectionMode = isSelectionMode,
+                showBalance = showBalance
             )
         }
     }
@@ -290,6 +292,8 @@ fun TransactionCardSurface(
     transaction: Transaction,
     isSelected: Boolean = false,
     isSelectionMode: Boolean = false,
+    /** Show the account's balance after this transaction under the amount, like a statement. */
+    showBalance: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
@@ -472,17 +476,29 @@ fun TransactionCardSurface(
 
             Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
 
-            // Amount
-            Text(
-                text = formatAmount(transaction),
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = if (transaction.type == TransactionType.CREDIT) ChartColors.IncomeGreen
-                else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                softWrap = false
-            )
+            // Amount, with the balance it left underneath when asked for
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = formatAmount(transaction),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = if (transaction.type == TransactionType.CREDIT) ChartColors.IncomeGreen
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                val balance = transaction.balanceAfter
+                if (showBalance && balance != null) {
+                    Text(
+                        text = "Bal ₹%,.0f".format(balance),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
         }
     }
 }

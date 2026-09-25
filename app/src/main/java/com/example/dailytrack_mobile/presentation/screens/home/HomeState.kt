@@ -8,6 +8,8 @@ data class HomeState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val errorMessage: String? = null,
+    /** One-off feedback (e.g. a minimum saved or refused), shown once then cleared. */
+    val notice: String? = null,
     val accounts: List<AccountInfo> = emptyList(),
     val selectedMonth: Month = LocalDate.now().month,
     val selectedYear: Int = LocalDate.now().year,

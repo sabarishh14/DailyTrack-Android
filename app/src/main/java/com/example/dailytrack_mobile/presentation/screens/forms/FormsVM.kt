@@ -1,16 +1,21 @@
 package com.example.dailytrack_mobile.presentation.screens.forms
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraftStore
+import com.example.dailytrack_mobile.data.remote.dto.AccountDto
+import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.repository.ActivitiesRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.NewTransaction
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
+import com.example.dailytrack_mobile.notification.NotificationsHelper
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,6 +30,8 @@ data class AddMoneyFormState(
     val isLoadingData: Boolean = false,
     val isSaving: Boolean = false,
     val accounts: List<String> = emptyList(),
+    // Balances and floors for the live "after this entry" preview.
+    val accountDetails: List<AccountDto> = emptyList(),
     val categories: List<String> = emptyList(),
     val history: EntryHistory = EntryHistory.EMPTY,
     val errorMessage: String? = null
@@ -53,13 +60,15 @@ class FormsVM @Inject constructor(
     private val activitiesRepository: ActivitiesRepository,
     private val investmentsRepository: InvestmentsRepository,
     private val sabdekhoRepository: SabdekhoRepository,
-    private val transactionDraftStore: TransactionDraftStore
+    private val transactionDraftStore: TransactionDraftStore,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _addMoneyState = MutableStateFlow(
         AddMoneyFormState(
             isLoadingData = true,
             accounts = moneyRepository.getCachedAccounts(),
+            accountDetails = moneyRepository.getCachedAccountDetails(),
             categories = moneyRepository.getCachedCategories(),
             history = moneyRepository.entryHistory()
         )
@@ -93,6 +102,7 @@ class FormsVM @Inject constructor(
             _addMoneyState.update { state ->
                 state.copy(
                     accounts = accountsRes.getOrNull()?.map { it.account }?.takeIf { it.isNotEmpty() } ?: state.accounts,
+                    accountDetails = accountsRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.accountDetails,
                     categories = categoriesRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.categories
                 )
             }
@@ -103,6 +113,18 @@ class FormsVM @Inject constructor(
                     _addMoneyState.update { it.copy(isLoadingData = false, history = partial) }
                 }
                 _addMoneyState.update { it.copy(isLoadingData = false, history = history) }
+            }
+        }
+    }
+
+    /**
+     * Balances move outside this form too (edits, deletes, other devices), and
+     * this VM outlives a visit to it — so re-read them each time it opens.
+     */
+    fun refreshAccounts() {
+        viewModelScope.launch {
+            moneyRepository.getAccounts(forceRefresh = true).getOrNull()?.takeIf { it.isNotEmpty() }?.let { fresh ->
+                _addMoneyState.update { it.copy(accounts = fresh.map { a -> a.account }, accountDetails = fresh) }
             }
         }
     }
@@ -168,16 +190,29 @@ class FormsVM @Inject constructor(
     }
 
     /** Saves every entry in one request; on failure nothing is saved and the entries stay put. */
-    fun saveTransactions(entries: List<NewTransaction>, onSuccess: (count: Int) -> Unit) {
+    fun saveTransactions(
+        entries: List<NewTransaction>,
+        onSuccess: (count: Int, balances: List<BalanceChangeDto>) -> Unit
+    ) {
         if (entries.isEmpty() || _addMoneyState.value.isSaving) return
         viewModelScope.launch {
             _addMoneyState.update { it.copy(isSaving = true, errorMessage = null) }
             moneyRepository.addTransactions(entries)
-                .onSuccess {
+                .onSuccess { balances ->
                     // The entries landed, so the draft has served its purpose.
                     transactionDraftStore.clear()
-                    _addMoneyState.update { it.copy(isSaving = false, history = moneyRepository.entryHistory()) }
-                    onSuccess(entries.size)
+                    _addMoneyState.update {
+                        it.copy(
+                            isSaving = false,
+                            history = moneyRepository.entryHistory(),
+                            accountDetails = moneyRepository.getCachedAccountDetails().ifEmpty { it.accountDetails }
+                        )
+                    }
+                    val belowMin = balances.filter { it.belowMin }
+                    if (belowMin.isNotEmpty()) {
+                        runCatching { NotificationsHelper(context).showLowBalanceNotification(belowMin) }
+                    }
+                    onSuccess(entries.size, balances)
                 }
                 .onFailure { error ->
                     _addMoneyState.update {

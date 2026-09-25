@@ -9,6 +9,7 @@ import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory
 import com.example.dailytrack_mobile.presentation.screens.money.AccountInfo
+import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,12 @@ class HomeVM @Inject constructor(
     private var cachedLatestSnapshot: PortfolioSnapshotDto? = null
 
     init {
+        // So low-balance alerts reach this phone even for transactions added on the web.
+        runCatching {
+            FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                viewModelScope.launch { repository.registerPushToken(token) }
+            }
+        }
         viewModelScope.launch {
             demoModeManager.isDemoModeEnabledFlow.collect {
                 loadAccountsAndTransactions()
@@ -109,7 +116,8 @@ class HomeVM @Inject constructor(
                             account = dto.account,
                             balance = dto.balance ?: 0.0,
                             realBalance = dto.realBalance,
-                            balanceTracked = dto.balanceTracked
+                            balanceTracked = dto.balanceTracked,
+                            minBalance = dto.minBalance
                         )
                     }
                 
@@ -166,6 +174,23 @@ class HomeVM @Inject constructor(
                 _state.update { it.copy(selectedMonth = action.month, selectedYear = action.year) }
                 loadAccountsAndTransactions()
             }
+            is HomeAction.SetMinBalance -> setMinBalance(action.account, action.min)
+            HomeAction.ClearNotice -> _state.update { it.copy(notice = null) }
+        }
+    }
+
+    private fun setMinBalance(account: String, min: Double?) {
+        viewModelScope.launch {
+            repository.setMinBalance(account, min)
+                .onSuccess {
+                    _state.update { s ->
+                        s.copy(
+                            accounts = s.accounts.map { if (it.account == account) it.copy(minBalance = min) else it },
+                            notice = if (min == null) "Minimum removed for $account" else "You'll be alerted when $account drops below ₹${"%,.0f".format(min)}"
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(notice = e.message ?: "Couldn't save the minimum") } }
         }
     }
 }

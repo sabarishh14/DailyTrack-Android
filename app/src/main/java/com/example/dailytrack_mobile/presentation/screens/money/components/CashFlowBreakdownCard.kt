@@ -297,6 +297,9 @@ internal fun CashFlowBreakdownCard(
         }
     }
 
+    val donutSize = dims.donutChartSize * 0.78f
+    val viewTransactions = { onViewTransactions(if (isOthersDrilldown) null else activeDrilldownCategory) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(dims.cardCornerRadius),
@@ -311,7 +314,7 @@ internal fun CashFlowBreakdownCard(
                 .padding(
                     start = dims.cardInnerPadding,
                     end = dims.cardInnerPadding,
-                    top = dims.cardInnerPadding,
+                    top = dims.cardInnerPadding * 0.7f,
                     bottom = (dims.cardInnerPadding - 6.dp).coerceAtLeast(8.dp)
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -397,14 +400,14 @@ internal fun CashFlowBreakdownCard(
                         MaterialTheme.colorScheme.primary.copy(alpha = 0.04f),
                         RoundedCornerShape(16.dp)
                     )
-                    .padding(vertical = 14.dp, horizontal = 12.dp),
+                    .padding(vertical = 8.dp, horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading && categories.isEmpty()) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(dims.donutChartSize),
+                            .height(donutSize),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
@@ -426,7 +429,7 @@ internal fun CashFlowBreakdownCard(
                         total = othersTotal,
                         isDtOgStyle = isDtOg,
                         centerTitle = "OTHER CATS",
-                        modifier = Modifier.size(dims.donutChartSize)
+                        modifier = Modifier.size(donutSize)
                     )
                 } else if (activeDrilldownCategory != null) {
                     DonutChart(
@@ -434,7 +437,7 @@ internal fun CashFlowBreakdownCard(
                         total = categoryTotal,
                         isDtOgStyle = isDtOg,
                         centerTitle = "${CategoryEmojis.forCategory(activeDrilldownCategory!!)} ${activeDrilldownCategory!!.uppercase()}",
-                        modifier = Modifier.size(dims.donutChartSize)
+                        modifier = Modifier.size(donutSize)
                     )
                 } else {
                     DonutChart(
@@ -442,7 +445,7 @@ internal fun CashFlowBreakdownCard(
                         total = total,
                         isDtOgStyle = isDtOg,
                         centerTitle = "TOTAL",
-                        modifier = Modifier.size(dims.donutChartSize)
+                        modifier = Modifier.size(donutSize)
                     )
                 }
             }
@@ -467,15 +470,7 @@ internal fun CashFlowBreakdownCard(
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (otherCategoriesPages.size > 1) {
-                            Text(
-                                text = "Page ${otherCategoriesPagerState.currentPage + 1} of ${otherCategoriesPages.size} ›",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                            )
-                        }
+                        TransactionsLink(onClick = viewTransactions)
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -556,15 +551,7 @@ internal fun CashFlowBreakdownCard(
                             ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (drilldownPages.size > 1) {
-                            Text(
-                                text = "Page ${drilldownPagerState.currentPage + 1} of ${drilldownPages.size} ›",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                            )
-                        }
+                        TransactionsLink(onClick = viewTransactions)
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -631,21 +618,22 @@ internal fun CashFlowBreakdownCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "CATEGORIES",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Tap to explore ›",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Medium
-                            ),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "CATEGORIES",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "  ·  tap to explore",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                        TransactionsLink(onClick = viewTransactions)
                     }
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -666,30 +654,27 @@ internal fun CashFlowBreakdownCard(
                     )
                 }
 
-                // In-Card Action Button in the exact same spot for both Normal & Drilldown states
-                Spacer(modifier = Modifier.height(10.dp))
-
-                FilledTonalButton(
-                    onClick = { onViewTransactions(if (isOthersDrilldown) null else activeDrilldownCategory) },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = if (isOthersDrilldown) {
-                            "View All Other Transactions →"
-                        } else if (activeDrilldownCategory != null) {
-                            "View All $activeDrilldownCategory Transactions →"
-                        } else if (hasActiveFilters) {
-                            "View Filtered Transactions →"
-                        } else {
-                            "View All Transactions →"
-                        },
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                }
             }
         }
     }
+}
+
+/**
+ * Opens the transactions behind what the card shows (the whole period, one
+ * category, or "others"). Sits at the end of each section header, where the
+ * eye already is, instead of a full-width button under the chips.
+ */
+@Composable
+private fun TransactionsLink(onClick: () -> Unit) {
+    Text(
+        text = "Transactions ›",
+        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
