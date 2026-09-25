@@ -220,7 +220,6 @@ fun AppLockScreen(
 
                     Button(
                         onClick = { triggerBiometricPrompt() },
-                        shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary

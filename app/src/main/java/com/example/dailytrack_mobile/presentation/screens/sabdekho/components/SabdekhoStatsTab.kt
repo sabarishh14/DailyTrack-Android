@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.sabdekho.components
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -106,7 +107,7 @@ fun SabdekhoStatsTab(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge),
-        contentPadding = PaddingValues(bottom = dims.screenBottomPadding + 56.dp)
+        contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
     ) {
         // ── Year Selector Row ──────────────────────────────────────────
         item(key = "years") {

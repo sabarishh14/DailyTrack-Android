@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.activities
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -87,7 +88,7 @@ fun ActivitiesScreen(
                 start = dims.screenHorizontalPadding,
                 end = dims.screenHorizontalPadding,
                 top = dims.screenTopPadding,
-                bottom = dims.screenBottomPadding
+                bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current
             ),
             verticalArrangement = Arrangement.spacedBy(dims.sectionSpacing)
         ) {

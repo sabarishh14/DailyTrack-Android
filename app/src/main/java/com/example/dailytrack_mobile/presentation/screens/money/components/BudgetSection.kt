@@ -164,8 +164,7 @@ private fun BudgetEmptyState(onSetBudgets: () -> Unit) {
     Spacer(Modifier.height(14.dp))
     if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)) FilledTonalButton(
         onClick = onSetBudgets,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(17.dp))
         Spacer(Modifier.width(8.dp))

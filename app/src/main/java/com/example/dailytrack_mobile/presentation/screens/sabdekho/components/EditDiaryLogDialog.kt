@@ -145,16 +145,14 @@ fun EditDiaryLogDialog(
                         rewatch,
                         tags.takeIf { it.isNotBlank() }
                     )
-                },
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                }
             ) {
                 Text("Save Changes")
             }
         },
         dismissButton = {
             TextButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                onClick = onDismiss
             ) {
                 Text("Cancel")
             }

@@ -153,16 +153,14 @@ fun EditDiaryLogSheet(
                         showDeleteConfirmDialog = false
                         onDelete()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text("Delete", color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { showDeleteConfirmDialog = false },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    onClick = { showDeleteConfirmDialog = false }
                 ) {
                     Text("Cancel")
                 }
@@ -641,8 +639,7 @@ fun EditDiaryLogSheet(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(dims.searchBarHeight),
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    .height(dims.searchBarHeight)
             ) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

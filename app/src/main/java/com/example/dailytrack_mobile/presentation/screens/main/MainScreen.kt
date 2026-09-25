@@ -1,5 +1,10 @@
 package com.example.dailytrack_mobile.presentation.screens.main
 
+import androidx.compose.animation.core.animate
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.components.FloatingBarClearance
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import com.example.dailytrack_mobile.presentation.components.transaction.balanceSummaryLine
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -94,7 +99,7 @@ private fun routeToPage(route: String, preferTransactions: Boolean = false): Int
     else -> null
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
@@ -128,6 +133,12 @@ fun MainScreen(
         pageCount = { pagesState.value.size }
     )
 
+    // Floating nav toolbar slides off-screen while scrolling down and returns on
+    // scroll up, so it never permanently covers the bottom of a page.
+    val toolbarScrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
+        exitDirection = FloatingToolbarExitDirection.Bottom
+    )
+
     var currentRoute by remember { mutableStateOf(targetRoute ?: Routes.Home.route) }
     var lastMoneyPage by remember { mutableIntStateOf(PAGE_CASH_FLOW) }
 
@@ -139,6 +150,14 @@ fun MainScreen(
     val dims = Dimens.current
 
     // Update currentRoute and sync Money tab selection only when pager has fully settled
+    // Bring the toolbar back whenever the visible page / route changes.
+    LaunchedEffect(pagerState.currentPage, currentRoute) {
+        val state = toolbarScrollBehavior.state
+        if (state.offset != 0f) {
+            animate(state.offset, 0f) { value, _ -> state.offset = value }
+        }
+    }
+
     LaunchedEffect(pagerState) {
         snapshotFlow { pageAt(pagerState.settledPage) }.collect { settledPage ->
             if (settledPage == PAGE_CASH_FLOW || settledPage == PAGE_TRANSACTIONS) {
@@ -364,8 +383,7 @@ fun MainScreen(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
-                    ),
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    )
                 ) {
                     Text("Discard", style = MaterialTheme.typography.labelLarge)
                 }
@@ -375,8 +393,7 @@ fun MainScreen(
                     onClick = {
                         showDiscardDialog = false
                         pendingRoute = null
-                    },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    }
                 ) {
                     Text("Keep Editing", style = MaterialTheme.typography.labelLarge)
                 }
@@ -400,7 +417,7 @@ fun MainScreen(
                     TopAppBar(
                         navigationIcon = {
                             if (currentRoute != Routes.Home.route) {
-                                IconButton(onClick = {
+                                FilledIconButton(colors = topBarIconButtonColors(), onClick = {
                                     if (currentRoute in mainTabRoutes) {
                                         coroutineScope.launch { pagerState.animateScrollToPage(PAGE_HOME) }
                                     } else {
@@ -434,7 +451,7 @@ fun MainScreen(
                             }
                         },
                         actions = {
-                            IconButton(onClick = onNavigateToSettings) {
+                            FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateToSettings) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
                                     contentDescription = "Settings",
@@ -456,15 +473,130 @@ fun MainScreen(
                 }
             }
         },
-        bottomBar = {
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.padding(
+                    bottom = dims.screenBottomPadding + if (isFormScreen) 0.dp else FloatingBarClearance
+                )
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
+                .nestedScroll(toolbarScrollBehavior)
+        ) {
+            CompositionLocalProvider(
+                LocalFloatingBarClearance provides if (isFormScreen) 0.dp else FloatingBarClearance
+            ) {
+                if (currentRoute in mainTabRoutes) {
+                    HorizontalPager(
+                        state = pagerState,
+                        userScrollEnabled = !moneyState.isSelectionMode,
+                        beyondViewportPageCount = 1,
+                        modifier = Modifier.fillMaxSize()
+                    ) { index ->
+                        when (pageAt(index)) {
+                            PAGE_HOME -> HomeScreen(
+                                onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
+                            )
+                            PAGE_CASH_FLOW -> MoneyCashFlowTab(
+                                state = moneyState,
+                                onAction = moneyViewModel::onAction,
+                                onNavigateToTransactions = {
+                                    coroutineScope.launch {
+                                        indexOfPage(PAGE_TRANSACTIONS)?.let { pagerState.animateScrollToPage(it) }
+                                    }
+                                }
+                            )
+                            PAGE_TRANSACTIONS -> MoneyTransactionsTab(
+                                state = moneyState,
+                                onAction = moneyViewModel::onAction,
+                                onNavigateToCashFlow = {
+                                    coroutineScope.launch {
+                                        indexOfPage(PAGE_CASH_FLOW)?.let { pagerState.animateScrollToPage(it) }
+                                    }
+                                }
+                            )
+                            PAGE_ACTIVITIES -> ActivitiesScreen()
+                            PAGE_INVESTMENTS -> InvestmentsScreen()
+                            PAGE_SABDEKHO -> SabdekhoScreen(
+                                onNavigateToAddMovie = { media ->
+                                    preselectedMediaForAddMovie = media
+                                    navigateSafely(Routes.AddMovie.route)
+                                }
+                            )
+                        }
+                    }
+
+                    // Render Money bottom sheets and dialogs once
+                    MoneyDialogsAndSheets(
+                        state = moneyState,
+                        onAction = moneyViewModel::onAction
+                    )
+                } else {
+                    when (currentRoute) {
+                        Routes.Analytics.route -> AnalyticsScreen(
+                            onNavigateBack = { navigateSafely(Routes.Home.route) },
+                            onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
+                        )
+                        Routes.Budgets.route -> BudgetsScreen(
+                            onNavigateBack = { navigateSafely(Routes.Home.route) }
+                        )
+                        Routes.AddMoney.route -> AddMoneyScreen(
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onSaveSuccess = { count, balances ->
+                                val saved = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
+                                val message = balanceSummaryLine(balances)?.let { "$saved\n$it" } ?: saved
+                                onFormSaved(message, Routes.Money.route, long = balances.any { it.belowMin })
+                            }
+                        )
+                        Routes.AddActivity.route -> AddActivityScreen(
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onSaveSuccess = { onFormSaved("Activity logged successfully!", Routes.Activities.route) }
+                        )
+                        Routes.AddMovie.route -> AddMovieScreen(
+                            initialMedia = preselectedMediaForAddMovie,
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onSaveSuccess = { onFormSaved("Title added successfully!", Routes.Sabdekho.route) }
+                        )
+                        Routes.AddAsset.route -> AddAssetScreen(
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onSaveSuccess = { onFormSaved("Asset saved successfully!", Routes.Investments.route) }
+                        )
+                        Routes.AddInvestment.route -> AddInvestmentScreen(
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onSaveSuccess = { onFormSaved("Investment recorded successfully!", Routes.Investments.route) }
+                        )
+                        Routes.SyncBroker.route -> SyncBrokerScreen(
+                            onNavigateBack = { navigateSafely(Routes.Home.route) }
+                        )
+                    }
+                }
+            }
+
+            // Floating nav toolbar drawn over the content (not a Scaffold bottomBar,
+            // which would reserve an opaque strip behind it).
             if (!isFormScreen) {
                 val displayRoute = if (currentRoute in mainTabRoutes) {
                     pageToRoute(pageAt(pagerState.targetPage))
                 } else {
                     currentRoute
                 }
+                val canAddAnything = remember(access) {
+                    listOf(Routes.AddMoney.route, Routes.AddActivity.route, Routes.AddMovie.route, Routes.AddAsset.route)
+                        .any { addActionAllowed(it, access) }
+                }
+                val showFab = canAddAnything && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)
                 BottomNavBar(
                     currentRoute = displayRoute,
+                    scrollBehavior = toolbarScrollBehavior,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onFabClick = if (showFab) ({ showAddSheet = true }) else null,
                     onNavigate = { targetRoute ->
                         val targetPage = indexOfPage(if (targetRoute == Routes.Money.route) {
                             if (pageAt(pagerState.currentPage) == PAGE_CASH_FLOW) PAGE_CASH_FLOW
@@ -494,126 +626,6 @@ fun MainScreen(
                         }
                     }
                 )
-            }
-        },
-        floatingActionButton = {
-            val canAddAnything = remember(access) {
-                listOf(Routes.AddMoney.route, Routes.AddActivity.route, Routes.AddMovie.route, Routes.AddAsset.route)
-                    .any { addActionAllowed(it, access) }
-            }
-            if (canAddAnything && !isFormScreen && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)) {
-                FloatingActionButton(
-                    onClick = { showAddSheet = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add",
-                        modifier = Modifier.size(dims.iconSizeLarge)
-                    )
-                }
-            }
-        },
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.padding(bottom = if (isFormScreen) dims.screenBottomPadding else dims.screenBottomPadding + 56.dp)
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
-        ) {
-            if (currentRoute in mainTabRoutes) {
-                HorizontalPager(
-                    state = pagerState,
-                    userScrollEnabled = !moneyState.isSelectionMode,
-                    beyondViewportPageCount = 1,
-                    modifier = Modifier.fillMaxSize()
-                ) { index ->
-                    when (pageAt(index)) {
-                        PAGE_HOME -> HomeScreen(
-                            onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
-                        )
-                        PAGE_CASH_FLOW -> MoneyCashFlowTab(
-                            state = moneyState,
-                            onAction = moneyViewModel::onAction,
-                            onNavigateToTransactions = {
-                                coroutineScope.launch {
-                                    indexOfPage(PAGE_TRANSACTIONS)?.let { pagerState.animateScrollToPage(it) }
-                                }
-                            }
-                        )
-                        PAGE_TRANSACTIONS -> MoneyTransactionsTab(
-                            state = moneyState,
-                            onAction = moneyViewModel::onAction,
-                            onNavigateToCashFlow = {
-                                coroutineScope.launch {
-                                    indexOfPage(PAGE_CASH_FLOW)?.let { pagerState.animateScrollToPage(it) }
-                                }
-                            }
-                        )
-                        PAGE_ACTIVITIES -> ActivitiesScreen()
-                        PAGE_INVESTMENTS -> InvestmentsScreen()
-                        PAGE_SABDEKHO -> SabdekhoScreen(
-                            onNavigateToAddMovie = { media ->
-                                preselectedMediaForAddMovie = media
-                                navigateSafely(Routes.AddMovie.route)
-                            }
-                        )
-                    }
-                }
-
-                // Render Money bottom sheets and dialogs once
-                MoneyDialogsAndSheets(
-                    state = moneyState,
-                    onAction = moneyViewModel::onAction
-                )
-            } else {
-                when (currentRoute) {
-                    Routes.Analytics.route -> AnalyticsScreen(
-                        onNavigateBack = { navigateSafely(Routes.Home.route) },
-                        onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
-                    )
-                    Routes.Budgets.route -> BudgetsScreen(
-                        onNavigateBack = { navigateSafely(Routes.Home.route) }
-                    )
-                    Routes.AddMoney.route -> AddMoneyScreen(
-                        onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { count, balances ->
-                            val saved = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
-                            val message = balanceSummaryLine(balances)?.let { "$saved\n$it" } ?: saved
-                            onFormSaved(message, Routes.Money.route, long = balances.any { it.belowMin })
-                        }
-                    )
-                    Routes.AddActivity.route -> AddActivityScreen(
-                        onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { onFormSaved("Activity logged successfully!", Routes.Activities.route) }
-                    )
-                    Routes.AddMovie.route -> AddMovieScreen(
-                        initialMedia = preselectedMediaForAddMovie,
-                        onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { onFormSaved("Title added successfully!", Routes.Sabdekho.route) }
-                    )
-                    Routes.AddAsset.route -> AddAssetScreen(
-                        onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { onFormSaved("Asset saved successfully!", Routes.Investments.route) }
-                    )
-                    Routes.AddInvestment.route -> AddInvestmentScreen(
-                        onDirtyStateChanged = { isCurrentFormDirty = it },
-                        onSaveSuccess = { onFormSaved("Investment recorded successfully!", Routes.Investments.route) }
-                    )
-                    Routes.SyncBroker.route -> SyncBrokerScreen(
-                        onNavigateBack = { navigateSafely(Routes.Home.route) }
-                    )
-                }
             }
         }
     }

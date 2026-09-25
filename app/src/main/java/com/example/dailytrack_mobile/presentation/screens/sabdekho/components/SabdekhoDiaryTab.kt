@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.sabdekho.components
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -121,7 +122,7 @@ fun SabdekhoDiaryTab(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
-                contentPadding = PaddingValues(bottom = dims.screenBottomPadding + 56.dp)
+                contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
             ) {
                 // Film and TV log ids can collide, and duplicate keys crash the list.
                 items(filteredLogs, key = { "${it.type}-${it.id}" }) { log ->

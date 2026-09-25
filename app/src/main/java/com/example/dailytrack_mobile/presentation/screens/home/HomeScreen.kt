@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.home
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutLinearInEasing
@@ -205,7 +206,7 @@ fun HomeScreen(
                 start  = dims.screenHorizontalPadding,
                 end    = dims.screenHorizontalPadding,
                 top    = dims.screenTopPadding,
-                bottom = dims.screenBottomPadding
+                bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current
             ),
             // Home is a stack of mostly-collapsed cards; tighter gaps keep all of them on one screen.
             verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)

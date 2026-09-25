@@ -734,7 +734,6 @@ fun BulkEditTransactionsSheet(
 
                                         OutlinedButton(
                                             onClick = { showBatchDatePicker = true },
-                                            shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp),
                                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                                             modifier = Modifier.weight(1f)
                                         ) {
@@ -800,7 +799,6 @@ fun BulkEditTransactionsSheet(
                                                 batchFeedbackMessage = "Applied note to all ${items.size} items"
                                                 focusManager.clearFocus()
                                             },
-                                            shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp),
                                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
                                         ) {
                                             Text("Apply", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
@@ -862,7 +860,6 @@ fun BulkEditTransactionsSheet(
                         item {
                             FilledTonalButton(
                                 onClick = { selectedTab = 1 },
-                                shape = RoundedCornerShape(dims.buttonCornerRadius),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Customize Separate Transactions (${items.size}) →", style = MaterialTheme.typography.labelLarge)
@@ -1087,7 +1084,6 @@ fun BulkEditTransactionsSheet(
                     OutlinedButton(
                         onClick = onDismiss,
                         enabled = !isUpdating,
-                        shape = RoundedCornerShape(dims.buttonCornerRadius),
                         modifier = Modifier.weight(0.35f)
                     ) {
                         Text("Cancel", style = MaterialTheme.typography.labelLarge)
@@ -1112,7 +1108,6 @@ fun BulkEditTransactionsSheet(
                             onSave(updates)
                         },
                         enabled = !isUpdating && allAmountsValid,
-                        shape = RoundedCornerShape(dims.buttonCornerRadius),
                         modifier = Modifier
                             .weight(0.65f)
                             .height(dims.searchBarHeight)

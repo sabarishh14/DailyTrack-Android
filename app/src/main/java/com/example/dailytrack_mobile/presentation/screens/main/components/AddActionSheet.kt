@@ -1,12 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.main.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,11 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.data.local.auth.AccessModule
 import com.example.dailytrack_mobile.presentation.access.LocalAccess
@@ -76,34 +69,42 @@ val dims = Dimens.current
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
+        // Wraps its content: the sheet is only as tall as the options need.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.35f))
-                .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.itemSpacingLarge),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(
+                    start = dims.screenHorizontalPadding,
+                    end = dims.screenHorizontalPadding,
+                    bottom = dims.itemSpacingLarge
+                ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
         ) {
             Text(
                 text = "What would you like to add?",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = dims.sectionSpacing)
+                modifier = Modifier.padding(bottom = dims.itemSpacingSmall)
             )
 
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
-                horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
-                modifier = Modifier.padding(bottom = dims.screenBottomPadding)
-            ) {
-                items(actions) { action ->
-                    ActionCard(
-                        item = action,
-                        onClick = {
-                            onActionSelected(action.route)
-                            onDismiss()
-                        }
-                    )
+            actions.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
+                ) {
+                    row.forEach { action ->
+                        ActionCard(
+                            item = action,
+                            onClick = {
+                                onActionSelected(action.route)
+                                onDismiss()
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    // Keep a lone last option half-width, aligned with the grid.
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
         }
@@ -113,17 +114,15 @@ val dims = Dimens.current
 @Composable
 fun ActionCard(
     item: ActionItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
-    Surface(
+    Card(
+        onClick = onClick,
         shape = RoundedCornerShape(dims.cardCornerRadius),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(dims.cardCornerRadius))
-            .clickable { onClick() }
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = modifier
     ) {
         Row(
             modifier = Modifier

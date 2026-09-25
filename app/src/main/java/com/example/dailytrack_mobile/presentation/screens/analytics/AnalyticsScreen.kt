@@ -1,5 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.analytics
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -128,7 +130,7 @@ fun AnalyticsScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -153,7 +155,7 @@ fun AnalyticsScreen(
                         // The period's stats (including time left) live in the card
                         // below; the app bar only needs to offer picking a period.
                         Box {
-                            IconButton(onClick = { showCalendarDropdown = true }) {
+                            FilledIconButton(colors = topBarIconButtonColors(), onClick = { showCalendarDropdown = true }) {
                                 Icon(
                                     imageVector = Icons.Outlined.CalendarMonth,
                                     contentDescription = "Calendar",
@@ -364,7 +366,7 @@ fun AnalyticsScreen(
                 onClick = onNavigateToBudgets
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(32.dp + LocalFloatingBarClearance.current))
         }
     }
 }

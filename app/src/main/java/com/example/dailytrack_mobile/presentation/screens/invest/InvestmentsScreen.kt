@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.invest
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -184,7 +185,7 @@ fun InvestmentsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background),
-                contentPadding = PaddingValues(bottom = dims.screenBottomPadding)
+                contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
             ) {
                 // ── Portfolio header ────────────────────────────────────────────
                 item {

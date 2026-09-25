@@ -272,7 +272,6 @@ fun EditTransactionDialog(
                         onClick = { onDelete(transaction) },
                         enabled = !isUpdating,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        shape = RoundedCornerShape(16.dp),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                         modifier = Modifier.height(52.dp)
                     ) {
@@ -296,7 +295,6 @@ fun EditTransactionDialog(
                             )
                         },
                         enabled = !isUpdating && entry.isComplete,
-                        shape = RoundedCornerShape(16.dp),
                         modifier = Modifier
                             .weight(1f)
                             .height(52.dp)

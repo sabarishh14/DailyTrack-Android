@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.settings.components
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import com.example.dailytrack_mobile.presentation.screens.settings.ThemePreviewColors
 import com.example.dailytrack_mobile.presentation.screens.settings.previewColorsFor
 import com.example.dailytrack_mobile.presentation.screens.settings.AutoLockTimeoutDialog
@@ -93,7 +94,7 @@ fun AppUpdatesSubScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -281,8 +282,7 @@ fun AppUpdateCard(
                     Spacer(Modifier.height(dims.itemSpacingMedium))
                     FilledTonalButton(
                         onClick = { onAction(SettingsAction.OnCheckForUpdatesClicked) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -368,8 +368,7 @@ fun AppUpdateCard(
                     Spacer(Modifier.height(dims.itemSpacingMedium))
                     OutlinedButton(
                         onClick = { onAction(SettingsAction.OnCheckForUpdatesClicked) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -452,8 +451,7 @@ fun AppUpdateCard(
                     Spacer(Modifier.height(dims.itemSpacingMedium))
                     Button(
                         onClick = { onAction(SettingsAction.OnStartUpdateDownload) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Download,
@@ -630,8 +628,7 @@ fun AppUpdateCard(
                     Spacer(Modifier.height(dims.itemSpacingMedium))
                     Button(
                         onClick = { onAction(SettingsAction.OnInstallDownloadedApk) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             imageVector = Icons.Default.SystemUpdate,
@@ -689,8 +686,7 @@ fun AppUpdateCard(
                     Spacer(Modifier.height(dims.itemSpacingMedium))
                     OutlinedButton(
                         onClick = { onAction(SettingsAction.OnCheckForUpdatesClicked) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,

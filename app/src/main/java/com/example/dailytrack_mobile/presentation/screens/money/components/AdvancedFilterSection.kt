@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -33,7 +34,7 @@ import com.example.dailytrack_mobile.presentation.util.Dimens
  * Reusable filter section implementing the "Mode Toggle" pattern for Include vs. Exclude logic,
  * with streamlined top chips and a dedicated search & filter modal for fast Include/Exclude actions.
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun AdvancedFilterSection(
     title: String,
@@ -122,64 +123,23 @@ fun AdvancedFilterSection(
             }
         }
 
-        // Mode Toggle: SingleChoiceSegmentedButtonRow
-        SingleChoiceSegmentedButtonRow(
+        // Mode Toggle: include / exclude
+        ConnectedToggleGroup(
+            options = listOf(FilterMode.INCLUDE, FilterMode.EXCLUDE),
+            selected = currentMode,
+            onSelect = { currentMode = it },
+            label = { if (it == FilterMode.INCLUDE) "Include Mode" else "Exclude Mode" },
+            icon = { if (it == FilterMode.INCLUDE) Icons.Default.Check else Icons.Default.Close },
+            colors = { mode ->
+                ToggleButtonDefaults.toggleButtonColors(
+                    checkedContainerColor = if (mode == FilterMode.INCLUDE) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.errorContainer,
+                    checkedContentColor = if (mode == FilterMode.INCLUDE) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onErrorContainer
+                )
+            },
             modifier = Modifier.fillMaxWidth()
-        ) {
-            // Segment 1: Include Mode
-            SegmentedButton(
-                selected = currentMode == FilterMode.INCLUDE,
-                onClick = { currentMode = FilterMode.INCLUDE },
-                shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                icon = {
-                    SegmentedButtonDefaults.Icon(active = currentMode == FilterMode.INCLUDE) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Include Mode",
-                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
-                        )
-                    }
-                },
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Text(
-                    text = "Include Mode",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-                )
-            }
-
-            // Segment 2: Exclude Mode
-            SegmentedButton(
-                selected = currentMode == FilterMode.EXCLUDE,
-                onClick = { currentMode = FilterMode.EXCLUDE },
-                shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                icon = {
-                    SegmentedButtonDefaults.Icon(active = currentMode == FilterMode.EXCLUDE) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Exclude Mode",
-                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
-                        )
-                    }
-                },
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = MaterialTheme.colorScheme.errorContainer,
-                    activeContentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    inactiveContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    inactiveContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            ) {
-                Text(
-                    text = "Exclude Mode",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
-                )
-            }
-        }
+        )
 
         // FlowRow of FilterChips (Top Visible Chips + Selected Items + More Action)
         FlowRow(
@@ -511,7 +471,6 @@ private fun ItemFilterSearchDialog(
                                                 val next = if (isIncluded) ItemFilterStatus.NEUTRAL else ItemFilterStatus.INCLUDED
                                                 onItemStatusChange(item, next)
                                             },
-                                            shape = RoundedCornerShape(8.dp),
                                             colors = ButtonDefaults.filledTonalButtonColors(
                                                 containerColor = if (isIncluded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
                                                 contentColor = if (isIncluded) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
@@ -537,7 +496,6 @@ private fun ItemFilterSearchDialog(
                                                 val next = if (isExcluded) ItemFilterStatus.NEUTRAL else ItemFilterStatus.EXCLUDED
                                                 onItemStatusChange(item, next)
                                             },
-                                            shape = RoundedCornerShape(8.dp),
                                             colors = ButtonDefaults.filledTonalButtonColors(
                                                 containerColor = if (isExcluded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHighest,
                                                 contentColor = if (isExcluded) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
@@ -566,8 +524,7 @@ private fun ItemFilterSearchDialog(
         },
         confirmButton = {
             Button(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(10.dp)
+                onClick = onDismiss
             ) {
                 Text("Done")
             }

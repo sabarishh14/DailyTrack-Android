@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.settings
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -323,16 +324,14 @@ fun SettingsScreen(
             },
             confirmButton = {
                 Button(
-                    onClick = { onAction(SettingsAction.OnOpenInstallPermissionSettings) },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    onClick = { onAction(SettingsAction.OnOpenInstallPermissionSettings) }
                 ) {
                     Text("Open Settings")
                 }
             },
             dismissButton = {
                 TextButton(
-                    onClick = { onAction(SettingsAction.OnDismissInstallPermissionDialog) },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    onClick = { onAction(SettingsAction.OnDismissInstallPermissionDialog) }
                 ) {
                     Text("Cancel")
                 }
@@ -435,7 +434,7 @@ fun SettingsScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = { onAction(SettingsAction.OnBackClicked) }) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = { onAction(SettingsAction.OnBackClicked) }) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",

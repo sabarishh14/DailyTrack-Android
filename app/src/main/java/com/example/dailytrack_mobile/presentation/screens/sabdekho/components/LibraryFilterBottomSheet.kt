@@ -151,15 +151,13 @@ fun LibraryFilterBottomSheet(
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f).height(dims.buttonHeight),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        modifier = Modifier.weight(1f).height(dims.buttonHeight)
                     ) {
                         Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
                     }
                     Button(
                         onClick = { onApply(draftYear, draftMonth, draftWeek, draftLanguage) },
                         modifier = Modifier.weight(1.5f).height(dims.buttonHeight),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary

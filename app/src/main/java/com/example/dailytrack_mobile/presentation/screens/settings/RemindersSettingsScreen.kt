@@ -307,7 +307,6 @@ fun RemindersSettingsScreen(
             // Test Notification Button
             OutlinedButton(
                 onClick = { onAction(SettingsAction.OnSendTestNotification) },
-                shape = RoundedCornerShape(dims.buttonCornerRadius),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 8.dp)

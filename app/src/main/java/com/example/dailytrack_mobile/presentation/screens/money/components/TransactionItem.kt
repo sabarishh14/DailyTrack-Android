@@ -34,6 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.style.TextAlign
+import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -93,10 +97,14 @@ fun SwipeableTransactionItem(
     isSelectionMode: Boolean = false,
     swipeEnabled: Boolean = true,
     showBalance: Boolean = false,
+    /** Sheet-like single-line row; [compactShape] rounds only the table's outer corners. */
+    compact: Boolean = false,
+    compactShape: Shape = RectangleShape,
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
-    val circleSize = 44.dp
+    // The swipe actions have to fit the shorter compact row.
+    val circleSize = if (compact) 32.dp else 44.dp
     val buttonSpacing = 10.dp
     val cardGap = 12.dp
     val totalRevealWidth = (circleSize * 2) + buttonSpacing + cardGap
@@ -274,12 +282,133 @@ fun SwipeableTransactionItem(
                     )
                 }
         ) {
-            TransactionCardSurface(
-                transaction = transaction,
-                isSelected = isSelected,
-                isSelectionMode = isSelectionMode,
-                showBalance = showBalance
+            if (compact) {
+                CompactTransactionRow(
+                    transaction = transaction,
+                    isSelected = isSelected,
+                    isSelectionMode = isSelectionMode,
+                    showBalance = showBalance,
+                    shape = compactShape
+                )
+            } else {
+                TransactionCardSurface(
+                    transaction = transaction,
+                    isSelected = isSelected,
+                    isSelectionMode = isSelectionMode,
+                    showBalance = showBalance
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compact row — one line, like a spreadsheet:  date │ ● title │ amount │ balance
+// The dot is the account's colour, so the account is readable without a column.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+fun CompactTransactionRow(
+    transaction: Transaction,
+    isSelected: Boolean = false,
+    isSelectionMode: Boolean = false,
+    showBalance: Boolean = false,
+    shape: Shape = RectangleShape,
+    modifier: Modifier = Modifier
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+        label = "tx_row_container"
+    )
+    // Excluded rows stay readable but step back.
+    val contentAlpha = if (transaction.isExcluded) 0.5f else 1f
+
+    Surface(
+        color = containerColor,
+        shape = shape,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 40.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AnimatedVisibility(
+                visible = isSelectionMode,
+                enter = fadeIn(tween(150)) + expandHorizontally(tween(180), expandFrom = Alignment.Start),
+                exit = fadeOut(tween(120)) + shrinkHorizontally(tween(160), shrinkTowards = Alignment.Start)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 10.dp)
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .border(
+                            1.5.dp,
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = transaction.date,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha),
+                maxLines = 1,
+                softWrap = false,
+                modifier = Modifier.width(46.dp)
             )
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background((bankColor(transaction.bank) ?: MaterialTheme.colorScheme.outline).copy(alpha = contentAlpha))
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = transaction.title,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = contentAlpha),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = formatAmount(transaction),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = (if (transaction.type == TransactionType.CREDIT) ChartColors.IncomeGreen
+                         else MaterialTheme.colorScheme.onSurface).copy(alpha = contentAlpha),
+                maxLines = 1,
+                softWrap = false
+            )
+            val balance = transaction.balanceAfter
+            if (showBalance) {
+                Text(
+                    text = if (balance != null) "₹%,.0f".format(balance) else "—",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f * contentAlpha),
+                    maxLines = 1,
+                    softWrap = false,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.width(64.dp)
+                )
+            }
         }
     }
 }

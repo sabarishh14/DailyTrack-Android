@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.sabdekho
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -346,8 +347,7 @@ private fun LibraryTabContent(
                         textAlign = TextAlign.Center
                     )
                     Button(
-                        onClick = { onAction(SabdekhoAction.Refresh) },
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                        onClick = { onAction(SabdekhoAction.Refresh) }
                     ) {
                         Text("Retry")
                     }
@@ -373,7 +373,7 @@ private fun LibraryTabContent(
                 } else if (state.onlineResults.isNotEmpty()) {
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
-                        contentPadding = PaddingValues(bottom = dims.screenBottomPadding + 56.dp),
+                        contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         item {
@@ -444,8 +444,7 @@ private fun LibraryTabContent(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)) Button(
-                                onClick = { onNavigateToAddMovie(null) },
-                                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                                onClick = { onNavigateToAddMovie(null) }
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -497,8 +496,7 @@ private fun LibraryTabContent(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)) OutlinedButton(
-                            onClick = { onNavigateToAddMovie(null) },
-                            shape = RoundedCornerShape(dims.buttonCornerRadius)
+                            onClick = { onNavigateToAddMovie(null) }
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
@@ -512,7 +510,7 @@ private fun LibraryTabContent(
                 columns = GridCells.Fixed(state.gridColumns),
                 verticalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge),
                 horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge),
-                contentPadding = PaddingValues(bottom = dims.screenBottomPadding + 56.dp)
+                contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
                     MediaCard(
@@ -651,7 +649,6 @@ fun OnlineMediaResultCard(
 
                 FilledTonalButton(
                     onClick = onAddClick,
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     modifier = Modifier.height(32.dp)
                 ) {

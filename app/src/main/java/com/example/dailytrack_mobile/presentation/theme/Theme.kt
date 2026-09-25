@@ -2,7 +2,9 @@ package com.example.dailytrack_mobile.presentation.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialExpressiveTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
@@ -13,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 
 val LocalAppTheme = staticCompositionLocalOf { AppTheme.YELLOW }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DailyTrackTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -68,8 +71,11 @@ fun DailyTrackTheme(
     }
 
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
-        MaterialTheme(
+        // Expressive theme: M3 components pick up the spring-based expressive
+        // motion scheme (sheets, nav indicator, buttons, chips, switches...).
+        MaterialExpressiveTheme(
             colorScheme = colorScheme,
+            motionScheme = MotionScheme.expressive(),
             typography = Typography,
             content = content
         )

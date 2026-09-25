@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.home.components
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -130,7 +131,7 @@ fun HomeTopBar(
             ) {
                 if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current
                         .canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
-                ) IconButton(
+                ) FilledIconButton(colors = topBarIconButtonColors(), 
                     onClick = onNavigateToAnalytics,
                     modifier = Modifier.size(36.dp)
                 ) {
@@ -141,7 +142,7 @@ fun HomeTopBar(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                IconButton(
+                FilledIconButton(colors = topBarIconButtonColors(), 
                     onClick = onNavigateToSettings,
                     modifier = Modifier.size(36.dp)
                 ) {

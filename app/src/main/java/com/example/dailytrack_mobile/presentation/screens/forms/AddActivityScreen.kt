@@ -368,8 +368,7 @@ fun AddActivityScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(dims.searchBarHeight),
-            shape = RoundedCornerShape(dims.buttonCornerRadius),
-            colors = ButtonDefaults.buttonColors(
+                colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),

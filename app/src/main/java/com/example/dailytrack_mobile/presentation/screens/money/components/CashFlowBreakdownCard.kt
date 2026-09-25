@@ -719,8 +719,7 @@ internal fun EmptyFilterResultsCard(
             )
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedButton(
-                onClick = onResetFilters,
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                onClick = onResetFilters
             ) {
                 Text("Reset Filters")
             }

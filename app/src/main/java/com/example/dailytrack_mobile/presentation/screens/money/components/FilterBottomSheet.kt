@@ -257,8 +257,7 @@ fun FilterBottomSheet(
                         onClick = onDismiss,
                         modifier = Modifier
                             .weight(1f)
-                            .height(dims.buttonHeight),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius)
+                            .height(dims.buttonHeight)
                     ) {
                         Text(
                             text = "Cancel",
@@ -271,8 +270,7 @@ fun FilterBottomSheet(
                         modifier = Modifier
                             .weight(1.5f)
                             .height(dims.buttonHeight),
-                        shape = RoundedCornerShape(dims.buttonCornerRadius),
-                        colors = ButtonDefaults.buttonColors(
+                            colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )

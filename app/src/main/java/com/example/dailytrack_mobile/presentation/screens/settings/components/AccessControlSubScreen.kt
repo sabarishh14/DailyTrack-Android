@@ -1,5 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.settings.components
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -106,7 +108,7 @@ internal fun AccessControlSubScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { if (draft != null) viewModel.closeEditor() else onNavigateBack() }) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = { if (draft != null) viewModel.closeEditor() else onNavigateBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(dims.iconSizeMedium))
                     }
                 },
@@ -187,7 +189,6 @@ private fun PeopleList(
                 Button(
                     onClick = { onAdd(newEmail); newEmail = "" },
                     enabled = newEmail.isNotBlank(),
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     modifier = Modifier.height(56.dp)
                 ) { Text("Add") }
             }
@@ -324,15 +325,13 @@ private fun DraftEditor(
             SettingsSectionLabel("Role")
             Spacer(Modifier.height(8.dp))
             val roles = listOf("member" to "Member", "admin" to "Admin")
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                roles.forEachIndexed { i, (key, label) ->
-                    SegmentedButton(
-                        selected = draft.role == key,
-                        onClick = { onChange { it.copy(role = key) } },
-                        shape = SegmentedButtonDefaults.itemShape(i, roles.size)
-                    ) { Text(label) }
-                }
-            }
+            ConnectedToggleGroup(
+                options = roles.map { it.first },
+                selected = draft.role,
+                onSelect = { key -> onChange { it.copy(role = key) } },
+                label = { key -> roles.first { it.first == key }.second },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
 
         if (draft.role == "admin") {
@@ -357,15 +356,13 @@ private fun DraftEditor(
                             }
                         }
                         val levels = AccessLevel.entries
-                        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                            levels.forEachIndexed { i, l ->
-                                SegmentedButton(
-                                    selected = level == l,
-                                    onClick = { onChange { d -> d.copy(modules = d.modules + (meta.module to l)) } },
-                                    shape = SegmentedButtonDefaults.itemShape(i, levels.size)
-                                ) { Text(l.key.replaceFirstChar { c -> c.uppercase() }) }
-                            }
-                        }
+                        ConnectedToggleGroup(
+                            options = levels,
+                            selected = level,
+                            onSelect = { l -> onChange { d -> d.copy(modules = d.modules + (meta.module to l)) } },
+                            label = { l -> l.key.replaceFirstChar { c -> c.uppercase() } },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
@@ -474,13 +471,12 @@ private fun EditorFooter(
                     colors = if (draft.confirmRemove) ButtonDefaults.outlinedButtonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
-                    ) else ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                    ) else ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text(if (draft.confirmRemove) "Tap to confirm" else "Remove") }
             }
             Spacer(Modifier.weight(1f))
             TextButton(onClick = onCancel, enabled = !isSaving) { Text("Cancel") }
-            Button(onClick = onSave, enabled = !isSaving, shape = RoundedCornerShape(dims.buttonCornerRadius)) {
+            Button(onClick = onSave, enabled = !isSaving) {
                 Text(if (isSaving) "Saving…" else if (draft.isNew) "Add person" else "Save")
             }
         }

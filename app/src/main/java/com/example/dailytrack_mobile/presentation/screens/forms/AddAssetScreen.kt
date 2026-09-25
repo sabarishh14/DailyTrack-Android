@@ -779,8 +779,7 @@ fun AddAssetScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(dims.searchBarHeight),
-            shape = RoundedCornerShape(dims.buttonCornerRadius),
-            enabled = isFormValid && !formState.isSaving
+                enabled = isFormValid && !formState.isSaving
         ) {
             if (formState.isSaving) {
                 CircularProgressIndicator(

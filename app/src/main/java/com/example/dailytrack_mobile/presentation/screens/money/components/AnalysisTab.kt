@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -180,7 +181,7 @@ fun AnalysisTab(
             start = dims.screenHorizontalPadding,
             end = dims.screenHorizontalPadding,
             top = dims.itemSpacingMedium,
-            bottom = dims.screenBottomPadding
+            bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current
         ),
         // Tight enough that filters, chart, categories and totals share one screen.
         verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)

@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -24,6 +27,9 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material.icons.filled.TableRows
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.outlined.FilterAlt
 import androidx.compose.material3.*
@@ -57,6 +63,7 @@ fun TransactionsTab(
     val context = LocalContext.current
     val uiPrefs = remember { context.getSharedPreferences("money_ui", android.content.Context.MODE_PRIVATE) }
     var showBalances by remember { mutableStateOf(uiPrefs.getBoolean("show_tx_balances", false)) }
+    var compactRows by remember { mutableStateOf(uiPrefs.getBoolean("tx_compact_rows", false)) }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -83,15 +90,18 @@ fun TransactionsTab(
                     modifier = Modifier.weight(1f)
                 )
 
-                if (balancesAllowed) {
-                    BalancesToggleButton(
-                        active = showBalances,
-                        onClick = {
-                            showBalances = !showBalances
-                            uiPrefs.edit().putBoolean("show_tx_balances", showBalances).apply()
-                        }
-                    )
-                }
+                ViewOptionsButton(
+                    compactRows = compactRows,
+                    onCompactRowsChange = {
+                        compactRows = it
+                        uiPrefs.edit().putBoolean("tx_compact_rows", it).apply()
+                    },
+                    showBalances = showBalances.takeIf { balancesAllowed },
+                    onShowBalancesChange = {
+                        showBalances = it
+                        uiPrefs.edit().putBoolean("show_tx_balances", it).apply()
+                    }
+                )
 
                 FilterButtonWithBadge(
                     activeCount = filterState.activeFilterCount,
@@ -186,8 +196,7 @@ fun TransactionsTab(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             OutlinedButton(
-                                onClick = { onAction(MoneyAction.Refresh) },
-                                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                                onClick = { onAction(MoneyAction.Refresh) }
                             ) {
                                 Text("Retry", style = MaterialTheme.typography.labelLarge)
                             }
@@ -234,8 +243,7 @@ fun TransactionsTab(
                                         onAction(MoneyAction.ResetAnalysisFilters)
                                         onAction(MoneyAction.UpdateSearchQuery(""))
                                         onAction(MoneyAction.SelectCategory("All"))
-                                    },
-                                    shape = RoundedCornerShape(dims.buttonCornerRadius)
+                                    }
                                 ) {
                                     Text("Reset Filters & Search")
                                 }
@@ -279,16 +287,20 @@ fun TransactionsTab(
                         contentPadding = PaddingValues(
                             start = dims.screenHorizontalPadding,
                             end = dims.screenHorizontalPadding,
-                            bottom = if (state.isSelectionMode) dims.screenBottomPadding + 84.dp else dims.screenBottomPadding
+                            bottom = (if (state.isSelectionMode) dims.screenBottomPadding + 84.dp else dims.screenBottomPadding) + LocalFloatingBarClearance.current
                         ),
-                        verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
+                        // Compact rows sit edge to edge with hairline gaps: one table, not a stack of cards.
+                        verticalArrangement = Arrangement.spacedBy(if (compactRows) 1.dp else dims.itemSpacingMedium)
                     ) {
-                        items(
+                        val lastIndex = state.filteredTransactions.lastIndex
+                        itemsIndexed(
                             items = state.filteredTransactions,
-                            key = { it.id }
-                        ) { transaction ->
+                            key = { _, tx -> tx.id }
+                        ) { index, transaction ->
                             val isSelected = transaction.id in state.selectedTransactionIds
                             SwipeableTransactionItem(
+                                compact = compactRows,
+                                compactShape = tableRowShape(index, lastIndex),
                                 // View-only users: no swipe actions and no bulk selection.
                                 swipeEnabled = canEdit,
                                 showBalance = balancesAllowed && showBalances,
@@ -436,7 +448,6 @@ private fun BulkSelectionActionBar(
             ) {
                 FilledTonalButton(
                     onClick = onBulkEdit,
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                     colors = ButtonDefaults.filledTonalButtonColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -457,7 +468,6 @@ private fun BulkSelectionActionBar(
 
                 Button(
                     onClick = onBulkDelete,
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
@@ -523,27 +533,99 @@ private fun FilterButtonWithBadge(
     }
 }
 
-/** Same shape as the filter button beside it; lit while balances show. */
+/** Rounds only the outer corners, so compact rows read as one table. */
+private fun tableRowShape(index: Int, lastIndex: Int): androidx.compose.ui.graphics.Shape {
+    val r = 12.dp
+    return when {
+        lastIndex == 0 -> RoundedCornerShape(r)
+        index == 0 -> RoundedCornerShape(topStart = r, topEnd = r)
+        index == lastIndex -> RoundedCornerShape(bottomStart = r, bottomEnd = r)
+        else -> RectangleShape
+    }
+}
+
+/**
+ * How the list looks: compact rows and running balances. One button with a
+ * small menu, so the search bar keeps its width. [showBalances] null hides
+ * that option (users who can't see balances).
+ */
 @Composable
-private fun BalancesToggleButton(active: Boolean, onClick: () -> Unit) {
+private fun ViewOptionsButton(
+    compactRows: Boolean,
+    onCompactRowsChange: (Boolean) -> Unit,
+    showBalances: Boolean?,
+    onShowBalancesChange: (Boolean) -> Unit
+) {
     val dims = Dimens.current
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(dims.cardCornerRadius - 4.dp),
-        color = if (active) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.height(dims.searchBarHeight)
-    ) {
-        Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-            Icon(
-                imageVector = Icons.Default.AccountBalanceWallet,
-                contentDescription = if (active) "Hide balances" else "Show balances",
-                tint = if (active) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+    var open by remember { mutableStateOf(false) }
+    val active = compactRows || showBalances == true
+    Box {
+        Surface(
+            onClick = { open = true },
+            shape = RoundedCornerShape(dims.cardCornerRadius - 4.dp),
+            color = if (active) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.height(dims.searchBarHeight)
+        ) {
+            Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (compactRows) Icons.Default.TableRows else Icons.Default.ViewAgenda,
+                    contentDescription = "View options",
+                    tint = if (active) MaterialTheme.colorScheme.primary
+                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        // Opens just below the button with its right edge lined up to it, so it
+        // floats clear of the search bar instead of touching its border.
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 8.dp),
+            shape = RoundedCornerShape(14.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 0.dp,
+            shadowElevation = 8.dp,
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        ) {
+            ViewOptionItem(
+                label = "Compact rows",
+                icon = Icons.Default.TableRows,
+                checked = compactRows,
+                onClick = { onCompactRowsChange(!compactRows) }
             )
+            if (showBalances != null) {
+                ViewOptionItem(
+                    label = "Show balances",
+                    icon = Icons.Default.AccountBalanceWallet,
+                    checked = showBalances,
+                    onClick = { onShowBalancesChange(!showBalances) }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun ViewOptionItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    checked: Boolean,
+    onClick: () -> Unit
+) {
+    DropdownMenuItem(
+        text = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) },
+        trailingIcon = {
+            Switch(
+                checked = checked,
+                onCheckedChange = { onClick() },
+                modifier = Modifier.scale(0.7f)
+            )
+        },
+        onClick = onClick
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.money
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,7 +36,7 @@ fun BudgetsScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -67,7 +69,7 @@ fun BudgetsScreen(
                 )
         ) {
             BudgetSection(state = state, onAction = viewModel::onAction)
-            Spacer(modifier = Modifier.height(dims.screenBottomPadding))
+            Spacer(modifier = Modifier.height(dims.screenBottomPadding + LocalFloatingBarClearance.current))
         }
     }
 

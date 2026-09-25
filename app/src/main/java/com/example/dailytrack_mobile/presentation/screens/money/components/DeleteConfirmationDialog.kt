@@ -84,8 +84,7 @@ fun DeleteConfirmationDialog(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
-                ),
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                )
             ) {
                 if (isDeleting) {
                     CircularProgressIndicator(
@@ -181,8 +180,7 @@ fun BulkDeleteConfirmationDialog(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
-                ),
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                )
             ) {
                 if (isDeleting) {
                     CircularProgressIndicator(

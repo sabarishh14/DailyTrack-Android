@@ -563,8 +563,7 @@ private fun LogSubTab(
             enabled = !state.isSubmittingLog,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp),
-            shape = RoundedCornerShape(dims.buttonCornerRadius)
+                .height(48.dp)
         ) {
             if (state.isSubmittingLog) {
                 CircularProgressIndicator(
@@ -1236,8 +1235,7 @@ private fun MatchSubTab(
                         }
 
                         Button(
-                            onClick = { onAction(SabdekhoAction.ApplyRematch(show.id, isMovie, res)) },
-                            shape = RoundedCornerShape(dims.buttonCornerRadius)
+                            onClick = { onAction(SabdekhoAction.ApplyRematch(show.id, isMovie, res)) }
                         ) {
                             Text("Match")
                         }
@@ -1253,7 +1251,6 @@ private fun MatchSubTab(
             onClick = onDeleteClick,
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(dims.buttonCornerRadius),
             modifier = Modifier.fillMaxWidth()
         ) {
             Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(18.dp))

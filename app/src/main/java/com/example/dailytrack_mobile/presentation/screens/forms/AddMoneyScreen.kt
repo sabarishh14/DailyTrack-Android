@@ -487,7 +487,6 @@ fun AddMoneyScreen(
             OutlinedButton(
                 onClick = { addAnother() },
                 enabled = !formState.isSaving,
-                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -556,7 +555,6 @@ fun AddMoneyScreen(
                     )
                 },
                 enabled = canSave,
-                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,

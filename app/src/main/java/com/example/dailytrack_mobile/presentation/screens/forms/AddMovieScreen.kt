@@ -976,8 +976,7 @@ fun AddMovieScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(dims.searchBarHeight),
-            shape = RoundedCornerShape(dims.buttonCornerRadius),
-            enabled = effectiveTitle.isNotBlank() && selectedStatus != null && !formState.isSaving
+                enabled = effectiveTitle.isNotBlank() && selectedStatus != null && !formState.isSaving
         ) {
             if (formState.isSaving) {
                 CircularProgressIndicator(

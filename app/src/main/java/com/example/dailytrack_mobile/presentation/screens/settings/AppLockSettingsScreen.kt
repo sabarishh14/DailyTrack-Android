@@ -502,8 +502,7 @@ fun AutoLockTimeoutDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(dims.buttonCornerRadius)
+                onClick = onDismiss
             ) {
                 Text("Cancel", style = MaterialTheme.typography.labelLarge)
             }

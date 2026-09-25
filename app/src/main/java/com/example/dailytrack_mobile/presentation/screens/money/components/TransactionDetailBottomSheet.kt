@@ -412,7 +412,6 @@ fun TransactionDetailBottomSheet(
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     ),
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Icon(
@@ -432,7 +431,6 @@ fun TransactionDetailBottomSheet(
                     onClick = {
                         onEdit(transaction)
                     },
-                    shape = RoundedCornerShape(dims.buttonCornerRadius),
                     modifier = Modifier
                         .weight(1f)
                         .height(dims.searchBarHeight)

@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.forms
 
+import com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -117,20 +118,13 @@ fun AddInvestmentScreen(
 
         // ── Frequency ────────────────────────────────────────────────
         SectionLabel("Frequency")
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            InvestmentFrequency.entries.forEachIndexed { index, frequency ->
-                SegmentedButton(
-                    selected = selectedFrequency == frequency,
-                    onClick = { selectedFrequency = frequency },
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = InvestmentFrequency.entries.size
-                    )
-                ) {
-                    Text(frequency.label, maxLines = 1, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
+        ConnectedToggleGroup(
+            options = InvestmentFrequency.entries,
+            selected = selectedFrequency,
+            onSelect = { selectedFrequency = it },
+            label = { it.label },
+            modifier = Modifier.fillMaxWidth()
+        )
 
         // ── Amount ───────────────────────────────────────────────────
         SectionLabel(
@@ -198,8 +192,7 @@ fun AddInvestmentScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(dims.searchBarHeight),
-            shape = RoundedCornerShape(dims.buttonCornerRadius),
-            enabled = investmentName.isNotBlank() && selectedCategory != null && amount.isNotBlank()
+                enabled = investmentName.isNotBlank() && selectedCategory != null && amount.isNotBlank()
         ) {
             Text(
                 "Save Investment",

@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.settings.components
 
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import com.example.dailytrack_mobile.presentation.screens.settings.ThemePreviewColors
 import com.example.dailytrack_mobile.presentation.screens.settings.previewColorsFor
 import com.example.dailytrack_mobile.presentation.screens.settings.AutoLockTimeoutDialog
@@ -90,7 +91,7 @@ internal fun AboutSettingsSubScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
@@ -237,7 +238,6 @@ internal fun AboutSettingsSubScreen(
                             OutlinedButton(
                                 onClick = { onAction(SettingsAction.OnLogoutClicked) },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(dims.buttonCornerRadius),
                                 colors = ButtonDefaults.outlinedButtonColors(
                                     contentColor = MaterialTheme.colorScheme.error
                                 ),

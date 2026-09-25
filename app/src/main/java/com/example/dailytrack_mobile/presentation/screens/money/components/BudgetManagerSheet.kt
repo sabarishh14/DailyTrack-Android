@@ -216,8 +216,7 @@ fun BudgetManagerSheet(
                             top = 12.dp,
                             bottom = 20.dp
                         )
-                        .height(52.dp),
-                    shape = RoundedCornerShape(16.dp)
+                        .height(52.dp)
                 ) {
                     if (isSaving) {
                         CircularProgressIndicator(
