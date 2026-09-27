@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.sabdekho
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.datastore.DemoModeManager
@@ -427,7 +428,7 @@ class SabdekhoVM @Inject constructor(
     private fun loadStats(year: String = _state.value.selectedStatsYear) {
         _state.update { it.copy(selectedStatsYear = year) }
         viewModelScope.launch {
-            _state.update { it.copy(isStatsLoading = true) }
+            _state.update { it.copy(isStatsLoading = true, statsError = null) }
             repository.getMovieStats(year = year)
                 .onSuccess { statsResp ->
                     _state.update {
@@ -437,8 +438,12 @@ class SabdekhoVM @Inject constructor(
                         )
                     }
                 }
-                .onFailure {
-                    _state.update { it.copy(isStatsLoading = false) }
+                .onFailure { error ->
+                    // Logged so a payload the DTOs can't parse is findable in logcat.
+                    Log.w("SabdekhoVM", "Film stats failed to load", error)
+                    _state.update {
+                        it.copy(isStatsLoading = false, statsError = error.message ?: "Couldn't load film stats")
+                    }
                 }
         }
         viewModelScope.launch {

@@ -99,14 +99,15 @@ fun CategoryVisibilitySheet(
             )
         }
     ) {
+        // Sized to its rows, capped so it scrolls rather than covering the screen.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.75f))
+                .heightIn(max = rememberSheetHeight(0.75f))
                 .padding(
                     start = dims.screenHorizontalPadding,
                     end = dims.screenHorizontalPadding,
-                    bottom = dims.screenBottomPadding + 16.dp
+                    bottom = dims.itemSpacingLarge
                 )
         ) {
             // Header Row: Title + "Show All" / "Hide All"
@@ -185,7 +186,9 @@ fun CategoryVisibilitySheet(
 
             // Category rows
             LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(InvestCategory.entries) { category ->
@@ -306,31 +309,6 @@ fun CategoryVisibilitySheet(
                         }
                     }
                 }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Footer note
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    modifier = Modifier.size(14.dp)
-                )
-                Text(
-                    text = "Excluded categories are omitted from portfolio totals and Net Worth across the app.",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.5.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
             }
         }
     }

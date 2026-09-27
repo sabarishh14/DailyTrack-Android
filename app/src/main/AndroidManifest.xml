@@ -73,6 +73,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- Routines: the nightly check-in alarm and its answer buttons. Custom
+             actions arrive as explicit intents; the filter only re-sets the
+             alarm after a reboot or an app update. -->
+        <receiver
+            android:name=".notification.routines.RoutineCheckInReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

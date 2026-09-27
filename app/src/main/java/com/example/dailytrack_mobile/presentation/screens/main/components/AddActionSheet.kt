@@ -7,7 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.CurrencyRupee
-import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -43,10 +43,10 @@ fun AddActionSheet(
             route = Routes.AddMoney.route
         ),
         ActionItem(
-            title = "Activity",
-            subtitle = "Workout / Habit",
-            icon = Icons.Default.FitnessCenter,
-            route = Routes.AddActivity.route
+            title = "Routine",
+            subtitle = "Habit, challenge or chore",
+            icon = Icons.Default.TaskAlt,
+            route = Routes.AddRoutine.route
         ),
         ActionItem(
             title = "Movie",
@@ -167,10 +167,12 @@ fun ActionCard(
     }
 }
 
-/** Which "Add" shortcut needs which module's edit access. */
+/** Which "Add" shortcut needs which module's access. */
 fun addActionAllowed(route: String, access: com.example.dailytrack_mobile.data.local.auth.AccessInfo): Boolean = when (route) {
     Routes.AddMoney.route -> access.canEdit(AccessModule.MONEY)
     Routes.AddActivity.route -> access.canEdit(AccessModule.GYM)
+    // Routines are personal, so seeing the module is enough to add your own.
+    Routes.AddRoutine.route -> access.canView(AccessModule.GYM)
     Routes.AddMovie.route -> access.canEdit(AccessModule.SABDEKHO)
     Routes.AddAsset.route, Routes.AddInvestment.route, Routes.SyncBroker.route -> access.canEdit(AccessModule.INVEST)
     else -> true

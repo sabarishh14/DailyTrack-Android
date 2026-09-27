@@ -164,7 +164,7 @@ fun EditTransactionDialog(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.85f))
+                .heightIn(max = rememberSheetHeight(0.85f))
                 .imePadding()
         ) {
             // ── Header ───────────────────────────────────────────────────────
@@ -209,7 +209,7 @@ fun EditTransactionDialog(
             // ── Form — the same fields as Add Money ──────────────────────────
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = dims.screenHorizontalPadding, vertical = 14.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)

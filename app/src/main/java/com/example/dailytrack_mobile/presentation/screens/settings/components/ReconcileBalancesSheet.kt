@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Money
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -100,14 +99,16 @@ fun ReconcileBalancesSheet(
             )
         }
     ) {
+        // Sized to its content, capped so a long account list scrolls instead of
+        // covering the screen — a few accounts shouldn't leave the sheet half empty.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.85f))
+                .heightIn(max = rememberSheetHeight(0.85f))
                 .padding(
                     start = dims.screenHorizontalPadding,
                     end = dims.screenHorizontalPadding,
-                    bottom = dims.screenBottomPadding + 16.dp
+                    bottom = dims.itemSpacingLarge
                 )
         ) {
             // Header
@@ -230,15 +231,26 @@ fun ReconcileBalancesSheet(
             )
             Spacer(modifier = Modifier.height(dims.itemSpacingMedium))
 
-            Box(modifier = Modifier.weight(1f)) {
+            // fill = false: takes only the rows' height, and shrinks to scroll once the cap is hit.
+            Box(modifier = Modifier.weight(1f, fill = false)) {
                 when {
                     isLoadingAccounts && trackedAccounts.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             LoadingIndicator(modifier = Modifier.size(28.dp))
                         }
                     }
                     trackedAccounts.isEmpty() -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -264,26 +276,6 @@ fun ReconcileBalancesSheet(
                         ) {
                             items(trackedAccounts, key = { it.account }) { account ->
                                 ReconcileAccountRow(account)
-                            }
-                            item {
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Info,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "Scan pulls the latest UPI screenshots from Drive and updates each account's real balance.",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                    )
-                                }
                             }
                         }
                     }

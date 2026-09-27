@@ -45,7 +45,7 @@ import com.example.dailytrack_mobile.presentation.screens.invest.components.Char
 import com.example.dailytrack_mobile.presentation.screens.invest.components.EmptyHoldingsState
 import com.example.dailytrack_mobile.presentation.screens.invest.components.FilterPills
 import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingItem
-import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingsSnapshotSheet
+import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingsSnapshotPage
 import com.example.dailytrack_mobile.presentation.screens.invest.components.PortfolioHeader
 import com.example.dailytrack_mobile.presentation.screens.invest.components.AdvancedChart
 import com.example.dailytrack_mobile.presentation.screens.invest.components.SummaryRow
@@ -359,7 +359,7 @@ fun InvestmentsScreen(
         }
 
         if (state.isHoldingsSheetOpen) {
-            HoldingsSnapshotSheet(
+            HoldingsSnapshotPage(
                 state = state,
                 onAction = viewModel::onAction
             )

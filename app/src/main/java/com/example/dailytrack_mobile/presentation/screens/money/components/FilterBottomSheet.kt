@@ -63,7 +63,7 @@ fun FilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.79f))
+                .heightIn(max = rememberSheetHeight(0.79f))
         ) {
             // ─────────────────────────────────────────────────────────────────
             // Header Bar
@@ -135,7 +135,7 @@ fun FilterBottomSheet(
             // ─────────────────────────────────────────────────────────────────
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.sectionSpacing),
@@ -235,8 +235,6 @@ fun FilterBottomSheet(
                         draftFilters = draftFilters.copy(accountFilters = updated)
                     }
                 )
-
-                Spacer(modifier = Modifier.height(dims.sectionSpacing))
             }
 
             // ─────────────────────────────────────────────────────────────────

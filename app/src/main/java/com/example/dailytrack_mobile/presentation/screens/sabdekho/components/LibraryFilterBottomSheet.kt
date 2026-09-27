@@ -54,7 +54,7 @@ fun LibraryFilterBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.82f))
+                .heightIn(max = rememberSheetHeight(0.82f))
         ) {
             // ── Header ──
             Row(
@@ -102,7 +102,7 @@ fun LibraryFilterBottomSheet(
             // ── Scrollable filter sections ──
             Column(
                 modifier = Modifier
-                    .weight(1f)
+                    .weight(1f, fill = false)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = dims.screenHorizontalPadding, vertical = dims.sectionSpacing),
@@ -136,8 +136,6 @@ fun LibraryFilterBottomSheet(
                     selected = draftLanguage,
                     onSelect = { draftLanguage = it }
                 )
-
-                Spacer(modifier = Modifier.height(dims.sectionSpacing))
             }
 
             // ── Sticky footer ──

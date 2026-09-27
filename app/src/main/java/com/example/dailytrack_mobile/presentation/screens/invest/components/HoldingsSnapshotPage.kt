@@ -1,6 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.invest.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,33 +12,50 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingChange
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingComparison
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingSnapshotRow
@@ -52,90 +70,117 @@ import java.text.DecimalFormat
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.round
-import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Holdings on a date, optionally compared with another date.
 //
-// Mirrors the web app's snapshot view: every number sits under a short label
-// (Invested / Current / Returns, Qty / LTP), and comparisons show the later
-// value with a ▲/▼ badge for the change. Comparisons always read earlier →
-// later, whichever date was picked first.
+// A full-screen page rather than a bottom sheet: it's a long list with its own
+// filters, and a sheet closes whenever a scroll back to the top carries on into
+// a downward drag. Here only Back or the arrow closes it.
+//
+// A summary card up top, then one compact row per holding: name, a line of
+// context, its value and a single change pill. Tapping a row opens the detail —
+// for a comparison, a small then / now / change table. Comparisons always read
+// earlier → later, whichever date was picked first.
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HoldingsSnapshotSheet(
+fun HoldingsSnapshotPage(
     state: InvestState,
     onAction: (InvestAction) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val dims = Dimens.current
     val snapshotDate = state.snapshotDate ?: return
     val type = state.snapshotType
+    val close = { onAction(InvestAction.CloseHoldingsSnapshot) }
 
-    ModalBottomSheet(
-        onDismissRequest = { onAction(InvestAction.CloseHoldingsSnapshot) },
-        contentWindowInsets = com.example.dailytrack_mobile.presentation.components.SheetContentInsets,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        dragHandle = { BottomSheetDefaults.DragHandle() },
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    Dialog(
+        onDismissRequest = close,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(rememberSheetHeight(0.9f))
+        val pageColor = MaterialTheme.colorScheme.surface
+        MatchSystemBarsTo(pageColor)
+
+        val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
+        AnimatedVisibility(
+            visibleState = shown,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it / 12 }
         ) {
-            SheetHeader(
-                subtitle = if (state.isComparing) {
-                    "${formatShortDate(state.comparisonFromDate.orEmpty())} → ${formatShortDate(state.comparisonToDate.orEmpty())}"
-                } else {
-                    formatPointDate(snapshotDate)
-                },
-                onClose = { onAction(InvestAction.CloseHoldingsSnapshot) }
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            AssetTypeToggle(
-                selected = type,
-                onSelect = { onAction(InvestAction.SelectSnapshotType(it)) },
-                modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            CompareControl(
-                state = state,
-                onAction = onAction,
-                modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            val isBusy = state.isSnapshotLoading || (state.isComparing && state.isCompareLoading)
-
-            when {
-                isBusy -> SkeletonContent(Modifier.padding(horizontal = dims.screenHorizontalPadding))
-
-                state.snapshotError != null -> SheetMessage(
-                    title = "Couldn't load holdings",
-                    detail = state.snapshotError
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(pageColor)
+                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+            ) {
+                PageHeader(
+                    subtitle = if (state.isComparing) {
+                        "${formatShortDate(state.comparisonFromDate.orEmpty())} → ${formatShortDate(state.comparisonToDate.orEmpty())}"
+                    } else {
+                        formatPointDate(snapshotDate)
+                    },
+                    onBack = close
                 )
 
-                state.isComparing -> ComparisonContent(state, type)
+                Spacer(Modifier.height(8.dp))
 
-                state.snapshotHoldings.isEmpty() -> SheetMessage(
-                    title = "No ${type.label.lowercase()} on this date",
-                    detail = "Try another date or asset type."
+                AssetTypeToggle(
+                    selected = type,
+                    onSelect = { onAction(InvestAction.SelectSnapshotType(it)) },
+                    modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
                 )
 
-                else -> SnapshotContent(state, type)
+                Spacer(Modifier.height(10.dp))
+
+                CompareControl(
+                    state = state,
+                    onAction = onAction,
+                    modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
+                )
+
+                Spacer(Modifier.height(14.dp))
+
+                val isBusy = state.isSnapshotLoading || (state.isComparing && state.isCompareLoading)
+
+                when {
+                    isBusy -> SkeletonContent(Modifier.padding(horizontal = dims.screenHorizontalPadding))
+
+                    state.snapshotError != null -> SheetMessage(
+                        title = "Couldn't load holdings",
+                        detail = state.snapshotError
+                    )
+
+                    state.isComparing -> ComparisonContent(state, type)
+
+                    state.snapshotHoldings.isEmpty() -> SheetMessage(
+                        title = "No ${type.label.lowercase()} on this date",
+                        detail = "Try another date or asset type."
+                    )
+
+                    else -> SnapshotContent(state, type)
+                }
             }
         }
     }
 }
+
+/** The page draws behind the system bars, so their icons must suit its colour. */
+@Composable
+private fun MatchSystemBarsTo(pageColor: Color) {
+    val view = LocalView.current
+    val lightBars = pageColor.luminance() > 0.5f
+    SideEffect {
+        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = lightBars
+            isAppearanceLightNavigationBars = lightBars
+        }
+    }
+}
+
+/** Lists end clear of the gesture bar, which the page now draws behind. */
+@Composable
+private fun listBottomPadding(): Dp =
+    28.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single date
@@ -153,29 +198,41 @@ private fun ColumnScope.SnapshotContent(state: InvestState, type: HoldingsType) 
         contentPadding = PaddingValues(
             start = dims.screenHorizontalPadding,
             end = dims.screenHorizontalPadding,
-            bottom = 28.dp
+            bottom = listBottomPadding()
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item(key = "summary") {
-            CardSurface(highlight = true) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Stat("Invested", rupees(state.snapshotTotalInvested), Modifier.weight(1f))
-                    Stat("Current", rupees(state.snapshotTotalValue), Modifier.weight(1f), bold = true)
-                    Stat(
+            HeroCard(tint = gainColor(state.snapshotTotalReturn)) {
+                HeroLabel("Portfolio value")
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HeroValue(rupees(state.snapshotTotalValue), Modifier.weight(1f))
+                    ChangePill(state.snapshotTotalReturnPercent, large = true)
+                }
+                Spacer(Modifier.height(16.dp))
+                Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+                    HeroStat("Invested", rupees(state.snapshotTotalInvested), Modifier.weight(1f))
+                    HeroDivider()
+                    HeroStat(
                         label = "Returns",
                         value = signedRupees(state.snapshotTotalReturn),
-                        modifier = Modifier.weight(1f),
                         valueColor = gainColor(state.snapshotTotalReturn),
-                        detail = signedPercent(state.snapshotTotalReturnPercent)
+                        lines = listOf(signedPercent(state.snapshotTotalReturnPercent) to gainColor(state.snapshotTotalReturn)),
+                        modifier = Modifier.weight(1f)
+                    )
+                    HeroDivider()
+                    HeroStat(
+                        label = "Holdings",
+                        value = "${holdings.size}",
+                        lines = listOf(type.holdingNoun(holdings.size) to MaterialTheme.colorScheme.onSurfaceVariant),
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        item(key = "count") {
-            CountLine("${holdings.size} ${type.holdingNoun(holdings.size)}")
-        }
+        item(key = "hint") { ListHint("Sorted by value · % is total return · tap for details") }
 
         items(holdings, key = { it.symbol }) { holding ->
             SnapshotRow(holding, type)
@@ -185,38 +242,28 @@ private fun ColumnScope.SnapshotContent(state: InvestState, type: HoldingsType) 
 
 @Composable
 private fun SnapshotRow(holding: HoldingSnapshotRow, type: HoldingsType) {
-    CardSurface {
-        Row(verticalAlignment = Alignment.Top) {
-            Column(modifier = Modifier.weight(1f)) {
-                SymbolText(holding.symbol)
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = "${quantity(holding.quantity)} units · Avg ${price(holding.averagePrice)} · " +
-                        "${type.priceLabel} ${price(holding.unitPrice)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            TintedBadge(signedPercent(holding.pnlPercent), gainColor(holding.pnl))
+    var expanded by rememberSaveable(holding.symbol) { mutableStateOf(false) }
+    HoldingCard(onClick = { expanded = !expanded }) {
+        HoldingHeader(
+            symbol = holding.symbol,
+            subline = "${quantity(holding.quantity)} ${type.unitWord} · ${type.priceLabel} ${price(holding.unitPrice)}",
+            value = rupees(holding.current),
+            expanded = expanded
+        ) {
+            ChangePill(holding.pnlPercent)
         }
-
-        RowDivider()
-
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Stat("Invested", rupees(holding.invested), Modifier.weight(1f))
-            Stat("Current", rupees(holding.current), Modifier.weight(1f), bold = true)
-            Stat("Returns", signedRupees(holding.pnl), Modifier.weight(1f), valueColor = gainColor(holding.pnl))
+        ExpandedDetail(expanded) {
+            Row {
+                DetailStat("Avg price", price(holding.averagePrice), Modifier.weight(1f))
+                DetailStat("Invested", rupees(holding.invested), Modifier.weight(1f))
+                DetailStat("Returns", signedRupees(holding.pnl), Modifier.weight(1f), gainColor(holding.pnl))
+            }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Two dates
-//
-// Summary card, filter chips, then one card per holding: a header with name,
-// tag and returns over Quantity / LTP / Invested / Current tiles, each with its
-// change and % — the same data as the web app's mobile cards.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private enum class CompareFilter(val label: String) {
@@ -231,7 +278,16 @@ private fun HoldingComparison.matches(filter: CompareFilter): Boolean = when (fi
     CompareFilter.EXITED -> change == HoldingChange.EXITED
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompareFilter.accent(): Color = when (this) {
+    CompareFilter.ALL -> MaterialTheme.colorScheme.primary
+    CompareFilter.GAINERS -> InvestColors.GainGreen
+    CompareFilter.LOSERS -> InvestColors.LossRed
+    CompareFilter.NEW -> MaterialTheme.colorScheme.tertiary
+    CompareFilter.EXITED -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ColumnScope.ComparisonContent(state: InvestState, type: HoldingsType) {
     val dims = Dimens.current
@@ -248,6 +304,7 @@ private fun ColumnScope.ComparisonContent(state: InvestState, type: HoldingsType
     }
     val visible = remember(comparison, filter) { comparison.filter { it.matches(filter) } }
     val fromLabel = formatShortDate(state.comparisonFromDate.orEmpty())
+    val toLabel = formatShortDate(state.comparisonToDate.orEmpty())
     val filters = remember(counts) {
         CompareFilter.entries.filter { it == CompareFilter.ALL || (counts[it] ?: 0) > 0 }
     }
@@ -257,36 +314,45 @@ private fun ColumnScope.ComparisonContent(state: InvestState, type: HoldingsType
         contentPadding = PaddingValues(
             start = dims.screenHorizontalPadding,
             end = dims.screenHorizontalPadding,
-            bottom = 28.dp
+            bottom = listBottomPadding()
         ),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item(key = "summary") {
-            ComparisonSummary(state, fromLabel)
-            Spacer(Modifier.height(4.dp))
+            ComparisonHero(state, counts, fromLabel, toLabel)
         }
 
-        item(key = "filters") {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Stays pinned while scrolling, so switching filter never means scrolling back up.
+        stickyHeader(key = "filters") {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(top = 6.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 items(filters, key = { it.name }) { f ->
-                    FilterChip(
-                        selected = filter == f,
-                        onClick = { filter = f },
-                        label = { Text("${f.label} ${counts[f] ?: 0}") },
-                        shape = RoundedCornerShape(10.dp)
-                    )
+                    FilterPill(f.label, counts[f] ?: 0, selected = filter == f, accent = f.accent()) { filter = f }
                 }
             }
         }
 
+        item(key = "hint") { ListHint("% is the ${type.priceLabel} change since $fromLabel · tap for details") }
+
         items(visible, key = { it.symbol }) { item ->
-            ComparisonCard(item = item, type = type)
+            ComparisonRow(item = item, type = type, fromLabel = fromLabel, toLabel = toLabel)
         }
     }
 }
 
+/** Where the whole portfolio went between the two dates. */
 @Composable
-private fun ComparisonSummary(state: InvestState, fromLabel: String) {
+private fun ComparisonHero(
+    state: InvestState,
+    counts: Map<CompareFilter, Int>,
+    fromLabel: String,
+    toLabel: String
+) {
     val fromValue = state.comparisonFromValue
     val toValue = state.comparisonToValue
     val valueDelta = toValue - fromValue
@@ -297,272 +363,545 @@ private fun ComparisonSummary(state: InvestState, fromLabel: String) {
     val toReturns = toValue - toInvested
     val fromReturnPct = percentOf(fromReturns, fromInvested)
     val toReturnPct = percentOf(toReturns, toInvested)
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
 
-    CardSurface(highlight = true) {
-        StatLabel("Current value")
+    val newCount = counts[CompareFilter.NEW] ?: 0
+    val exitedCount = counts[CompareFilter.EXITED] ?: 0
+    val heldNow = (counts[CompareFilter.ALL] ?: 0) - exitedCount
+
+    HeroCard(tint = gainColor(valueDelta)) {
+        DateRange(fromLabel, toLabel)
+        Spacer(Modifier.height(16.dp))
+        HeroLabel("Portfolio value")
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = rupees(toValue),
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            ChangePill(valueDelta, percentOf(valueDelta, fromValue))
+            HeroValue(rupees(toValue), Modifier.weight(1f))
+            ChangePill(percentOf(valueDelta, fromValue), large = true)
         }
         Spacer(Modifier.height(2.dp))
         Text(
             text = "${signedRupees(valueDelta)} since $fromLabel · was ${rupees(fromValue)}",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = muted
         )
 
-        RowDivider(top = 14.dp, bottom = 12.dp)
+        Spacer(Modifier.height(16.dp))
 
-        MetricLine(
-            label = "Invested",
-            then = rupees(fromInvested),
-            now = rupees(toInvested),
-            change = "${signedRupees(toInvested - fromInvested)} · ${signedPercent(percentOf(toInvested - fromInvested, fromInvested))}",
-            changeColor = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(Modifier.height(12.dp))
-        MetricLine(
-            label = "Returns",
-            then = "${signedRupees(fromReturns)} (${signedPercent(fromReturnPct)})",
-            now = "${signedRupees(toReturns)} (${signedPercent(toReturnPct)})",
-            change = "${signedRupees(toReturns - fromReturns)} · ${signedNumber(toReturnPct - fromReturnPct)} pts",
-            changeColor = gainColor(toReturns - fromReturns)
-        )
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            HeroStat(
+                label = "Invested",
+                value = rupees(toInvested),
+                lines = listOf(
+                    signedRupees(toInvested - fromInvested) to MaterialTheme.colorScheme.onSurface,
+                    "was ${rupees(fromInvested)}" to muted
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            HeroDivider()
+            HeroStat(
+                label = "Returns",
+                value = signedRupees(toReturns),
+                valueColor = gainColor(toReturns),
+                lines = listOf(
+                    "${signedPercent(toReturnPct)} · ${signedNumber(toReturnPct - fromReturnPct)} pts" to gainColor(toReturns - fromReturns),
+                    "${signedRupees(toReturns - fromReturns)} change" to gainColor(toReturns - fromReturns)
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            HeroDivider()
+            HeroStat(
+                label = "Positions",
+                value = "$heldNow",
+                lines = buildList {
+                    if (newCount > 0) add("+$newCount new" to MaterialTheme.colorScheme.tertiary)
+                    if (exitedCount > 0) add("-$exitedCount exited" to muted)
+                    if (isEmpty()) add("no change" to muted)
+                },
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 
-/** Label and change on one line; the then → now values quietly beneath. */
 @Composable
-private fun MetricLine(label: String, then: String, now: String, change: String, changeColor: Color) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = change,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = changeColor
+private fun DateRange(fromLabel: String, toLabel: String) {
+    val colors = MaterialTheme.colorScheme
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        DatePill(fromLabel)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HorizontalDivider(color = colors.outlineVariant)
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = "to",
+                tint = colors.onSurfaceVariant,
+                modifier = Modifier
+                    .background(colors.surfaceContainerHigh, CircleShape)
+                    .padding(4.dp)
+                    .size(14.dp)
             )
         }
-        Spacer(Modifier.height(1.dp))
-        Text(
-            text = "$then → $now",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        DatePill(toLabel)
     }
+}
+
+@Composable
+private fun DatePill(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    )
 }
 
 /**
- * One holding across the two dates — the web app's mobile card, laid out as a
- * header (name, tag, returns) over a 2×2 grid of tiles. Each tile shows the
- * later value with its change, and a % wherever a % means something.
+ * One holding across the two dates: the later value with the price move, and
+ * on tap a then / now / change table of the same numbers the web app shows.
  */
 @Composable
-private fun ComparisonCard(item: HoldingComparison, type: HoldingsType) {
+private fun ComparisonRow(item: HoldingComparison, type: HoldingsType, fromLabel: String, toLabel: String) {
+    var expanded by rememberSaveable(item.symbol) { mutableStateOf(false) }
     val isExited = item.change == HoldingChange.EXITED
-    val unitWord = if (type == HoldingsType.EQUITY) "shares" else "units"
 
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
+    HoldingCard(onClick = { expanded = !expanded }) {
+        HoldingHeader(
+            symbol = item.symbol,
+            subline = compareSubline(item, type),
+            value = rupees(if (isExited) item.fromValue else item.current),
+            expanded = expanded,
+            muted = isExited
+        ) {
+            when (item.change) {
+                HoldingChange.HELD -> ChangePill(item.pricePercent)
+                HoldingChange.NEW -> StatusTag("New", MaterialTheme.colorScheme.tertiary)
+                HoldingChange.EXITED -> StatusTag("Exited", InvestColors.LossRed)
+            }
+        }
+        ExpandedDetail(expanded) {
+            ChangeTable(item, type, fromLabel, toLabel)
+        }
+    }
+}
+
+private data class TableCell(val text: String, val sub: String? = null, val color: Color? = null)
+
+@Composable
+private fun ChangeTable(item: HoldingComparison, type: HoldingsType, fromLabel: String, toLabel: String) {
+    val colors = MaterialTheme.colorScheme
+    val held = item.change == HoldingChange.HELD
+    val from = item.from
+    val to = item.to
+    val dash = TableCell("—", color = colors.onSurfaceVariant)
+
+    Column {
+        TableLine("", listOf(TableCell(fromLabel), TableCell(toLabel), TableCell("Change")), header = true)
+        TableLine(
+            "Qty",
+            listOf(
+                from?.let { TableCell(quantity(it.quantity)) } ?: dash,
+                to?.let { TableCell(quantity(it.quantity)) } ?: dash,
+                changeCell(item.quantityDelta, 0.001, signedQuantity(item.quantityDelta), colored = false)
+            )
+        )
+        TableLine(
+            type.priceLabel,
+            listOf(
+                from?.let { TableCell(price(it.unitPrice)) } ?: dash,
+                to?.let { TableCell(price(it.unitPrice)) } ?: dash,
+                if (held) changeCell(item.unitPriceDelta, 0.005, signedPrice(item.unitPriceDelta), percent = item.pricePercent)
+                else dash
+            )
+        )
+        TableLine(
+            "Invested",
+            listOf(
+                from?.let { TableCell(rupees(it.invested)) } ?: dash,
+                to?.let { TableCell(rupees(it.invested)) } ?: dash,
+                changeCell(
+                    item.investedDelta, 0.5, signedRupees(item.investedDelta),
+                    percent = if (held) percentOf(item.investedDelta, from?.invested ?: 0.0) else null,
+                    colored = false
+                )
+            )
+        )
+        TableLine(
+            "Value",
+            listOf(
+                from?.let { TableCell(rupees(it.current)) } ?: dash,
+                to?.let { TableCell(rupees(it.current)) } ?: dash,
+                changeCell(
+                    item.currentDelta, 0.5, signedRupees(item.currentDelta),
+                    percent = if (held) item.currentPercent else null
+                )
+            )
+        )
+        TableLine(
+            "Returns",
+            listOf(
+                from?.let { TableCell(signedRupees(it.pnl), signedPercent(it.pnlPercent), gainColor(it.pnl)) } ?: dash,
+                to?.let { TableCell(signedRupees(it.pnl), signedPercent(it.pnlPercent), gainColor(it.pnl)) } ?: dash,
+                changeCell(item.returnsDelta, 0.5, signedRupees(item.returnsDelta))
+            )
+        )
+    }
+}
+
+/** A change value, or a quiet dash when nothing moved. */
+@Composable
+private fun changeCell(
+    delta: Double,
+    threshold: Double,
+    text: String,
+    percent: Double? = null,
+    colored: Boolean = true
+): TableCell {
+    if (abs(delta) < threshold) return TableCell("—", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val color = when {
+        !colored -> MaterialTheme.colorScheme.onSurface
+        delta > 0 -> InvestColors.GainGreen
+        else -> InvestColors.LossRed
+    }
+    return TableCell(text, percent?.let { signedPercent(it) }, color)
+}
+
+@Composable
+private fun TableLine(label: String, cells: List<TableCell>, header: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = if (header) 2.dp else 5.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // ── Header ──────────────────────────────────────────────────
-            Row(verticalAlignment = Alignment.Top) {
-                Column(modifier = Modifier.weight(1f)) {
-                    SymbolText(item.symbol)
-                    if (item.change != HoldingChange.HELD) {
-                        Spacer(Modifier.height(6.dp))
-                        when (item.change) {
-                            HoldingChange.NEW -> SmallTag("New position", InvestColors.GainGreen)
-                            HoldingChange.EXITED -> SmallTag("Exited", InvestColors.LossRed)
-                            HoldingChange.HELD -> Unit
-                        }
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(horizontalAlignment = Alignment.End) {
-                    StatLabel("Returns")
-                    Spacer(Modifier.height(2.dp))
-                    if (isExited) {
-                        Text(
-                            text = "—",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = colors.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.width(60.dp)
+        )
+        cells.forEach { cell ->
+            Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                Text(
+                    text = if (header) cell.text.uppercase() else cell.text,
+                    style = if (header) {
+                        MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                     } else {
-                        Text(
-                            text = signedRupees(item.returns),
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = gainColor(item.returns)
-                        )
-                        Text(
-                            text = signedPercent(item.returnPercent),
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = gainColor(item.returns)
-                        )
-                    }
+                        MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum")
+                    },
+                    color = cell.color ?: if (header) colors.onSurfaceVariant else colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (cell.sub != null) {
+                    Text(
+                        text = cell.sub,
+                        style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                        color = cell.color ?: colors.onSurfaceVariant,
+                        maxLines = 1
+                    )
                 }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            // ── 2×2 tiles ───────────────────────────────────────────────
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MetricTile(
-                    label = "Quantity",
-                    value = quantity(item.quantity),
-                    change = changeText(item.quantityDelta, isCurrency = false, suffix = " $unitWord"),
-                    changeColor = deltaColor(item.quantityDelta, 0.001),
-                    modifier = Modifier.weight(1f)
-                )
-                MetricTile(
-                    label = type.priceLabel,
-                    value = if (isExited) price(item.fromPrice) else price(item.unitPrice),
-                    change = if (item.change == HoldingChange.HELD) {
-                        changeText(item.unitPriceDelta, isCurrency = true, percent = item.pricePercent, pricePrecision = true)
-                    } else null,
-                    changeColor = deltaColor(item.unitPriceDelta, 0.005),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                MetricTile(
-                    label = "Invested",
-                    value = rupees(item.invested),
-                    change = changeText(
-                        item.investedDelta,
-                        isCurrency = true,
-                        percent = if (item.change == HoldingChange.HELD) percentOf(item.investedDelta, item.from?.invested ?: 0.0) else null
-                    ),
-                    changeColor = deltaColor(item.investedDelta, 0.5),
-                    modifier = Modifier.weight(1f)
-                )
-                MetricTile(
-                    label = "Current",
-                    value = rupees(item.current),
-                    change = changeText(
-                        item.currentDelta,
-                        isCurrency = true,
-                        percent = if (item.change == HoldingChange.HELD) item.currentPercent else null
-                    ),
-                    changeColor = deltaColor(item.currentDelta, 0.5),
-                    emphasised = true,
-                    modifier = Modifier.weight(1f)
-                )
             }
         }
     }
 }
 
+private fun compareSubline(item: HoldingComparison, type: HoldingsType): String = when (item.change) {
+    HoldingChange.NEW ->
+        "Bought ${quantity(item.quantity)} ${type.unitWord} · ${type.priceLabel} ${price(item.unitPrice)}"
+    HoldingChange.EXITED ->
+        "Sold ${quantity(item.fromQuantity)} ${type.unitWord} · last ${price(item.fromPrice)}"
+    HoldingChange.HELD -> {
+        val moved = abs(item.quantityDelta) >= 0.001
+        val qty = quantity(item.quantity) + if (moved) " (${signedQuantity(item.quantityDelta)})" else ""
+        "$qty ${type.unitWord} · ${type.priceLabel} ${price(item.unitPrice)}"
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rows
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun MetricTile(
+private fun HoldingCard(onClick: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .clickable(onClick = onClick),
+        content = content
+    )
+}
+
+/** Monogram, name and one line of context on the left; value and a pill on the right. */
+@Composable
+private fun HoldingHeader(
+    symbol: String,
+    subline: String,
+    value: String,
+    expanded: Boolean,
+    muted: Boolean = false,
+    badge: @Composable () -> Unit
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.surfaceContainerHighest),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = monogram(symbol),
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                color = if (muted) colors.onSurfaceVariant.copy(alpha = 0.6f) else colors.onSurfaceVariant
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = symbol,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = if (muted) colors.onSurfaceVariant else colors.onSurface,
+                maxLines = if (expanded) 3 else 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subline,
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                color = if (muted) colors.onSurfaceVariant else colors.onSurface,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(4.dp))
+            badge()
+        }
+    }
+}
+
+@Composable
+private fun ExpandedDetail(expanded: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    AnimatedVisibility(
+        visible = expanded,
+        enter = fadeIn(tween(160)) + expandVertically(tween(220, easing = FastOutSlowInEasing)),
+        exit = fadeOut(tween(120)) + shrinkVertically(tween(180))
+    ) {
+        Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Spacer(Modifier.height(10.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DetailStat(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color? = null) {
+    Column(modifier = modifier) {
+        StatLabel(label)
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
+            color = valueColor ?: MaterialTheme.colorScheme.onSurface,
+            maxLines = 1
+        )
+    }
+}
+
+/** "▲ 4.2%" in a tinted capsule, coloured by direction; flat moves stay grey. */
+@Composable
+private fun ChangePill(percent: Double, large: Boolean = false) {
+    val flat = abs(percent) < 0.05
+    val color = when {
+        flat -> MaterialTheme.colorScheme.onSurfaceVariant
+        percent > 0 -> InvestColors.GainGreen
+        else -> InvestColors.LossRed
+    }
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.14f))
+            .padding(
+                start = if (flat) 8.dp else if (large) 7.dp else 5.dp,
+                end = if (large) 10.dp else 8.dp,
+                top = if (large) 5.dp else 2.dp,
+                bottom = if (large) 5.dp else 2.dp
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!flat) {
+            Icon(
+                imageVector = if (percent > 0) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                contentDescription = if (percent > 0) "up" else "down",
+                tint = color,
+                modifier = Modifier.size(if (large) 14.dp else 12.dp)
+            )
+            Spacer(Modifier.width(2.dp))
+        }
+        Text(
+            text = "${oneDecimal(abs(percent))}%",
+            style = (if (large) MaterialTheme.typography.labelLarge else MaterialTheme.typography.labelMedium)
+                .copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun StatusTag(text: String, color: Color) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp, letterSpacing = 0.6.sp),
+        color = color,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.14f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+
+@Composable
+private fun FilterPill(label: String, count: Int, selected: Boolean, accent: Color, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(if (selected) accent.copy(alpha = 0.16f) else colors.surfaceContainerHigh)
+            .border(1.dp, if (selected) accent.copy(alpha = 0.55f) else Color.Transparent, CircleShape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold),
+            color = if (selected) accent else colors.onSurface
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "$count",
+            style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
+            color = if (selected) accent else colors.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ListHint(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Summary card
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Raised card with a faint wash of green or red from the corner, by direction. */
+@Composable
+private fun HeroCard(tint: Color, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(tint.copy(alpha = 0.14f), Color.Transparent),
+                    start = Offset.Zero,
+                    end = Offset.Infinite
+                )
+            )
+            .padding(18.dp),
+        content = content
+    )
+}
+
+@Composable
+private fun HeroLabel(text: String) = StatLabel(text)
+
+@Composable
+private fun HeroValue(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.headlineMedium.copy(
+            fontWeight = FontWeight.Black,
+            letterSpacing = (-0.5).sp,
+            fontFeatureSettings = "tnum"
+        ),
+        color = MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        modifier = modifier
+    )
+}
+
+@Composable
+private fun HeroStat(
     label: String,
     value: String,
-    change: String?,
-    changeColor: Color,
     modifier: Modifier = Modifier,
-    emphasised: Boolean = false
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    lines: List<Pair<String, Color>> = emptyList()
 ) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
+    Column(modifier = modifier.padding(horizontal = 4.dp)) {
         StatLabel(label)
         Spacer(Modifier.height(4.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontWeight = if (emphasised) FontWeight.Bold else FontWeight.SemiBold
-            ),
-            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+            color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = change ?: " ",
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-            color = changeColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-/** "▲ ₹250 · +11.9%", "▼ 3 shares", or "No change". */
-private fun changeText(
-    delta: Double,
-    isCurrency: Boolean,
-    percent: Double? = null,
-    suffix: String = "",
-    pricePrecision: Boolean = false
-): String {
-    val threshold = if (isCurrency) (if (pricePrecision) 0.005 else 0.5) else 0.001
-    if (abs(delta) < threshold) return "No change"
-    val arrow = if (delta > 0) "▲" else "▼"
-    val amount = when {
-        !isCurrency -> quantity(abs(delta)) + suffix
-        pricePrecision -> price(abs(delta))
-        else -> rupees(abs(delta))
-    }
-    return if (percent != null) "$arrow $amount · ${signedPercent(percent)}" else "$arrow $amount"
-}
-
-@Composable
-private fun deltaColor(delta: Double, threshold: Double): Color = when {
-    abs(delta) < threshold -> MaterialTheme.colorScheme.onSurfaceVariant
-    delta > 0 -> InvestColors.GainGreen
-    else -> InvestColors.LossRed
-}
-
-@Composable
-private fun ChangePill(delta: Double, percent: Double, compact: Boolean = false) {
-    val color = gainColor(delta)
-    val arrow = when {
-        abs(percent) < 0.05 -> ""
-        delta > 0 -> "▲ "
-        else -> "▼ "
-    }
-    Surface(shape = RoundedCornerShape(8.dp), color = color.copy(alpha = 0.13f)) {
-        Text(
-            text = "$arrow${oneDecimal(abs(percent))}%",
-            style = (if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge)
-                .copy(fontWeight = FontWeight.Bold),
-            color = color,
-            modifier = Modifier.padding(
-                horizontal = if (compact) 6.dp else 9.dp,
-                vertical = if (compact) 2.dp else 4.dp
+        lines.forEach { (text, color) ->
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-        )
+        }
     }
 }
 
 @Composable
-private fun SmallTag(text: String, color: Color) {
-    Surface(shape = RoundedCornerShape(5.dp), color = color.copy(alpha = 0.14f)) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, fontSize = 10.sp),
-            color = color,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-        )
-    }
+private fun HeroDivider() {
+    VerticalDivider(
+        modifier = Modifier
+            .fillMaxHeight()
+            .padding(horizontal = 6.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -570,14 +909,22 @@ private fun SmallTag(text: String, color: Color) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun SheetHeader(subtitle: String, onClose: () -> Unit) {
+private fun PageHeader(subtitle: String, onBack: () -> Unit) {
     val dims = Dimens.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = dims.screenHorizontalPadding, vertical = 4.dp),
+            .padding(start = 4.dp, end = dims.screenHorizontalPadding, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        Spacer(Modifier.width(4.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Holdings",
@@ -590,9 +937,6 @@ private fun SheetHeader(subtitle: String, onClose: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onClose) {
-            Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 }
 
@@ -602,40 +946,36 @@ private fun AssetTypeToggle(
     onSelect: (HoldingsType) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.fillMaxWidth()
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            HoldingsType.entries.forEach { type ->
-                val isSelected = type == selected
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onSelect(type) }
-                        .padding(vertical = 9.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = type.label,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        ),
-                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        HoldingsType.entries.forEach { type ->
+            val isSelected = type == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(CircleShape)
+                    .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onSelect(type) }
+                    .padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = type.label,
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
@@ -653,50 +993,58 @@ private fun CompareControl(
     }
     if (candidateDates.isEmpty()) return
 
+    val colors = MaterialTheme.colorScheme
     val expanded = state.isComparePickerOpen
+    val comparing = state.isComparing
+    val content = if (comparing) colors.onPrimaryContainer else colors.onSurface
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (state.isComparing) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                    else MaterialTheme.colorScheme.surfaceContainerHigh
-                )
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (comparing) colors.primaryContainer else colors.surfaceContainerHigh)
                 .clickable { onAction(InvestAction.SetComparePickerOpen(!expanded)) }
-                .padding(start = 14.dp, end = 6.dp),
+                .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.CompareArrows,
                 contentDescription = null,
-                tint = if (state.isComparing) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (comparing) content else colors.onSurfaceVariant,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = state.compareDate?.let { "Compared with ${formatShortDate(it)}" } ?: "Compare with…",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = if (state.isComparing) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            if (state.isComparing) {
-                TextButton(onClick = { onAction(InvestAction.SelectCompareDate(null)) }) {
-                    Text("Clear", fontWeight = FontWeight.SemiBold)
-                }
-            } else {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Hide dates" else "Show dates",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .size(20.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.compareDate?.let { "Comparing with ${formatShortDate(it)}" } ?: "Compare with another date",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = content
                 )
+                Text(
+                    text = if (comparing) "Tap to pick a different date" else "See what changed between two snapshots",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = content.copy(alpha = 0.7f)
+                )
+            }
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Hide dates" else "Show dates",
+                tint = content.copy(alpha = 0.8f),
+                modifier = Modifier
+                    .padding(horizontal = 8.dp)
+                    .size(20.dp)
+            )
+            if (comparing) {
+                IconButton(onClick = { onAction(InvestAction.SelectCompareDate(null)) }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Stop comparing",
+                        tint = content,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
@@ -705,9 +1053,10 @@ private fun CompareControl(
             enter = fadeIn(tween(180)) + expandVertically(tween(220, easing = FastOutSlowInEasing)),
             exit = fadeOut(tween(120)) + shrinkVertically(tween(180))
         ) {
-            Column(modifier = Modifier.padding(top = 10.dp)) {
+            Column(modifier = Modifier.padding(top = 12.dp)) {
                 val presets = remember(candidateDates, snapshotDate) { buildPresets(snapshotDate, candidateDates) }
                 if (presets.isNotEmpty()) {
+                    PickerLabel("Quick picks")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(presets, key = { it.first }) { (label, date) ->
                             DateChip(label, formatShortDate(date), state.compareDate == date) {
@@ -715,8 +1064,9 @@ private fun CompareControl(
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
+                PickerLabel("All snapshots")
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(candidateDates, key = { it }) { date ->
                         DateChip(formatShortDate(date), null, state.compareDate == date) {
@@ -730,31 +1080,39 @@ private fun CompareControl(
 }
 
 @Composable
+private fun PickerLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+    )
+}
+
+@Composable
 private fun DateChip(label: String, caption: String?, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
-        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh
+    val colors = MaterialTheme.colorScheme
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isSelected) colors.primary else colors.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+            ),
+            color = if (isSelected) colors.onPrimary else colors.onSurface
+        )
+        if (caption != null) {
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
-                ),
-                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                text = caption,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isSelected) colors.onPrimary.copy(alpha = 0.8f) else colors.onSurfaceVariant
             )
-            if (caption != null) {
-                Text(
-                    text = caption,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
     }
 }
@@ -764,98 +1122,12 @@ private fun DateChip(label: String, caption: String?, isSelected: Boolean, onCli
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CardSurface(highlight: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (highlight) MaterialTheme.colorScheme.surfaceContainerHigh
-                else MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(modifier = Modifier.padding(14.dp), content = content)
-    }
-}
-
-@Composable
-private fun RowDivider(top: Dp = 12.dp, bottom: Dp = 12.dp) {
-    HorizontalDivider(
-        modifier = Modifier.padding(top = top, bottom = bottom),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-    )
-}
-
-@Composable
 private fun StatLabel(text: String) {
     Text(
         text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
-
-@Composable
-private fun Stat(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    valueColor: Color = MaterialTheme.colorScheme.onSurface,
-    bold: Boolean = false,
-    detail: String? = null
-) {
-    Column(modifier = modifier) {
-        StatLabel(label)
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontWeight = if (bold) FontWeight.Bold else FontWeight.SemiBold
-            ),
-            color = valueColor,
-            maxLines = 1
-        )
-        if (detail != null) {
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                color = valueColor
-            )
-        }
-    }
-}
-
-
-
-@Composable
-private fun TintedBadge(text: String, color: Color) {
-    Surface(shape = RoundedCornerShape(6.dp), color = color.copy(alpha = 0.13f)) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-            color = color,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
-    }
-}
-
-@Composable
-private fun SymbolText(symbol: String, modifier: Modifier = Modifier) {
-    Text(
-        text = symbol,
-        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-        color = MaterialTheme.colorScheme.onSurface,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun CountLine(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp)
+        maxLines = 1
     )
 }
 
@@ -873,18 +1145,18 @@ private fun SkeletonContent(modifier: Modifier = Modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(72.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .height(168.dp)
+                .clip(RoundedCornerShape(20.dp))
                 .alpha(alpha)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
         )
-        Spacer(Modifier.height(20.dp))
-        repeat(4) {
+        Spacer(Modifier.height(12.dp))
+        repeat(5) {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(110.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .height(64.dp)
+                    .clip(RoundedCornerShape(16.dp))
                     .alpha(alpha)
                     .background(MaterialTheme.colorScheme.surfaceContainer)
             )
@@ -940,9 +1212,25 @@ private val HoldingsType.priceLabel: String
         HoldingsType.MUTUAL_FUNDS -> "NAV"
     }
 
+private val HoldingsType.unitWord: String
+    get() = when (this) {
+        HoldingsType.EQUITY -> "shares"
+        HoldingsType.MUTUAL_FUNDS -> "units"
+    }
+
 private fun HoldingsType.holdingNoun(count: Int): String = when (this) {
     HoldingsType.EQUITY -> if (count == 1) "stock" else "stocks"
     HoldingsType.MUTUAL_FUNDS -> if (count == 1) "fund" else "funds"
+}
+
+/** "RELIANCE" → "RE", "Parag Parikh Flexi Cap" → "PP". */
+private fun monogram(symbol: String): String {
+    val words = symbol.split(Regex("[^A-Za-z0-9]+")).filter { it.isNotBlank() }
+    return when {
+        words.size >= 2 -> "${words[0].first()}${words[1].first()}"
+        words.size == 1 -> words[0].take(2)
+        else -> "?"
+    }.uppercase()
 }
 
 private val quantityFormat = DecimalFormat("#,##0.##")
@@ -951,8 +1239,13 @@ private val oneDecimalFormat = DecimalFormat("0.0")
 
 private fun quantity(value: Double): String = quantityFormat.format(value)
 
+private fun signedQuantity(value: Double): String =
+    (if (value >= 0) "+" else "-") + quantityFormat.format(abs(value))
+
 /** Per-unit prices keep paise; they matter at that scale. */
 private fun price(value: Double): String = "₹${priceFormat.format(value)}"
+
+private fun signedPrice(value: Double): String = (if (value >= 0) "+" else "-") + price(abs(value))
 
 /** Whole rupees with Indian grouping for position totals. */
 private fun rupees(amount: Double): String = formatExactCurrency(round(amount))

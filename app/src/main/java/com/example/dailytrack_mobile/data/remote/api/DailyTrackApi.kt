@@ -30,6 +30,12 @@ import com.example.dailytrack_mobile.data.remote.dto.MediaLibraryResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MutualFundHoldingDto
 import com.example.dailytrack_mobile.data.remote.dto.PhysicalActivityDto
+import com.example.dailytrack_mobile.data.remote.dto.RoutineArchiveRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.RoutineRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.RoutineResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.RoutinesResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.SaveRoutineCheckInsRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.SaveRoutineCheckInsResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
 import okhttp3.ResponseBody
@@ -318,5 +324,24 @@ interface DailyTrackApi {
 
     @DELETE("/api/admin/users/{email}")
     suspend fun deleteAccessUser(@Path("email") email: String): Response<AccessUserResponseDto>
-}
 
+    // ── Routines (personal to the signed-in person) ─────────────────────────
+
+    @GET("/api/routines")
+    suspend fun getRoutines(): Response<RoutinesResponseDto>
+
+    @POST("/api/routines")
+    suspend fun createRoutine(@Body body: RoutineRequestDto): Response<RoutineResponseDto>
+
+    @PUT("/api/routines/{id}")
+    suspend fun updateRoutine(@Path("id") id: Long, @Body body: RoutineRequestDto): Response<RoutineResponseDto>
+
+    @PUT("/api/routines/{id}")
+    suspend fun setRoutineArchived(@Path("id") id: Long, @Body body: RoutineArchiveRequestDto): Response<RoutineResponseDto>
+
+    @DELETE("/api/routines/{id}")
+    suspend fun deleteRoutine(@Path("id") id: Long): Response<ApiResponseDto>
+
+    @POST("/api/routines/checkins")
+    suspend fun saveRoutineCheckIns(@Body body: SaveRoutineCheckInsRequestDto): Response<SaveRoutineCheckInsResponseDto>
+}

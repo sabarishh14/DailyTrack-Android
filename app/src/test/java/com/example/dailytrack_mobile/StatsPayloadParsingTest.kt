@@ -52,6 +52,16 @@ class StatsPayloadParsingTest {
     }
 
     @Test
+    fun `unrated theatre visit still parses`() {
+        // Theatre visits carry that log's own rating, which is null until rated.
+        val payload = """{"success": true, "theatre_stats": {"total_visits": 1, "supplementary_tags": {}, "movies": [{"log_id": 5, "movie_id": 1, "tmdb_id": 2, "name": "JustSeen", "poster_path": "/JustSeen.jpg", "rating": null, "release_year": null, "tags": []}]}}"""
+        val dto = moshi.adapter(MediaStatsResponseDto::class.java).fromJson(payload)!!
+        val visit = dto.theatre_stats!!.movies.single()
+        assertEquals("JustSeen", visit.name)
+        assertEquals(null, visit.rating)
+    }
+
+    @Test
     fun `older backend without new fields still parses`() {
         val legacy = """{"success": true, "films_logged": 3, "extremes": {"newest": {"id": 1, "name": "Old", "release_year": 2020}}}"""
         val dto = moshi.adapter(MediaStatsResponseDto::class.java).fromJson(legacy)!!

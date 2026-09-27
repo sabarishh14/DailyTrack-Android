@@ -1,7 +1,5 @@
 package com.example.dailytrack_mobile.presentation.screens.main
 
-import androidx.compose.animation.core.animate
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import com.example.dailytrack_mobile.presentation.components.FloatingBarClearance
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
@@ -33,7 +31,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.presentation.navigation.components.BottomNavBar
-import com.example.dailytrack_mobile.presentation.screens.activities.ActivitiesScreen
 import com.example.dailytrack_mobile.presentation.screens.home.HomeScreen
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestmentsScreen
 import com.example.dailytrack_mobile.presentation.screens.money.BudgetsScreen
@@ -43,6 +40,9 @@ import com.example.dailytrack_mobile.presentation.screens.money.MoneyDialogsAndS
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyTransactionsTab
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyVM
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoScreen
+import com.example.dailytrack_mobile.presentation.screens.routines.RoutineEditorTarget
+import com.example.dailytrack_mobile.presentation.screens.routines.RoutinesScreen
+import com.example.dailytrack_mobile.presentation.screens.routines.editor.RoutineEditorScreen
 import com.example.dailytrack_mobile.presentation.screens.forms.*
 import com.example.dailytrack_mobile.presentation.screens.analytics.AnalyticsScreen
 import com.example.dailytrack_mobile.presentation.screens.home.components.HomeTopBar
@@ -57,16 +57,16 @@ import kotlinx.coroutines.launch
 private const val PAGE_HOME = 0
 private const val PAGE_CASH_FLOW = 1
 private const val PAGE_TRANSACTIONS = 2
-private const val PAGE_ACTIVITIES = 3
+private const val PAGE_ROUTINES = 3
 private const val PAGE_INVESTMENTS = 4
 private const val PAGE_SABDEKHO = 5
-private val ALL_PAGES = listOf(PAGE_HOME, PAGE_CASH_FLOW, PAGE_TRANSACTIONS, PAGE_ACTIVITIES, PAGE_INVESTMENTS, PAGE_SABDEKHO)
+private val ALL_PAGES = listOf(PAGE_HOME, PAGE_CASH_FLOW, PAGE_TRANSACTIONS, PAGE_ROUTINES, PAGE_INVESTMENTS, PAGE_SABDEKHO)
 
 /** Pager pages this user may open; Home is always first. */
 private fun allowedPages(access: AccessInfo): List<Int> = ALL_PAGES.filter { page ->
     when (page) {
         PAGE_CASH_FLOW, PAGE_TRANSACTIONS -> access.canView(AccessModule.MONEY)
-        PAGE_ACTIVITIES -> access.canView(AccessModule.GYM)
+        PAGE_ROUTINES -> access.canView(AccessModule.GYM)
         PAGE_INVESTMENTS -> access.canView(AccessModule.INVEST)
         PAGE_SABDEKHO -> access.canView(AccessModule.SABDEKHO)
         else -> true
@@ -75,7 +75,7 @@ private fun allowedPages(access: AccessInfo): List<Int> = ALL_PAGES.filter { pag
 
 private fun routeAllowed(route: String, access: AccessInfo): Boolean = when (route) {
     Routes.Money.route, Routes.Analytics.route, Routes.Budgets.route -> access.canView(AccessModule.MONEY)
-    Routes.Activities.route -> access.canView(AccessModule.GYM)
+    Routes.Routines.route -> access.canView(AccessModule.GYM)
     Routes.Investments.route -> access.canView(AccessModule.INVEST)
     Routes.Sabdekho.route -> access.canView(AccessModule.SABDEKHO)
     else -> addActionAllowed(route, access)
@@ -84,22 +84,26 @@ private fun routeAllowed(route: String, access: AccessInfo): Boolean = when (rou
 private fun pageToRoute(page: Int): String = when (page) {
     PAGE_HOME -> Routes.Home.route
     PAGE_CASH_FLOW, PAGE_TRANSACTIONS -> Routes.Money.route
-    PAGE_ACTIVITIES -> Routes.Activities.route
+    PAGE_ROUTINES -> Routes.Routines.route
     PAGE_INVESTMENTS -> Routes.Investments.route
     PAGE_SABDEKHO -> Routes.Sabdekho.route
     else -> Routes.Home.route
 }
 
+/** Routines replaced the Activities page; anything still asking for it lands on Routines. */
+private fun canonicalRoute(route: String): String =
+    if (route == Routes.Activities.route) Routes.Routines.route else route
+
 private fun routeToPage(route: String, preferTransactions: Boolean = false): Int? = when (route) {
     Routes.Home.route -> PAGE_HOME
     Routes.Money.route -> if (preferTransactions) PAGE_TRANSACTIONS else PAGE_CASH_FLOW
-    Routes.Activities.route -> PAGE_ACTIVITIES
+    Routes.Routines.route -> PAGE_ROUTINES
     Routes.Investments.route -> PAGE_INVESTMENTS
     Routes.Sabdekho.route -> PAGE_SABDEKHO
     else -> null
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     onNavigateToSettings: () -> Unit,
@@ -110,7 +114,7 @@ fun MainScreen(
         setOf(
             Routes.Home.route,
             Routes.Money.route,
-            Routes.Activities.route,
+            Routes.Routines.route,
             Routes.Investments.route,
             Routes.Sabdekho.route
         )
@@ -125,7 +129,7 @@ fun MainScreen(
     fun indexOfPage(page: Int?): Int? = page?.let { pagesState.value.indexOf(it).takeIf { i -> i >= 0 } }
 
     val initialPageIndex = remember {
-        val target = targetRoute ?: Routes.Home.route
+        val target = canonicalRoute(targetRoute ?: Routes.Home.route)
         indexOfPage(routeToPage(target)) ?: 0
     }
     val pagerState = rememberPagerState(
@@ -133,13 +137,7 @@ fun MainScreen(
         pageCount = { pagesState.value.size }
     )
 
-    // Floating nav toolbar slides off-screen while scrolling down and returns on
-    // scroll up, so it never permanently covers the bottom of a page.
-    val toolbarScrollBehavior = FloatingToolbarDefaults.exitAlwaysScrollBehavior(
-        exitDirection = FloatingToolbarExitDirection.Bottom
-    )
-
-    var currentRoute by remember { mutableStateOf(targetRoute ?: Routes.Home.route) }
+    var currentRoute by remember { mutableStateOf(canonicalRoute(targetRoute ?: Routes.Home.route)) }
     var lastMoneyPage by remember { mutableIntStateOf(PAGE_CASH_FLOW) }
 
     val moneyViewModel: MoneyVM = hiltViewModel()
@@ -150,14 +148,6 @@ fun MainScreen(
     val dims = Dimens.current
 
     // Update currentRoute and sync Money tab selection only when pager has fully settled
-    // Bring the toolbar back whenever the visible page / route changes.
-    LaunchedEffect(pagerState.currentPage, currentRoute) {
-        val state = toolbarScrollBehavior.state
-        if (state.offset != 0f) {
-            animate(state.offset, 0f) { value, _ -> state.offset = value }
-        }
-    }
-
     LaunchedEffect(pagerState) {
         snapshotFlow { pageAt(pagerState.settledPage) }.collect { settledPage ->
             if (settledPage == PAGE_CASH_FLOW || settledPage == PAGE_TRANSACTIONS) {
@@ -200,11 +190,13 @@ fun MainScreen(
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingRoute by remember { mutableStateOf<String?>(null) }
     var preselectedMediaForAddMovie by remember { mutableStateOf<MediaSearchResultDto?>(null) }
+    var routineEditorTarget by remember { mutableStateOf<RoutineEditorTarget>(RoutineEditorTarget.New()) }
 
     val formRoutes = remember {
         setOf(
             Routes.AddMoney.route,
             Routes.AddActivity.route,
+            Routes.AddRoutine.route,
             Routes.AddMovie.route,
             Routes.AddAsset.route,
             Routes.AddInvestment.route,
@@ -215,7 +207,8 @@ fun MainScreen(
     val isFormScreen = currentRoute in formRoutes
 
     // Centralized safe navigation that checks for unsaved changes
-    fun navigateSafely(targetRoute: String, preferTransactions: Boolean = false) {
+    fun navigateSafely(requestedRoute: String, preferTransactions: Boolean = false) {
+        val targetRoute = canonicalRoute(requestedRoute)
         if (!routeAllowed(targetRoute, access)) return
         if (currentRoute == targetRoute && (targetRoute != Routes.Money.route || pageAt(pagerState.currentPage) == (if (preferTransactions) PAGE_TRANSACTIONS else lastMoneyPage))) return
 
@@ -249,26 +242,28 @@ fun MainScreen(
     }
 
     LaunchedEffect(targetRoute) {
-        if (targetRoute != null && routeAllowed(targetRoute, access)) {
-            val tabIdx = indexOfPage(if (targetRoute == Routes.Money.route) {
+        val route = targetRoute?.let(::canonicalRoute)
+        if (route != null && routeAllowed(route, access)) {
+            val tabIdx = indexOfPage(if (route == Routes.Money.route) {
                 lastMoneyPage
             } else {
-                routeToPage(targetRoute)
+                routeToPage(route)
             })
             if (tabIdx != null) {
                 pagerState.scrollToPage(tabIdx)
-                currentRoute = targetRoute
+                currentRoute = route
             } else {
-                navigateSafely(targetRoute)
+                navigateSafely(route)
             }
             onRouteConsumed()
-        } else if (targetRoute != null) {
+        } else if (route != null) {
             onRouteConsumed()
         }
     }
 
     // Handles form save completion
-    fun onFormSaved(message: String, destinationRoute: String = Routes.Home.route, long: Boolean = false) {
+    fun onFormSaved(message: String, requestedDestination: String = Routes.Home.route, long: Boolean = false) {
+        val destinationRoute = canonicalRoute(requestedDestination)
         isCurrentFormDirty = false
         preselectedMediaForAddMovie = null
         val destPage = if (destinationRoute == Routes.Money.route) {
@@ -313,11 +308,12 @@ fun MainScreen(
     val screenTitle = when (currentRoute) {
         Routes.Home.route -> "Home"
         Routes.Money.route -> "Money"
-        Routes.Activities.route -> "Activities"
+        Routes.Routines.route -> "Routines"
         Routes.Investments.route -> "Investments"
         Routes.Sabdekho.route -> "Sabdekho"
         Routes.AddMoney.route -> "Add Money"
         Routes.AddActivity.route -> "Add Activity"
+        Routes.AddRoutine.route -> if (routineEditorTarget is RoutineEditorTarget.Edit) "Edit Routine" else "New Routine"
         Routes.AddMovie.route -> "Add Movie"
         Routes.AddAsset.route -> "Add Asset"
         Routes.AddInvestment.route -> "Add Investment"
@@ -332,6 +328,9 @@ fun MainScreen(
             onActionSelected = { route ->
                 if (route == Routes.AddMovie.route) {
                     preselectedMediaForAddMovie = null
+                }
+                if (route == Routes.AddRoutine.route) {
+                    routineEditorTarget = RoutineEditorTarget.New()
                 }
                 navigateSafely(route)
             },
@@ -488,7 +487,6 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
-                .nestedScroll(toolbarScrollBehavior)
         ) {
             CompositionLocalProvider(
                 LocalFloatingBarClearance provides if (isFormScreen) 0.dp else FloatingBarClearance
@@ -522,7 +520,16 @@ fun MainScreen(
                                     }
                                 }
                             )
-                            PAGE_ACTIVITIES -> ActivitiesScreen()
+                            PAGE_ROUTINES -> RoutinesScreen(
+                                onNewRoutine = { template ->
+                                    routineEditorTarget = RoutineEditorTarget.New(template)
+                                    navigateSafely(Routes.AddRoutine.route)
+                                },
+                                onEditRoutine = { id ->
+                                    routineEditorTarget = RoutineEditorTarget.Edit(id)
+                                    navigateSafely(Routes.AddRoutine.route)
+                                }
+                            )
                             PAGE_INVESTMENTS -> InvestmentsScreen()
                             PAGE_SABDEKHO -> SabdekhoScreen(
                                 onNavigateToAddMovie = { media ->
@@ -559,6 +566,11 @@ fun MainScreen(
                             onDirtyStateChanged = { isCurrentFormDirty = it },
                             onSaveSuccess = { onFormSaved("Activity logged successfully!", Routes.Activities.route) }
                         )
+                        Routes.AddRoutine.route -> RoutineEditorScreen(
+                            target = routineEditorTarget,
+                            onDirtyStateChanged = { isCurrentFormDirty = it },
+                            onFinished = { message -> onFormSaved(message, Routes.Routines.route) }
+                        )
                         Routes.AddMovie.route -> AddMovieScreen(
                             initialMedia = preselectedMediaForAddMovie,
                             onDirtyStateChanged = { isCurrentFormDirty = it },
@@ -594,7 +606,6 @@ fun MainScreen(
                 val showFab = canAddAnything && !(currentRoute == Routes.Money.route && moneyState.isSelectionMode)
                 BottomNavBar(
                     currentRoute = displayRoute,
-                    scrollBehavior = toolbarScrollBehavior,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     onFabClick = if (showFab) ({ showAddSheet = true }) else null,
                     onNavigate = { targetRoute ->

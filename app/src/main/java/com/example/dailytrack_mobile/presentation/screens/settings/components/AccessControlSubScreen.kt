@@ -43,7 +43,7 @@ private data class ModuleMeta(val module: AccessModule, val emoji: String, val l
 
 private val MODULE_META = listOf(
     ModuleMeta(AccessModule.MONEY, "💰", "Money", "Transactions, budgets, splits & adding"),
-    ModuleMeta(AccessModule.GYM, "🏋️", "Activities", "Workout and sports log"),
+    ModuleMeta(AccessModule.GYM, "🌱", "Routines", "Their own habits, challenges and chores"),
     ModuleMeta(AccessModule.INVEST, "📈", "Investments", "Portfolio, holdings & assets"),
     ModuleMeta(AccessModule.SABDEKHO, "📺", "SabDekho", "Movies, shows & watch diary")
 )

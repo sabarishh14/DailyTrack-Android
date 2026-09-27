@@ -1,6 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.sabdekho
 
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
+import com.example.dailytrack_mobile.presentation.components.FilterButtonWithBadge
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -167,9 +168,10 @@ private fun LibraryTabContent(
     val dims = Dimens.current
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Search and Grid Toggle Row
+        // Search, poster size and filters — laid out like the Transactions search row.
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             OutlinedTextField(
@@ -221,10 +223,8 @@ private fun LibraryTabContent(
                 textStyle = MaterialTheme.typography.bodyMedium
             )
 
-            Spacer(modifier = Modifier.width(dims.itemSpacingLarge))
-
-            // Grid Option Toggle Button
-            IconButton(
+            // Poster size: cycles 2 → 3 → 4 columns.
+            Surface(
                 onClick = {
                     val nextCols = when (state.gridColumns) {
                         2 -> 3
@@ -233,25 +233,33 @@ private fun LibraryTabContent(
                     }
                     onAction(SabdekhoAction.SetGridColumns(nextCols))
                 },
-                modifier = Modifier
-                    .size(dims.searchBarHeight)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(dims.buttonCornerRadius))
+                shape = RoundedCornerShape(dims.cardCornerRadius - 4.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.height(dims.searchBarHeight)
             ) {
-                val gridIcon = when (state.gridColumns) {
-                    2 -> Icons.Default.GridView
-                    3 -> Icons.Default.ViewModule
-                    else -> Icons.Default.ViewComfy
+                Box(modifier = Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = when (state.gridColumns) {
+                            2 -> Icons.Default.GridView
+                            3 -> Icons.Default.ViewModule
+                            else -> Icons.Default.ViewComfy
+                        },
+                        contentDescription = "Poster size",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-                Icon(
-                    imageVector = gridIcon,
-                    contentDescription = "Toggle Grid",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(dims.iconSizeMedium)
-                )
             }
+
+            // Year / Month / Week / Language live in a bottom sheet, like the
+            // Money tab's filter sheet.
+            FilterButtonWithBadge(
+                activeCount = state.activeLibraryFilterCount,
+                onClick = { onAction(SabdekhoAction.ToggleMoreFilters) }
+            )
         }
 
-        Spacer(modifier = Modifier.height(dims.itemSpacingMedium))
+        Spacer(modifier = Modifier.height(dims.itemSpacingLarge))
 
         // Status Filter Chips (dynamically tailored to Films vs Series)
         val isMovieOnly = state.mediaTypeFilter.equals("movie", ignoreCase = true)
@@ -273,16 +281,8 @@ private fun LibraryTabContent(
                     onAction(SabdekhoAction.ChangeFilter(code))
                 }
             }
-            FilterChipView(
-                label = if (state.hasActiveLibraryFilters) "⚙️ Filters •" else "⚙️ More Filters",
-                isSelected = state.showMoreFilters
-            ) {
-                onAction(SabdekhoAction.ToggleMoreFilters)
-            }
         }
 
-        // Year / Month / Week / Language live in a bottom sheet (same pattern as
-        // the Money tab's filter sheet) rather than dropdowns in the page.
         if (state.showMoreFilters) {
             LibraryFilterBottomSheet(
                 state = state,
@@ -293,7 +293,7 @@ private fun LibraryTabContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(dims.itemSpacingMedium))
+        Spacer(modifier = Modifier.height(dims.itemSpacingLarge))
 
         // Section Header / Counter
         Row(

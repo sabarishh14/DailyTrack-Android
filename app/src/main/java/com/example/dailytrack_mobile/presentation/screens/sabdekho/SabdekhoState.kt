@@ -45,6 +45,7 @@ data class SabdekhoState(
     // Stats Tab
     val isStatsLoading: Boolean = false,
     val stats: MediaStatsResponseDto? = null,
+    val statsError: String? = null,
     val selectedStatsYear: String = LocalDate.now().year.toString(),
     val isTvStatsLoading: Boolean = false,
     val tvStats: TvStatsResponseDto? = null,
@@ -80,6 +81,9 @@ data class SabdekhoState(
     val editingLog: MediaDiaryLogDto? = null,
     val isEditDialogOpen: Boolean = false
 ) {
+    val activeLibraryFilterCount: Int
+        get() = listOf(yearFilter, monthFilter, weekFilter, languageFilter).count { it != "all" }
+
     val hasActiveLibraryFilters: Boolean
-        get() = yearFilter != "all" || monthFilter != "all" || weekFilter != "all" || languageFilter != "all"
+        get() = activeLibraryFilterCount > 0
 }

@@ -1,6 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
+import com.example.dailytrack_mobile.presentation.components.FilterButtonWithBadge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -483,49 +484,6 @@ private fun BulkSelectionActionBar(
                     Text(
                         text = "Delete",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Filter Button With Active Badge
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun FilterButtonWithBadge(
-    activeCount: Int,
-    onClick: () -> Unit
-) {
-    val dims = Dimens.current
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(dims.cardCornerRadius - 4.dp),
-        color = if (activeCount > 0) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.height(dims.searchBarHeight)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Tune,
-                contentDescription = "Filters",
-                tint = if (activeCount > 0) MaterialTheme.colorScheme.primary
-                       else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-            if (activeCount > 0) {
-                Badge(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Text(
-                        text = "$activeCount",
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                     )
                 }
             }

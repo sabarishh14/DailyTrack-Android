@@ -277,6 +277,7 @@ data class MediaStatsResponseDto(
     @Json(name = "year") val year: String? = null,
     @Json(name = "available_years") val available_years: List<Int> = emptyList(),
     @Json(name = "films_logged") val films_logged: Int = 0,
+    @Json(name = "total_entries") val total_entries: Int = 0,
     @Json(name = "total_likes") val total_likes: Int = 0,
     @Json(name = "total_hours") val total_hours: Double = 0.0,
     @Json(name = "total_reviews") val total_reviews: Int = 0,
@@ -294,6 +295,7 @@ data class MediaStatsResponseDto(
     @Json(name = "most_rewatched") val most_rewatched: List<MediaRewatchedDto> = emptyList(),
     @Json(name = "longest_streak") val longest_streak: MediaStreakDto? = null,
     @Json(name = "films_by_language") val films_by_language: List<LanguageCountDto> = emptyList(),
+    @Json(name = "films_by_year") val films_by_year: List<TvYearCountDto> = emptyList(),
     @Json(name = "message") val message: String? = null
 )
 
@@ -303,7 +305,8 @@ data class MediaStatsMovieDto(
     @Json(name = "tmdb_id") val tmdb_id: Int? = null,
     @Json(name = "name") val name: String? = null,
     @Json(name = "poster_path") val poster_path: String? = null,
-    @Json(name = "rating") val rating: Float = 0f,
+    // Null on theatre visits not yet rated; always set on the highest-rated lists.
+    @Json(name = "rating") val rating: Float? = null,
     @Json(name = "release_year") val release_year: String? = null,
     @Json(name = "tags") val tags: List<String> = emptyList()
 )

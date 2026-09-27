@@ -180,7 +180,7 @@ fun EditDiaryLogSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(rememberSheetHeight(0.9f))
+                .heightIn(max = rememberSheetHeight(0.9f))
                 .navigationBarsPadding()
                 .padding(horizontal = dims.screenHorizontalPadding)
                 .verticalScroll(rememberScrollState()),
