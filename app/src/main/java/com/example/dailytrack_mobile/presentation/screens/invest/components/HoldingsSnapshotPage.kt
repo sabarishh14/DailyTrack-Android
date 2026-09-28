@@ -1,7 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.invest.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -12,7 +11,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,18 +42,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.WindowCompat
+import com.example.dailytrack_mobile.presentation.components.FullScreenPage
+import com.example.dailytrack_mobile.presentation.components.navigationBarPadding
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingChange
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingComparison
 import com.example.dailytrack_mobile.presentation.screens.invest.HoldingSnapshotRow
@@ -94,93 +88,59 @@ fun HoldingsSnapshotPage(
     val type = state.snapshotType
     val close = { onAction(InvestAction.CloseHoldingsSnapshot) }
 
-    Dialog(
-        onDismissRequest = close,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
-    ) {
-        val pageColor = MaterialTheme.colorScheme.surface
-        MatchSystemBarsTo(pageColor)
+    FullScreenPage(onDismiss = close) {
+        PageHeader(
+            subtitle = if (state.isComparing) {
+                "${formatShortDate(state.comparisonFromDate.orEmpty())} → ${formatShortDate(state.comparisonToDate.orEmpty())}"
+            } else {
+                formatPointDate(snapshotDate)
+            },
+            onBack = close
+        )
 
-        val shown = remember { MutableTransitionState(false) }.apply { targetState = true }
-        AnimatedVisibility(
-            visibleState = shown,
-            enter = fadeIn(tween(180)) + slideInVertically(tween(260, easing = FastOutSlowInEasing)) { it / 12 }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(pageColor)
-                    .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-            ) {
-                PageHeader(
-                    subtitle = if (state.isComparing) {
-                        "${formatShortDate(state.comparisonFromDate.orEmpty())} → ${formatShortDate(state.comparisonToDate.orEmpty())}"
-                    } else {
-                        formatPointDate(snapshotDate)
-                    },
-                    onBack = close
-                )
+        Spacer(Modifier.height(8.dp))
 
-                Spacer(Modifier.height(8.dp))
+        AssetTypeToggle(
+            selected = type,
+            onSelect = { onAction(InvestAction.SelectSnapshotType(it)) },
+            modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
+        )
 
-                AssetTypeToggle(
-                    selected = type,
-                    onSelect = { onAction(InvestAction.SelectSnapshotType(it)) },
-                    modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
-                )
+        Spacer(Modifier.height(10.dp))
 
-                Spacer(Modifier.height(10.dp))
+        CompareControl(
+            state = state,
+            onAction = onAction,
+            modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
+        )
 
-                CompareControl(
-                    state = state,
-                    onAction = onAction,
-                    modifier = Modifier.padding(horizontal = dims.screenHorizontalPadding)
-                )
+        Spacer(Modifier.height(14.dp))
 
-                Spacer(Modifier.height(14.dp))
+        val isBusy = state.isSnapshotLoading || (state.isComparing && state.isCompareLoading)
 
-                val isBusy = state.isSnapshotLoading || (state.isComparing && state.isCompareLoading)
+        when {
+            isBusy -> SkeletonContent(Modifier.padding(horizontal = dims.screenHorizontalPadding))
 
-                when {
-                    isBusy -> SkeletonContent(Modifier.padding(horizontal = dims.screenHorizontalPadding))
+            state.snapshotError != null -> SheetMessage(
+                title = "Couldn't load holdings",
+                detail = state.snapshotError
+            )
 
-                    state.snapshotError != null -> SheetMessage(
-                        title = "Couldn't load holdings",
-                        detail = state.snapshotError
-                    )
+            state.isComparing -> ComparisonContent(state, type)
 
-                    state.isComparing -> ComparisonContent(state, type)
+            state.snapshotHoldings.isEmpty() -> SheetMessage(
+                title = "No ${type.label.lowercase()} on this date",
+                detail = "Try another date or asset type."
+            )
 
-                    state.snapshotHoldings.isEmpty() -> SheetMessage(
-                        title = "No ${type.label.lowercase()} on this date",
-                        detail = "Try another date or asset type."
-                    )
-
-                    else -> SnapshotContent(state, type)
-                }
-            }
+            else -> SnapshotContent(state, type)
         }
     }
 }
 
-/** The page draws behind the system bars, so their icons must suit its colour. */
+/** Lists end clear of the gesture bar, which the page draws behind. */
 @Composable
-private fun MatchSystemBarsTo(pageColor: Color) {
-    val view = LocalView.current
-    val lightBars = pageColor.luminance() > 0.5f
-    SideEffect {
-        val window = (view.parent as? DialogWindowProvider)?.window ?: return@SideEffect
-        WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = lightBars
-            isAppearanceLightNavigationBars = lightBars
-        }
-    }
-}
-
-/** Lists end clear of the gesture bar, which the page now draws behind. */
-@Composable
-private fun listBottomPadding(): Dp =
-    28.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+private fun listBottomPadding(): Dp = 28.dp + navigationBarPadding()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single date

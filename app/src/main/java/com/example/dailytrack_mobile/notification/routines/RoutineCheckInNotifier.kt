@@ -39,11 +39,14 @@ object RoutineCheckInNotifier {
     private const val EXTRA_IS_QUESTION = "routine_checkin_question"
     private const val WRAP_UP_TIMEOUT_MS = 90 * 60 * 1000L
 
-    /** Starts the check-in with the first open routine. False when there's nothing to ask. */
-    fun ask(context: Context, engine: RoutineEngine, date: LocalDate): Boolean {
+    /**
+     * Starts the check-in with the first open routine. False when there's nothing to ask.
+     * [quiet] leaves out the sound, e.g. after the check-in alarm has already rung.
+     */
+    fun ask(context: Context, engine: RoutineEngine, date: LocalDate, quiet: Boolean = false): Boolean {
         val items = engine.dayItems(date)
         val next = items.firstOrNull { it.needsAnswer } ?: return false
-        showQuestion(context, engine, items, next, date)
+        showQuestion(context, engine, items, next, date, quiet)
         return true
     }
 
@@ -100,7 +103,14 @@ object RoutineCheckInNotifier {
 
     // ── Building ─────────────────────────────────────────────────────────────
 
-    private fun showQuestion(context: Context, engine: RoutineEngine, items: List<DayItem>, item: DayItem, date: LocalDate) {
+    private fun showQuestion(
+        context: Context,
+        engine: RoutineEngine,
+        items: List<DayItem>,
+        item: DayItem,
+        date: LocalDate,
+        quiet: Boolean = false
+    ) {
         // "2 of 5": what tonight is about, whether answered already or still open.
         val counted = items.filter { it.required || it.status != null || it.progress?.met == false }
         val position = counted.count { it.status != null } + 1
@@ -119,6 +129,7 @@ object RoutineCheckInNotifier {
             .addAction(0, "❤️ Done", answerIntent(context, routine.id, date, CheckInStatus.DONE))
             .addAction(0, "😭 Missed", answerIntent(context, routine.id, date, CheckInStatus.MISSED))
             .addAction(0, "⏭ Skip", answerIntent(context, routine.id, date, CheckInStatus.SKIPPED))
+            .setSilent(quiet)
             .build()
         post(context, notification)
     }

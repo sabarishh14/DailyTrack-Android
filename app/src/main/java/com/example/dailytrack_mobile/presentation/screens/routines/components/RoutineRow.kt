@@ -78,7 +78,9 @@ internal fun RoutineRow(
     streak: Streak?,
     onStatus: (CheckInStatus?) -> Unit,
     onSkip: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Tapping the name opens the routine's own page, where there is one. */
+    onOpen: (() -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     Row(
@@ -86,37 +88,46 @@ internal fun RoutineRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(colors.surfaceContainer)
-            .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 6.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        EmojiBadge(item.routine.emoji, item.status)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = item.routine.name,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            val line = RoutineText.itemLine(item, streak)
-            if (line.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(14.dp))
+                .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier)
+                .padding(start = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            EmojiBadge(item.routine.emoji, item.status)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = line,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
+                    text = item.routine.name,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-            if (item.status == CheckInStatus.SKIPPED && !item.note.isNullOrBlank()) {
-                Text(
-                    text = "Skipped · ${item.note}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                val line = RoutineText.itemLine(item, streak)
+                if (line.isNotEmpty()) {
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (item.status == CheckInStatus.SKIPPED && !item.note.isNullOrBlank()) {
+                    Text(
+                        text = "Skipped · ${item.note}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
         StatusChoices(status = item.status, onStatus = onStatus, onSkip = onSkip)

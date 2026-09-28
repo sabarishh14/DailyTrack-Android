@@ -8,39 +8,82 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EventRepeat
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Snooze
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.dailytrack_mobile.data.local.routines.RoutineAlarmSettings
+import com.example.dailytrack_mobile.data.local.routines.RoutineAlarmSettings.AlarmKind
+import com.example.dailytrack_mobile.notification.routines.AlarmSounds
 import com.example.dailytrack_mobile.presentation.components.DailyTrackTimePickerDialog
+import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.screens.settings.components.AlarmSoundSheet
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsCard
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsClickItem
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsDivider
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsSectionLabel
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsToggleItem
 import com.example.dailytrack_mobile.presentation.util.Dimens
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
+/** The daily tracking reminder, and how Routines alarms ring. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemindersSettingsScreen(
@@ -53,13 +96,21 @@ fun RemindersSettingsScreen(
     val context = LocalContext.current
     val dims = Dimens.current
     var showTimePicker by remember { mutableStateOf(false) }
+    var soundSheet by remember { mutableStateOf<AlarmKind?>(null) }
+    val alarmVM: RoutineAlarmSettingsVM = hiltViewModel()
+    val alarm by alarmVM.settings.collectAsState()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        if (isGranted) {
-            onAction(SettingsAction.OnReminderToggled(true))
-        }
+        if (isGranted) onAction(SettingsAction.OnReminderToggled(true))
+    }
+
+    fun toggleReminder(on: Boolean) {
+        val needsPermission = on && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else onAction(SettingsAction.OnReminderToggled(on))
     }
 
     val parsedTime = remember(state.reminderTime) {
@@ -68,266 +119,133 @@ fun RemindersSettingsScreen(
 
     Scaffold(
         topBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.size(44.dp)
-                ) {
-                    IconButton(onClick = onNavigateBack) {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Reminders & alarms",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                navigationIcon = {
+                    FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(dims.iconSizeMedium)
                         )
                     }
-                }
-            }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
+                )
+            )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(horizontal = dims.screenHorizontalPadding),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = dims.screenBottomPadding)
         ) {
-            // Header Section
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Reminders",
-                    style = MaterialTheme.typography.headlineMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 32.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "Stay consistent with tracking your daily expenses, habits, and activities by setting up reminders",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
-                    lineHeight = 22.sp
-                )
+            // ── Daily reminder ──────────────────────────────────────────────
+            item { SettingsSectionLabel("Daily reminder") }
+            item {
+                SettingsCard {
+                    SettingsToggleItem(
+                        icon = if (state.isReminderEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        title = "Remind me to track",
+                        subtitle = "Expenses, habits and activities",
+                        checked = state.isReminderEnabled,
+                        onCheckedChange = ::toggleReminder
+                    )
+                    Column(modifier = Modifier.alpha(if (state.isReminderEnabled) 1f else 0.45f)) {
+                        SettingsDivider()
+                        SettingsClickItem(
+                            icon = Icons.Default.Schedule,
+                            title = "Time",
+                            subtitle = formatTime(parsedTime),
+                            enabled = state.isReminderEnabled,
+                            onClick = { showTimePicker = true }
+                        )
+                        SettingsDivider()
+                        DaysRow(
+                            days = state.reminderDays,
+                            enabled = state.isReminderEnabled,
+                            onToggle = { onAction(SettingsAction.OnReminderDayToggled(it)) }
+                        )
+                    }
+                    SettingsDivider()
+                    SettingsClickItem(
+                        icon = Icons.Default.NotificationsActive,
+                        title = "Send a test notification",
+                        onClick = { onAction(SettingsAction.OnSendTestNotification) }
+                    )
+                }
             }
 
-            Spacer(Modifier.height(4.dp))
-
-            // Main Switch Card (Daily Reminders)
-            Card(
-                shape = RoundedCornerShape(26.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
+            // ── Routine alarms ──────────────────────────────────────────────
+            item {
+                Spacer(Modifier.height(8.dp))
+                SettingsSectionLabel("Routine alarms")
+                Text(
+                    text = "For routines, and the nightly check-in, set to ring like an alarm.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+                )
+            }
+            item {
+                SettingsCard {
+                    SoundItem(Icons.Default.Alarm, "Routine alarm sound", alarm.reminderSound) { soundSheet = AlarmKind.REMINDER }
+                    SettingsDivider()
+                    SoundItem(Icons.Default.Bedtime, "Nightly check-in sound", alarm.checkInSound) { soundSheet = AlarmKind.CHECK_IN }
+                    SettingsDivider()
+                    SettingsToggleItem(
+                        icon = Icons.Default.Vibration,
+                        title = "Vibrate",
+                        checked = alarm.vibrate,
+                        onCheckedChange = alarmVM::setVibrate
+                    )
+                    SettingsDivider()
+                    SettingsToggleItem(
+                        icon = Icons.Default.GraphicEq,
+                        title = "Gentle start",
+                        subtitle = "Starts soft, louder over 30 seconds",
+                        checked = alarm.gentle,
+                        onCheckedChange = alarmVM::setGentle
+                    )
+                    SettingsDivider()
+                    SnoozeRow(alarm.snoozeMinutes, alarmVM::setSnooze)
+                }
+            }
+            item {
+                OutlinedButton(
+                    onClick = alarmVM::test,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(26.dp))
-                        .clickable {
-                            val targetState = !state.isReminderEnabled
-                            if (targetState && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (!hasPermission) {
-                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    onAction(SettingsAction.OnReminderToggled(true))
-                                }
-                            } else {
-                                onAction(SettingsAction.OnReminderToggled(targetState))
-                            }
-                        }
-                        .padding(horizontal = 22.dp, vertical = 22.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 4.dp)
                 ) {
-                    Icon(
-                        imageVector = if (state.isReminderEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                        contentDescription = null,
-                        tint = if (state.isReminderEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.width(18.dp))
-                    Text(
-                        text = "Daily Reminders",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Switch(
-                        checked = state.isReminderEnabled,
-                        onCheckedChange = { targetState ->
-                            if (targetState && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                val hasPermission = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.POST_NOTIFICATIONS
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (!hasPermission) {
-                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                } else {
-                                    onAction(SettingsAction.OnReminderToggled(true))
-                                }
-                            } else {
-                                onAction(SettingsAction.OnReminderToggled(targetState))
-                            }
-                        }
-                    )
+                    Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Test alarm")
                 }
             }
-
-            // Schedule Section Header
-            Text(
-                text = "Schedule",
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
-                ),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-            )
-
-            // Schedule Configuration Cards (Two connected cards with small gap and rounded outer corners)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .alpha(if (state.isReminderEnabled) 1f else 0.45f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Card 1: Reminder time
-                Card(
-                    shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp, bottomStart = 8.dp, bottomEnd = 8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    ReminderScheduleItem(
-                        icon = Icons.Default.Schedule,
-                        title = "Reminder time",
-                        subtitle = formatTimeSubtitle(parsedTime),
-                        enabled = state.isReminderEnabled,
-                        onClick = {
-                            if (state.isReminderEnabled) {
-                                showTimePicker = true
-                            }
-                        }
-                    )
-                }
-
-                // Card 2: Repeat & Day selection pills
-                Card(
-                    shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomStart = 26.dp, bottomEnd = 26.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        ReminderScheduleItem(
-                            icon = Icons.Default.EventRepeat,
-                            title = "Repeat",
-                            subtitle = getRepeatSummary(state.reminderDays),
-                            enabled = state.isReminderEnabled,
-                            onClick = { /* Informational row */ }
-                        )
-
-                        // Day selection pills (M, T, W, T, F, S, S)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                                .padding(bottom = 16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val days = DayOfWeek.values()
-                            days.forEach { day ->
-                                val isSelected = state.reminderDays.contains(day)
-                                val bgColor by animateColorAsState(
-                                    targetValue = if (isSelected)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.surfaceContainerHighest,
-                                    animationSpec = tween(200),
-                                    label = "dayPillBg"
-                                )
-                                val textColor by animateColorAsState(
-                                    targetValue = if (isSelected)
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                    animationSpec = tween(200),
-                                    label = "dayPillText"
-                                )
-
-                                Surface(
-                                    shape = CircleShape,
-                                    color = bgColor,
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .clickable(enabled = state.isReminderEnabled) {
-                                            onAction(SettingsAction.OnReminderDayToggled(day))
-                                        }
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = day.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                fontSize = 14.sp
-                                            ),
-                                            color = textColor
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Test Notification Button
-            OutlinedButton(
-                onClick = { onAction(SettingsAction.OnSendTestNotification) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
+            item {
                 Text(
-                    text = "Send Test Notification",
-                    style = MaterialTheme.typography.labelLarge
+                    text = "Set a routine to ring from its Reminder, and the nightly check-in from the Routines page.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
             }
-
-            Spacer(Modifier.height(32.dp))
         }
     }
 
-    // Material 3 TimePicker Dialog (Matching June Clock & Number Input with Now option)
     if (showTimePicker) {
         DailyTrackTimePickerDialog(
             initialTime = parsedTime,
@@ -339,64 +257,118 @@ fun RemindersSettingsScreen(
             onDismiss = { showTimePicker = false }
         )
     }
+
+    soundSheet?.let { kind ->
+        AlarmSoundSheet(
+            title = if (kind == AlarmKind.CHECK_IN) "Nightly check-in sound" else "Routine alarm sound",
+            selected = alarm.soundFor(kind),
+            onPick = { alarmVM.setSound(kind, it) },
+            onDismiss = { soundSheet = null }
+        )
+    }
+}
+
+/** A sound choice, showing the sound's name. */
+@Composable
+private fun SoundItem(icon: ImageVector, title: String, value: String?, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val name by produceState(if (value == RoutineAlarmSettings.SILENT) "Silent" else "…", value) {
+        this.value = withContext(Dispatchers.IO) { AlarmSounds.title(context, value) }
+    }
+    SettingsClickItem(
+        icon = icon,
+        title = title,
+        subtitle = name,
+        trailing = {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(20.dp)
+            )
+        },
+        onClick = onClick
+    )
 }
 
 @Composable
-private fun ReminderScheduleItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp)
+private fun DaysRow(days: Set<DayOfWeek>, enabled: Boolean, onToggle: (DayOfWeek) -> Unit) {
+    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
+        RowLabel(Icons.Default.EventRepeat, "Repeat", repeatSummary(days))
+        Spacer(Modifier.height(10.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            DayOfWeek.entries.forEach { day ->
+                Pill(
+                    text = day.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                    selected = day in days,
+                    enabled = enabled,
+                    circle = true
+                ) { onToggle(day) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SnoozeRow(minutes: Int, onPick: (Int) -> Unit) {
+    Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp)) {
+        RowLabel(Icons.Default.Snooze, "Snooze", "$minutes minutes")
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoutineAlarmSettings.SNOOZE_CHOICES.forEach { choice ->
+                Pill(text = "$choice", selected = choice == minutes, enabled = true, circle = false) { onPick(choice) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowLabel(icon: ImageVector, title: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
         )
-        Spacer(Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(text = value, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-private fun formatTimeSubtitle(time: LocalTime): String {
-    val formatter = DateTimeFormatter.ofPattern("hh:mm a", Locale.getDefault())
-    return time.format(formatter).lowercase(Locale.getDefault())
+@Composable
+private fun Pill(text: String, selected: Boolean, enabled: Boolean, circle: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val background by animateColorAsState(
+        targetValue = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
+        animationSpec = tween(200),
+        label = "pill"
+    )
+    Box(
+        modifier = Modifier
+            .then(if (circle) Modifier.size(38.dp) else Modifier.height(36.dp))
+            .clip(CircleShape)
+            .background(background)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = if (circle) 0.dp else 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge.copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium),
+            color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant
+        )
+    }
 }
 
-private fun getRepeatSummary(days: Set<DayOfWeek>): String {
-    return when {
-        days.size == 7 -> "Daily"
-        days.isEmpty() -> "Never"
-        days.size == 5 && !days.contains(DayOfWeek.SATURDAY) && !days.contains(DayOfWeek.SUNDAY) -> "Weekdays"
-        days.size == 2 && days.contains(DayOfWeek.SATURDAY) && days.contains(DayOfWeek.SUNDAY) -> "Weekends"
-        else -> {
-            val locale = Locale.getDefault()
-            days.sortedBy { it.value }
-                .joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }
-        }
-    }
+private fun formatTime(time: LocalTime): String =
+    time.format(DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())).lowercase(Locale.getDefault())
+
+private fun repeatSummary(days: Set<DayOfWeek>): String = when {
+    days.size == 7 -> "Daily"
+    days.isEmpty() -> "Never"
+    days.size == 5 && DayOfWeek.SATURDAY !in days && DayOfWeek.SUNDAY !in days -> "Weekdays"
+    days.size == 2 && DayOfWeek.SATURDAY in days && DayOfWeek.SUNDAY in days -> "Weekends"
+    else -> days.sortedBy { it.value }.joinToString(", ") { it.getDisplayName(TextStyle.SHORT, Locale.getDefault()) }
 }

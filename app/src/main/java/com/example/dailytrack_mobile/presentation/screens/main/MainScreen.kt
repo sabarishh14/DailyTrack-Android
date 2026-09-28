@@ -90,9 +90,15 @@ private fun pageToRoute(page: Int): String = when (page) {
     else -> Routes.Home.route
 }
 
-/** Routines replaced the Activities page; anything still asking for it lands on Routines. */
-private fun canonicalRoute(route: String): String =
-    if (route == Routes.Activities.route) Routes.Routines.route else route
+/**
+ * Routines replaced the Activities page; anything still asking for it lands on Routines.
+ * Transactions is the Money page, opened on its list.
+ */
+private fun canonicalRoute(route: String): String = when (route) {
+    Routes.Activities.route -> Routes.Routines.route
+    Routes.Transactions.route -> Routes.Money.route
+    else -> route
+}
 
 private fun routeToPage(route: String, preferTransactions: Boolean = false): Int? = when (route) {
     Routes.Home.route -> PAGE_HOME
@@ -130,7 +136,7 @@ fun MainScreen(
 
     val initialPageIndex = remember {
         val target = canonicalRoute(targetRoute ?: Routes.Home.route)
-        indexOfPage(routeToPage(target)) ?: 0
+        indexOfPage(routeToPage(target, preferTransactions = targetRoute == Routes.Transactions.route)) ?: 0
     }
     val pagerState = rememberPagerState(
         initialPage = initialPageIndex,
@@ -245,7 +251,7 @@ fun MainScreen(
         val route = targetRoute?.let(::canonicalRoute)
         if (route != null && routeAllowed(route, access)) {
             val tabIdx = indexOfPage(if (route == Routes.Money.route) {
-                lastMoneyPage
+                if (targetRoute == Routes.Transactions.route) PAGE_TRANSACTIONS else lastMoneyPage
             } else {
                 routeToPage(route)
             })
@@ -500,7 +506,8 @@ fun MainScreen(
                     ) { index ->
                         when (pageAt(index)) {
                             PAGE_HOME -> HomeScreen(
-                                onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) }
+                                onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) },
+                                onNavigateToRoutines = { navigateSafely(Routes.Routines.route) }
                             )
                             PAGE_CASH_FLOW -> MoneyCashFlowTab(
                                 state = moneyState,
@@ -521,6 +528,7 @@ fun MainScreen(
                                 }
                             )
                             PAGE_ROUTINES -> RoutinesScreen(
+                                isCurrentPage = pageAt(pagerState.currentPage) == PAGE_ROUTINES,
                                 onNewRoutine = { template ->
                                     routineEditorTarget = RoutineEditorTarget.New(template)
                                     navigateSafely(Routes.AddRoutine.route)

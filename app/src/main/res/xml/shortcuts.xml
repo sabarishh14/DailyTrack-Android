@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon. Each opens MainActivity at a page through the "route"
+     extra; a page the signed-in person can't see just opens Home. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Its id stays as it was, so a copy already pinned to the home screen keeps working. -->
     <shortcut
         android:shortcutId="open_input_form"
         android:enabled="true"
-        android:icon="@drawable/ic_add"
+        android:icon="@drawable/ic_shortcut_add"
         android:shortcutShortLabel="@string/shortcut_add_money_short"
         android:shortcutLongLabel="@string/shortcut_add_money_long">
         <intent
@@ -14,6 +17,54 @@
             <extra
                 android:name="route"
                 android:value="add_money" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_routines"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_routines"
+        android:shortcutShortLabel="@string/shortcut_routines_short"
+        android:shortcutLongLabel="@string/shortcut_routines_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.dailytrack_mobile"
+            android:targetClass="com.example.dailytrack_mobile.MainActivity">
+            <extra
+                android:name="route"
+                android:value="routines" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_transactions"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_transactions"
+        android:shortcutShortLabel="@string/shortcut_transactions_short"
+        android:shortcutLongLabel="@string/shortcut_transactions_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.dailytrack_mobile"
+            android:targetClass="com.example.dailytrack_mobile.MainActivity">
+            <extra
+                android:name="route"
+                android:value="transactions" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="open_portfolio"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_portfolio"
+        android:shortcutShortLabel="@string/shortcut_portfolio_short"
+        android:shortcutLongLabel="@string/shortcut_portfolio_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.example.dailytrack_mobile"
+            android:targetClass="com.example.dailytrack_mobile.MainActivity">
+            <extra
+                android:name="route"
+                android:value="investments" />
         </intent>
     </shortcut>
 </shortcuts>

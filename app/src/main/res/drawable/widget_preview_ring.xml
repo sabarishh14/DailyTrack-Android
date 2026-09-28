@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget picker's preview of the consistency ring: 89% kept (green), the rest missed (red). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:pathData="M24,4 A20,20 0 1,1 11.144,8.679"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF34C759" />
+    <path
+        android:pathData="M11.144,8.679 A20,20 0 0,1 24,4"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FFFF453A" />
+</vector>

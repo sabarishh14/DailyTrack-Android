@@ -1,5 +1,10 @@
 package com.example.dailytrack_mobile.presentation.screens.routines.editor
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -70,16 +75,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.example.dailytrack_mobile.domain.routines.IntervalUnit
 import com.example.dailytrack_mobile.domain.routines.RoutineKind
 import com.example.dailytrack_mobile.domain.routines.RoutineSchedule
 import com.example.dailytrack_mobile.domain.routines.bit
+import com.example.dailytrack_mobile.notification.routines.AlarmPermissions
+import com.example.dailytrack_mobile.presentation.components.DailyTrackTimePickerDialog
 import com.example.dailytrack_mobile.presentation.components.SheetContentInsets
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
 import com.example.dailytrack_mobile.presentation.screens.routines.RoutineEditorTarget
@@ -90,6 +101,7 @@ import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -111,7 +123,23 @@ fun RoutineEditorScreen(
     val dims = Dimens.current
     var showDatePicker by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var showReminderPicker by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    // A reminder needs permission to notify; asked when one is first turned on.
+    val context = LocalContext.current
+    // An alarm also wants to show over the lock screen; Android 14+ can switch that off.
+    var fullScreenAllowed by remember { mutableStateOf(AlarmPermissions.canShowFullScreen(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { fullScreenAllowed = AlarmPermissions.canShowFullScreen(context) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.setReminder(DEFAULT_REMINDER)
+    }
+    val turnReminderOn = {
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (granted) viewModel.setReminder(DEFAULT_REMINDER)
+        else notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
 
     LaunchedEffect(state.isDirty) { onDirtyStateChanged(state.isDirty) }
     LaunchedEffect(state.finished) {
@@ -340,6 +368,67 @@ fun RoutineEditorScreen(
             }
         }
 
+        Section("Reminder") {
+            val reminder = state.reminder
+            ToggleRow(
+                title = "Remind me",
+                subtitle = if (reminder != null) {
+                    "At ${RoutineText.time(reminder)} on days it's due and still open. On this phone."
+                } else {
+                    "A nudge on days it's due, if it isn't done yet"
+                },
+                checked = reminder != null,
+                onChange = { on -> if (on) turnReminderOn() else viewModel.setReminder(null) }
+            )
+            if (reminder != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .clickable { showReminderPicker = true }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Time",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = RoutineText.time(reminder),
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Pill("🔔 Notification", selected = !state.alarm) { viewModel.setAlarm(false) }
+                    Pill("⏰ Alarm", selected = state.alarm) { viewModel.setAlarm(true) }
+                }
+                Spacer(Modifier.height(8.dp))
+                Hint(
+                    if (state.alarm) {
+                        "Rings like your alarm, even on silent, over the lock screen. " +
+                            "Pick its sound in Settings → Reminders & alarms."
+                    } else {
+                        "A notification with a ❤️ Done button."
+                    }
+                )
+                if (state.alarm && !fullScreenAllowed) {
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(
+                        onClick = { AlarmPermissions.openFullScreenSettings(context) },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text("Allow it to show over the lock screen →")
+                    }
+                }
+            }
+        }
+
         Button(
             onClick = viewModel::save,
             enabled = !state.isSaving,
@@ -393,6 +482,16 @@ fun RoutineEditorScreen(
             onDismiss = { showDatePicker = false }
         )
     }
+    if (showReminderPicker) {
+        DailyTrackTimePickerDialog(
+            initialTime = state.reminder ?: DEFAULT_REMINDER,
+            onTimeSelected = { time ->
+                viewModel.setReminder(time)
+                showReminderPicker = false
+            },
+            onDismiss = { showReminderPicker = false }
+        )
+    }
     if (showEmojiPicker) {
         EmojiPickerSheet(
             current = form.emoji,
@@ -434,6 +533,8 @@ private val UnitOptions = listOf(
 )
 
 private val ChallengeLengths = listOf(7, 14, 21, 30, 60, 90)
+
+private val DEFAULT_REMINDER: LocalTime = LocalTime.of(18, 0)
 
 private val EmojiChoices = listOf(
     "✅", "🪥", "📖", "📚", "🏋️", "🏃", "🚶", "🚴", "🏊", "🧘", "🏸", "🏓",

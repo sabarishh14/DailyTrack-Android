@@ -52,7 +52,9 @@ import com.example.dailytrack_mobile.presentation.screens.settings.components.Ap
 import com.example.dailytrack_mobile.presentation.screens.settings.components.GeneralSettingsSubScreen
 import com.example.dailytrack_mobile.presentation.screens.settings.components.PrivacySecuritySettingsSubScreen
 import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsCard
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsDivider
 import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsNavItem
+import com.example.dailytrack_mobile.presentation.screens.settings.components.SettingsSectionLabel
 import com.example.dailytrack_mobile.presentation.screens.settings.components.SyncSettingsSubScreen
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.DtOgThemeColors
@@ -132,6 +134,29 @@ private data class SettingsCategoryItem(
     val keywords: List<String>
 )
 
+/** How the categories are grouped on the root screen, each group one card. */
+private val CategoryGroups = listOf(
+    "Admin" to listOf("AccessControl"),
+    "Preferences" to listOf("General", "Appearance", "Reminders"),
+    "Security & data" to listOf("PrivacySecurity", "Sync"),
+    "App" to listOf("Updates", "About")
+)
+
+@Composable
+private fun CategoryCard(items: List<SettingsCategoryItem>, onOpen: (String) -> Unit) {
+    SettingsCard {
+        items.forEachIndexed { index, category ->
+            if (index > 0) SettingsDivider()
+            SettingsNavItem(
+                icon = category.icon,
+                title = category.title,
+                subtitle = category.subtitle,
+                onClick = { onOpen(category.id) }
+            )
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Settings Screen – Root with sub-screen routing
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,9 +194,12 @@ fun SettingsScreen(
             SettingsCategoryItem(
                 id = "Reminders",
                 icon = Icons.Default.Alarm,
-                title = "Reminders",
-                subtitle = "Daily tracking reminders & schedule",
-                keywords = listOf("reminder", "reminders", "schedule", "scheduler", "notification", "notifications", "alarm", "daily", "alert", "time")
+                title = "Reminders & alarms",
+                subtitle = "Daily reminder, alarm sounds",
+                keywords = listOf(
+                    "reminder", "reminders", "schedule", "scheduler", "notification", "notifications", "alarm", "alarms",
+                    "daily", "alert", "time", "sound", "sounds", "ringtone", "tone", "vibrate", "vibration", "snooze", "check-in"
+                )
             ),
             SettingsCategoryItem(
                 id = "Appearance",
@@ -420,16 +448,16 @@ fun SettingsScreen(
         onAction(SettingsAction.OnBackClicked)
     }
 
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         text = "Settings",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -521,16 +549,18 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                } else if (searchQuery.isNotBlank()) {
+                    // Matches from every group, together.
+                    CategoryCard(filteredCategories) { currentSubScreen = it }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        filteredCategories.forEach { category ->
-                            SettingsCard {
-                                SettingsNavItem(
-                                    icon = category.icon,
-                                    title = category.title,
-                                    subtitle = category.subtitle,
-                                    onClick = { currentSubScreen = category.id }
-                                )
+                    Column {
+                        CategoryGroups.forEach { (label, ids) ->
+                            val inGroup = ids.mapNotNull { id -> categories.firstOrNull { it.id == id } }
+                            if (inGroup.isNotEmpty()) {
+                                SettingsSectionLabel(label)
+                                Spacer(Modifier.height(6.dp))
+                                CategoryCard(inGroup) { currentSubScreen = it }
+                                Spacer(Modifier.height(16.dp))
                             }
                         }
                     }

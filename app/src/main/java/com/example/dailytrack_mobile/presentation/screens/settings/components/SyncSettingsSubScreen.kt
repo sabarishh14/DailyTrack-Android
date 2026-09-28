@@ -80,7 +80,7 @@ internal fun SyncSettingsSubScreen(
 ) {
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     // Whole-ledger actions need unrestricted money edit; see ACCESS_CONTROL.md.
     val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
     val canPushTransactions = access.fullMoneyAccess
@@ -95,11 +95,11 @@ internal fun SyncSettingsSubScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         text = "Sync",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },

@@ -6,6 +6,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Routine alarms: on time (granted with the app on Android 13+, unlike
+         SCHEDULE_EXACT_ALARM), and over the lock screen like the clock's. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- A ringing routine alarm plays its sound from a foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
@@ -85,6 +93,37 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- A routine set to ring: shown over the lock screen, in its own task so
+             answering it doesn't bring the app up behind. -->
+        <activity
+            android:name=".notification.routines.RoutineAlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.DailyTrackMobile" />
+
+        <!-- The Routines home-screen widget. -->
+        <receiver
+            android:name=".widget.RoutinesWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_routines_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/routines_widget_info" />
+        </receiver>
+
+        <!-- Plays a routine alarm's sound until it's silenced, answered or times out. -->
+        <service
+            android:name=".notification.routines.RoutineAlarmService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

@@ -2,6 +2,7 @@ package com.example.dailytrack_mobile.presentation.screens.routines.editor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.dailytrack_mobile.data.local.routines.RoutineReminders
 import com.example.dailytrack_mobile.data.remote.dto.RoutineRequestDto
 import com.example.dailytrack_mobile.data.repository.RoutineAnswer
 import com.example.dailytrack_mobile.data.repository.RoutinesRepository
@@ -13,6 +14,7 @@ import com.example.dailytrack_mobile.domain.routines.Routine
 import com.example.dailytrack_mobile.domain.routines.RoutineEngine
 import com.example.dailytrack_mobile.domain.routines.RoutineKind
 import com.example.dailytrack_mobile.domain.routines.RoutineSchedule
+import com.example.dailytrack_mobile.notification.routines.RoutineCheckInScheduler
 import com.example.dailytrack_mobile.presentation.screens.routines.RoutineEditorTarget
 import com.example.dailytrack_mobile.presentation.screens.routines.RoutineTemplate
 import com.example.dailytrack_mobile.presentation.screens.routines.RoutineText
@@ -24,12 +26,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 
 @HiltViewModel
 class RoutineEditorVM @Inject constructor(
-    private val repository: RoutinesRepository
+    private val repository: RoutinesRepository,
+    private val reminders: RoutineReminders,
+    private val scheduler: RoutineCheckInScheduler
 ) : ViewModel() {
 
     /** What's being edited; every schedule's settings are kept so switching back and forth loses nothing. */
@@ -135,10 +140,18 @@ class RoutineEditorVM @Inject constructor(
         val markedPast: Int? = null,
         /** Adding with a start in the past: mark the days before today done on save. */
         val fillPastOnCreate: Boolean = false,
+        /** The routine's reminder on this phone, and what it was when the editor opened. */
+        val reminder: LocalTime? = null,
+        val initialReminder: LocalTime? = null,
+        /** Ring like an alarm rather than arrive as a notification. */
+        val alarm: Boolean = false,
+        val initialAlarm: Boolean = false,
         /** Set once saved, archived or deleted: the message to show on the way out. */
         val finished: String? = null
     ) {
-        val isDirty: Boolean get() = loaded && form != initial
+        val reminderChanged: Boolean get() = reminder != initialReminder || (reminder != null && alarm != initialAlarm)
+
+        val isDirty: Boolean get() = loaded && (form != initial || reminderChanged)
     }
 
     private val _state = MutableStateFlow(UiState())
@@ -167,9 +180,13 @@ class RoutineEditorVM @Inject constructor(
                         val checkIns = snapshot.checkins.filter { it.routineId == routine.id }.mapNotNull { it.toCheckIn() }
                         val pastBlank = if (routine.archived) emptyList()
                         else RoutineEngine(listOf(routine), checkIns).unansweredPastDays(routine, LocalDate.now())
+                        val reminder = reminders.all()[routine.id]
+                        val alarm = routine.id in reminders.alarmIds()
                         UiState(
                             loaded = true, editingId = routine.id, archived = routine.archived,
-                            form = form, initial = form, pastBlank = pastBlank
+                            form = form, initial = form, pastBlank = pastBlank,
+                            reminder = reminder, initialReminder = reminder,
+                            alarm = alarm, initialAlarm = alarm
                         )
                     }
                 }
@@ -188,6 +205,12 @@ class RoutineEditorVM @Inject constructor(
     }
 
     fun setFillPastOnCreate(fill: Boolean) = _state.update { it.copy(fillPastOnCreate = fill) }
+
+    /** Null turns the reminder off. Takes effect on save. */
+    fun setReminder(time: LocalTime?) = _state.update { it.copy(reminder = time) }
+
+    /** Ring like an alarm (true) or arrive as a notification. Takes effect on save. */
+    fun setAlarm(alarm: Boolean) = _state.update { it.copy(alarm = alarm) }
 
     /** Marks every unanswered day before today done; any of them can be changed later in History. */
     fun markPastDone() {
@@ -217,6 +240,9 @@ class RoutineEditorVM @Inject constructor(
             val request = current.form.toRequest()
             val result = current.editingId?.let { repository.update(it, request) } ?: repository.create(request)
             result.onSuccess { routine ->
+                if (current.reminderChanged || current.editingId == null) {
+                    applyReminder(routine.id, current.reminder, current.alarm)
+                }
                 val filled = if (current.editingId == null && current.fillPastOnCreate) fillPast(routine.toRoutine()) else 0
                 val message = when {
                     current.editingId != null -> "Saved"
@@ -249,9 +275,17 @@ class RoutineEditorVM @Inject constructor(
         _state.update { it.copy(isSaving = true, error = null) }
         viewModelScope.launch {
             repository.delete(id)
-                .onSuccess { _state.update { it.copy(isSaving = false, finished = "Deleted") } }
+                .onSuccess {
+                    applyReminder(id, null)
+                    _state.update { it.copy(isSaving = false, finished = "Deleted") }
+                }
                 .onFailure { error -> _state.update { it.copy(isSaving = false, error = error.message ?: "Couldn't delete") } }
         }
+    }
+
+    private suspend fun applyReminder(routineId: Long, time: LocalTime?, alarm: Boolean = false) {
+        reminders.set(routineId, time, alarm)
+        if (time == null) scheduler.cancelReminder(routineId) else scheduler.scheduleReminder(routineId, time, alarm)
     }
 
     /** For a routine just added with a past start: its days before today, marked done. */

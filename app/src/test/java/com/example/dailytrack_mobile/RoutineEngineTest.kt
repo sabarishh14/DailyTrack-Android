@@ -153,6 +153,21 @@ class RoutineEngineTest {
     }
 
     @Test
+    fun `consistency is compared with the same stretch just before it`() {
+        val read = daily(1)
+        val e = engine(
+            listOf(read),
+            at(read, mon, DONE),
+            at(read, day(1), DONE), at(read, day(2), DONE), at(read, day(3), MISSED), at(read, day(4), DONE), at(read, day(5), DONE),
+            at(read, day(6), DONE), at(read, day(7), DONE), at(read, day(8), DONE), at(read, day(9), DONE)
+        )
+        // Days 6 to 10, with today (day 10) still open: 4 of 4.
+        assertEquals(1.0, e.consistency(day(10), days = 5).fraction!!, 1e-9)
+        // Days 1 to 5: 4 of 5. Monday is in neither.
+        assertEquals(0.8, e.previousConsistency(day(10), days = 5).fraction!!, 1e-9)
+    }
+
+    @Test
     fun `weekly targets are judged when the week ends, with partial credit`() {
         val gym = weekly(1, target = 3)
         val firstWeek = engine(listOf(gym), at(gym, mon, DONE), at(gym, day(2), DONE))
@@ -354,6 +369,34 @@ class RoutineEngineTest {
         // Only fixed-day routines can be filled in wholesale.
         val gym = weekly(3, target = 2)
         assertTrue(engine(listOf(gym)).unansweredPastDays(gym, day(10)).isEmpty())
+    }
+
+    // ── One routine's page ──────────────────────────────────────────────────
+
+    @Test
+    fun `a routine's own page has its days, all-time score and answers`() {
+        val read = daily(1)
+        val other = daily(2)
+        val e = engine(
+            listOf(read, other),
+            at(read, mon, DONE), CheckIn(read.id, day(1), SKIPPED, "Unwell"), at(read, day(2), MISSED),
+            at(other, mon, DONE)
+        )
+        assertEquals(SKIPPED, e.itemOn(read, day(1))!!.status)
+        assertNull(e.itemOn(read, day(-1)))
+        // Mon done, Tue excused, Wed missed, Thu (today) still open.
+        assertEquals(fraction(1.0, 2.0), e.allTime(read, day(3)).fraction!!, 1e-9)
+        assertEquals(listOf(day(2), day(1), mon), e.answersFor(read).map { it.date })
+        assertEquals("Unwell", e.answersFor(read).first { it.status == SKIPPED }.note)
+        assertEquals(mon, e.lastDone(read))
+    }
+
+    @Test
+    fun `a chore's next due date is the open one, even if overdue`() {
+        val filter = chore(1, firstDue = day(2))
+        assertEquals(day(2), engine(listOf(filter)).nextDue(filter))
+        assertEquals(day(11), engine(listOf(filter), at(filter, day(4), DONE)).nextDue(filter))
+        assertNull(engine(listOf(daily(2))).nextDue(daily(2)))
     }
 
     @Test

@@ -76,7 +76,7 @@ fun AppUpdatesSubScreen(
     onNavigateBack: () -> Unit
 ) {
     val dims = Dimens.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     BackHandler {
         onNavigateBack()
@@ -85,11 +85,11 @@ fun AppUpdatesSubScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         text = "App Updates",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },

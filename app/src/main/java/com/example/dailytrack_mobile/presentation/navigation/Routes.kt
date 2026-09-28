@@ -4,6 +4,8 @@ sealed class Routes(val route: String) {
     object Auth : Routes("auth")
     object Home : Routes("home")
     object Money : Routes("money")
+    /** Money, opened on its transactions list (the launcher's "Transactions" shortcut). */
+    object Transactions : Routes("transactions")
     object Activities : Routes("activities")
     object Routines : Routes("routines")
     object Investments : Routes("investments")

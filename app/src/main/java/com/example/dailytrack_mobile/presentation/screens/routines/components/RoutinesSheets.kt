@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,7 +58,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.example.dailytrack_mobile.data.local.routines.RoutineCheckInSettings
+import com.example.dailytrack_mobile.notification.routines.AlarmPermissions
 import com.example.dailytrack_mobile.domain.routines.CheckInStatus
 import com.example.dailytrack_mobile.domain.routines.DayItem
 import com.example.dailytrack_mobile.domain.routines.DayStats
@@ -223,11 +227,14 @@ internal fun CheckInSettingsSheet(
     onEnabled: (Boolean) -> Unit,
     onTime: (java.time.LocalTime) -> Unit,
     onToggleDay: (DayOfWeek) -> Unit,
+    onAlarm: (Boolean) -> Unit,
     onTry: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     var showTimePicker by remember { mutableStateOf(false) }
+    var fullScreenAllowed by remember { mutableStateOf(AlarmPermissions.canShowFullScreen(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { fullScreenAllowed = AlarmPermissions.canShowFullScreen(context) }
     var pendingAfterGrant by remember { mutableStateOf<(() -> Unit)?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) pendingAfterGrant?.invoke()
@@ -266,7 +273,11 @@ internal fun CheckInSettingsSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "A notification asks about every routine still open. Answer ❤️ / 😭 / Skip right from it.",
+                        text = if (settings.alarm) {
+                            "An alarm rings, and you answer every routine still open right on its screen."
+                        } else {
+                            "A notification asks about every routine still open. Answer ❤️ / 😭 / Skip right from it."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -336,6 +347,34 @@ internal fun CheckInSettingsSheet(
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                SettingCard {
+                    Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ChoicePill("🔔 Notification", selected = !settings.alarm, enabled = settings.enabled) { onAlarm(false) }
+                            ChoicePill("⏰ Alarm", selected = settings.alarm, enabled = settings.enabled) { onAlarm(true) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = if (settings.alarm) {
+                                "Rings like your alarm, even on silent. Opening it stops the sound; answer everything there. " +
+                                    "Pick its sound in Settings → Reminders & alarms."
+                            } else {
+                                "A quiet nudge you answer from the notification."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (settings.alarm && !fullScreenAllowed) {
+                            TextButton(
+                                onClick = { AlarmPermissions.openFullScreenSettings(context) },
+                                contentPadding = PaddingValues(horizontal = 0.dp)
+                            ) {
+                                Text("Allow it to show over the lock screen →")
+                            }
+                        }
+                    }
+                }
             }
             Spacer(Modifier.height(16.dp))
             OutlinedButton(
@@ -369,6 +408,25 @@ private fun SettingCard(content: @Composable () -> Unit) {
     ) {
         content()
     }
+}
+
+@Composable
+private fun ChoicePill(text: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val background by animateColorAsState(
+        targetValue = if (selected) colors.primary else colors.surfaceContainerHighest,
+        label = "choicePill"
+    )
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+        color = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(background)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+    )
 }
 
 @Composable

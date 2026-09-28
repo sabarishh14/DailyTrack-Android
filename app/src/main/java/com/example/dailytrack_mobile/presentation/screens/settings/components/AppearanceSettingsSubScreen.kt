@@ -77,7 +77,7 @@ internal fun AppearanceSettingsSubScreen(
 ) {
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val isDarkTheme = when (state.themeMode) {
         ThemeMode.DARK -> true
         ThemeMode.LIGHT -> false
@@ -87,11 +87,11 @@ internal fun AppearanceSettingsSubScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         text = "Appearance",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },

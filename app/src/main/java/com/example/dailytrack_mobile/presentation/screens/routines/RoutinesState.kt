@@ -1,9 +1,11 @@
 package com.example.dailytrack_mobile.presentation.screens.routines
 
 import com.example.dailytrack_mobile.data.local.routines.RoutineCheckInSettings
+import com.example.dailytrack_mobile.domain.routines.CheckIn
 import com.example.dailytrack_mobile.domain.routines.CheckInStatus
 import com.example.dailytrack_mobile.domain.routines.DayItem
 import com.example.dailytrack_mobile.domain.routines.DayStats
+import com.example.dailytrack_mobile.domain.routines.PeriodProgress
 import com.example.dailytrack_mobile.domain.routines.Routine
 import com.example.dailytrack_mobile.domain.routines.Score
 import com.example.dailytrack_mobile.domain.routines.Streak
@@ -22,6 +24,27 @@ data class RoutineSummary(
     val nextDue: LocalDate?
 )
 
+/** One routine's own page. */
+data class RoutineDetail(
+    val routine: Routine,
+    val streak: Streak,
+    val last30: Score,
+    val allTime: Score,
+    val doneCount: Int,
+    val month: YearMonth,
+    /** Each day of [month]: the routine that day, or null where it wasn't due (or is still ahead). */
+    val days: List<DayItem?>,
+    /** The day picked on its calendar, to see or change. */
+    val selected: DayItem?,
+    /** Skips with their reasons, newest first. */
+    val skips: List<CheckIn>,
+    /** Chores: when the open one fell or falls due. */
+    val nextDue: LocalDate?,
+    val lastDone: LocalDate?,
+    /** Times-per-week/month routines: how the current period is going. */
+    val progress: PeriodProgress?
+)
+
 data class RoutinesState(
     /** Only true on the very first load, before anything was ever fetched. */
     val isLoading: Boolean = true,
@@ -32,6 +55,8 @@ data class RoutinesState(
     val todayStats: DayStats? = null,
     val streaks: Map<Long, Streak> = emptyMap(),
     val consistency: Score? = null,
+    /** The 30 days before the last 30, for the trend. */
+    val previousConsistency: Score? = null,
     val perfectDays: Streak? = null,
     val week: List<DayStats?> = emptyList(),
     /** History opens under the week's bars only when asked for. */
@@ -51,6 +76,9 @@ data class RoutinesState(
     val openDayItems: List<DayItem> = emptyList(),
     val openDayStats: DayStats? = null,
     val skipping: DayItem? = null,
+    val detail: RoutineDetail? = null,
+    /** Reminder times set on this phone, by routine id. */
+    val reminders: Map<Long, LocalTime> = emptyMap(),
     val showCheckInSettings: Boolean = false,
     val message: String? = null
 )
@@ -69,11 +97,16 @@ sealed interface RoutinesAction {
     data class OpenDay(val date: LocalDate) : RoutinesAction
     data class ShowMonth(val month: YearMonth) : RoutinesAction
     data object ToggleHistory : RoutinesAction
+    data class OpenRoutine(val id: Long) : RoutinesAction
+    data object CloseRoutine : RoutinesAction
+    data class ShowRoutineMonth(val month: YearMonth) : RoutinesAction
+    data class SelectRoutineDay(val date: LocalDate) : RoutinesAction
     data object CloseDay : RoutinesAction
     data object OpenCheckInSettings : RoutinesAction
     data object CloseCheckInSettings : RoutinesAction
     data class SetCheckInEnabled(val enabled: Boolean) : RoutinesAction
     data class SetCheckInTime(val time: LocalTime) : RoutinesAction
+    data class SetCheckInAlarm(val alarm: Boolean) : RoutinesAction
     data class ToggleCheckInDay(val day: DayOfWeek) : RoutinesAction
     data object TryCheckIn : RoutinesAction
     data object ConsumeMessage : RoutinesAction

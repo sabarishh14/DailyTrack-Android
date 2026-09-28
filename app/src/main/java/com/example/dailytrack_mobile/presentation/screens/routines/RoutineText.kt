@@ -7,6 +7,7 @@ import com.example.dailytrack_mobile.domain.routines.PeriodUnit
 import com.example.dailytrack_mobile.domain.routines.Routine
 import com.example.dailytrack_mobile.domain.routines.RoutineKind
 import com.example.dailytrack_mobile.domain.routines.RoutineSchedule
+import com.example.dailytrack_mobile.domain.routines.Score
 import com.example.dailytrack_mobile.domain.routines.Streak
 import com.example.dailytrack_mobile.domain.routines.StreakUnit
 import com.example.dailytrack_mobile.domain.routines.bit
@@ -121,6 +122,22 @@ internal object RoutineText {
     fun percent(fraction: Double?): String = fraction?.let { "${(it * 100).roundToInt()}%" } ?: "—"
 
     fun percent(fraction: Float?): String = percent(fraction?.toDouble())
+
+    /** The consistency score in a few words. */
+    fun verdict(fraction: Double?): String = when {
+        fraction == null -> "No score yet"
+        fraction >= 0.9 -> "Rock solid"
+        fraction >= 0.75 -> "Going strong"
+        fraction >= 0.5 -> "Building up"
+        else -> "Room to grow"
+    }
+
+    /** Points gained (or lost) on the stretch before, or null until both have a score. */
+    fun trendPoints(now: Score?, before: Score?): Int? {
+        val current = now?.fraction ?: return null
+        val previous = before?.fraction ?: return null
+        return ((current - previous) * 100).roundToInt()
+    }
 
     fun weekdayDate(date: LocalDate): String = date.format(weekdayDate)
 

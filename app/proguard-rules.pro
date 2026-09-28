@@ -28,3 +28,11 @@
 
 # Coroutines
 -dontwarn kotlinx.coroutines.**
+
+# Room (inside WorkManager, which the home-screen widget uses) creates each
+# database's generated _Impl by reflection. R8's full mode drops a constructor
+# nothing calls directly, and the app then crashed at launch creating WorkDatabase.
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
+
+# Glance creates a widget's tap handlers (ActionCallback) by class name.
+-keep class * implements androidx.glance.appwidget.action.ActionCallback { <init>(); }

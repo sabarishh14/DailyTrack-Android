@@ -72,7 +72,7 @@ internal fun AccessControlSubScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val dims = Dimens.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val snackbar = remember { SnackbarHostState() }
     val draft = state.draft
 
@@ -88,12 +88,12 @@ internal fun AccessControlSubScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Column {
                         Text(
                             text = if (draft == null) "Access Control" else if (draft.isNew) "Add person" else "Edit access",
-                            style = MaterialTheme.typography.headlineSmall,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                         if (draft != null) {

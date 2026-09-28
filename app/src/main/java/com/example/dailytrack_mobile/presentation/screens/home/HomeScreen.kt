@@ -133,7 +133,8 @@ private fun formatCurrencyFull(amount: Double): String {
 fun HomeScreen(
     viewModel: HomeVM = hiltViewModel(),
     moneyViewModel: MoneyVM = hiltViewModel(),
-    onNavigateToBudgets: () -> Unit = {}
+    onNavigateToBudgets: () -> Unit = {},
+    onNavigateToRoutines: () -> Unit = {}
 ) {
     val homeState by viewModel.state.collectAsState()
     // Budgets live on the Money view model; grabbing the same shared instance
@@ -145,6 +146,7 @@ fun HomeScreen(
     val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
     val canMoney = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
     val canInvest = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
+    val canRoutines = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.GYM)
     val showBalances = access.balancesVisible
     val selectedMonth = homeState.selectedMonth
     val selectedYear = homeState.selectedYear
@@ -235,6 +237,9 @@ fun HomeScreen(
                     isLoading = homeState.isLoading,
                     onSetMinBalance = if (access.fullMoneyAccess) setMinBalance else null
                 )
+            }
+            if (canRoutines) item {
+                com.example.dailytrack_mobile.presentation.screens.routines.RoutinesHomeCard(onClick = onNavigateToRoutines)
             }
             if (canMoney) item {
                 BudgetsSummaryCard(

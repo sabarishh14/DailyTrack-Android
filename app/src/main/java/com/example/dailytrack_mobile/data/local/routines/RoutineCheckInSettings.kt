@@ -17,7 +17,7 @@ import javax.inject.Singleton
 
 private val DEFAULT_TIME: LocalTime = LocalTime.of(22, 0)
 
-/** When the nightly Routines check-in notification comes, if at all. Stored on this phone. */
+/** When the nightly Routines check-in comes, if at all, and whether it rings. Stored on this phone. */
 @Singleton
 class RoutineCheckInSettings @Inject constructor(
     @param:ApplicationContext private val context: Context
@@ -25,7 +25,9 @@ class RoutineCheckInSettings @Inject constructor(
     data class Settings(
         val enabled: Boolean = false,
         val time: LocalTime = DEFAULT_TIME,
-        val days: Set<DayOfWeek> = DayOfWeek.entries.toSet()
+        val days: Set<DayOfWeek> = DayOfWeek.entries.toSet(),
+        /** Ring like an alarm, with a screen to answer everything, rather than a notification. */
+        val alarm: Boolean = false
     )
 
     val settings: Flow<Settings> = context.dataStore.data.map { preferences ->
@@ -35,7 +37,8 @@ class RoutineCheckInSettings @Inject constructor(
             days = preferences[KEY_DAYS]
                 ?.mapNotNull { name -> runCatching { DayOfWeek.valueOf(name) }.getOrNull() }
                 ?.toSet()
-                ?: DayOfWeek.entries.toSet()
+                ?: DayOfWeek.entries.toSet(),
+            alarm = preferences[KEY_ALARM] ?: false
         )
     }
 
@@ -47,6 +50,7 @@ class RoutineCheckInSettings @Inject constructor(
             preferences[KEY_ENABLED] = next.enabled
             preferences[KEY_TIME] = next.time.toString()
             preferences[KEY_DAYS] = next.days.map { it.name }.toSet()
+            preferences[KEY_ALARM] = next.alarm
         }
         return next
     }
@@ -55,5 +59,6 @@ class RoutineCheckInSettings @Inject constructor(
         val KEY_ENABLED = booleanPreferencesKey("routine_checkin_enabled")
         val KEY_TIME = stringPreferencesKey("routine_checkin_time")
         val KEY_DAYS = stringSetPreferencesKey("routine_checkin_days")
+        val KEY_ALARM = booleanPreferencesKey("routine_checkin_alarm")
     }
 }

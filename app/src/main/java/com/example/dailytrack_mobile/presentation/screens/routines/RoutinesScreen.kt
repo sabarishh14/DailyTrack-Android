@@ -7,7 +7,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -58,14 +57,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,6 +82,7 @@ import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRef
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import com.example.dailytrack_mobile.presentation.screens.routines.components.ChartLegend
 import com.example.dailytrack_mobile.presentation.screens.routines.components.CheckInSettingsSheet
+import com.example.dailytrack_mobile.presentation.screens.routines.components.ConsistencyRing
 import com.example.dailytrack_mobile.presentation.screens.routines.components.DaySheet
 import com.example.dailytrack_mobile.presentation.screens.routines.components.DayDoneColor
 import com.example.dailytrack_mobile.presentation.screens.routines.components.DayMissedColor
@@ -93,6 +92,7 @@ import com.example.dailytrack_mobile.presentation.screens.routines.components.Hi
 import com.example.dailytrack_mobile.presentation.screens.routines.components.RoutineRow
 import com.example.dailytrack_mobile.presentation.screens.routines.components.RoutineSection
 import com.example.dailytrack_mobile.presentation.screens.routines.components.SkipReasonSheet
+import com.example.dailytrack_mobile.presentation.screens.routines.components.drawMixRing
 import com.example.dailytrack_mobile.presentation.screens.routines.components.mix
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.DayOfWeek
@@ -108,6 +108,8 @@ import java.time.temporal.TemporalAdjusters
 fun RoutinesScreen(
     onNewRoutine: (RoutineTemplate?) -> Unit,
     onEditRoutine: (Long) -> Unit,
+    /** Whether this is the page on screen; a routine's page only shows over this one. */
+    isCurrentPage: Boolean = true,
     viewModel: RoutinesVM = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -154,7 +156,9 @@ fun RoutinesScreen(
                 item(key = "hero") {
                     RoutinesHero(
                         today = state.todayStats,
+                        todayLeft = state.todayItems.count { it.needsAnswer },
                         consistency = state.consistency,
+                        previous = state.previousConsistency,
                         perfectDays = state.perfectDays,
                         checkIn = state.checkIn,
                         pendingSync = state.pendingSync,
@@ -181,7 +185,8 @@ fun RoutinesScreen(
                         item = item,
                         streak = state.streaks[item.routine.id],
                         onStatus = { onAction(RoutinesAction.SetStatus(item.routine.id, item.date, it)) },
-                        onSkip = { onAction(RoutinesAction.AskSkipReason(item)) }
+                        onSkip = { onAction(RoutinesAction.AskSkipReason(item)) },
+                        onOpen = { onAction(RoutinesAction.OpenRoutine(item.routine.id)) }
                     )
                 }
 
@@ -229,7 +234,7 @@ fun RoutinesScreen(
 
                 item(key = "routines-title") { RoutineSection("Your routines", "${state.routines.size}") }
                 items(state.routines, key = { "routine-${it.routine.id}" }) { summary ->
-                    RoutineSummaryRow(summary, state.today) { onEditRoutine(summary.routine.id) }
+                    RoutineSummaryRow(summary, state.today) { onAction(RoutinesAction.OpenRoutine(summary.routine.id)) }
                 }
                 item(key = "new") {
                     OutlinedButton(
@@ -264,7 +269,19 @@ fun RoutinesScreen(
             onDismiss = { onAction(RoutinesAction.CloseDay) }
         )
     }
-    state.skipping?.let { item ->
+    val detail = state.detail?.takeIf { isCurrentPage }
+    if (detail != null) {
+        RoutineDetailPage(
+            detail = detail,
+            today = state.today,
+            reminder = state.reminders[detail.routine.id],
+            skipping = state.skipping,
+            onAction = onAction,
+            onEdit = { onEditRoutine(detail.routine.id) }
+        )
+    }
+    // A routine's page shows its own skip sheet, on top of itself.
+    state.skipping?.takeIf { detail == null }?.let { item ->
         SkipReasonSheet(
             item = item,
             onSkip = { reason ->
@@ -279,6 +296,7 @@ fun RoutinesScreen(
             onEnabled = { onAction(RoutinesAction.SetCheckInEnabled(it)) },
             onTime = { onAction(RoutinesAction.SetCheckInTime(it)) },
             onToggleDay = { onAction(RoutinesAction.ToggleCheckInDay(it)) },
+            onAlarm = { onAction(RoutinesAction.SetCheckInAlarm(it)) },
             onTry = { onAction(RoutinesAction.TryCheckIn) },
             onDismiss = { onAction(RoutinesAction.CloseCheckInSettings) }
         )
@@ -287,16 +305,20 @@ fun RoutinesScreen(
 
 // ── Hero ─────────────────────────────────────────────────────────────────────
 
+/** Consistency leads: the ring, a word for it and how it's moving. Today sits right under it. */
 @Composable
 private fun RoutinesHero(
     today: DayStats?,
+    todayLeft: Int,
     consistency: Score?,
+    previous: Score?,
     perfectDays: Streak?,
     checkIn: RoutineCheckInSettings.Settings,
     pendingSync: Int,
     onCheckIn: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val onHero = colors.onPrimaryContainer
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -305,7 +327,25 @@ private fun RoutinesHero(
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TodayRing(today)
+            ConsistencyRing(
+                score = consistency,
+                diameter = 124.dp,
+                strokeWidth = 12.dp,
+                track = onHero.copy(alpha = 0.14f)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = RoutineText.percent(consistency?.fraction),
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp),
+                        color = onHero
+                    )
+                    Text(
+                        text = "30 days",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = onHero.copy(alpha = 0.75f)
+                    )
+                }
+            }
             Spacer(Modifier.width(18.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -313,23 +353,29 @@ private fun RoutinesHero(
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.2.sp,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.7f)
+                    color = onHero.copy(alpha = 0.7f)
                 )
                 Text(
-                    text = RoutineText.percent(consistency?.fraction),
-                    style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Black, letterSpacing = (-1).sp),
-                    color = colors.onPrimaryContainer
+                    text = RoutineText.verdict(consistency?.fraction),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+                    color = onHero,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = if (consistency?.fraction == null) "shows up after your first day" else "over the last 30 days",
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.75f)
+                    color = onHero.copy(alpha = 0.75f)
                 )
-                Spacer(Modifier.height(10.dp))
+                RoutineText.trendPoints(consistency, previous)?.let { points ->
+                    Spacer(Modifier.height(6.dp))
+                    TrendLine(points, onHero)
+                }
+                Spacer(Modifier.height(8.dp))
                 Text(
                     text = streakLine(perfectDays),
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.onPrimaryContainer,
+                    color = onHero,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
@@ -340,6 +386,8 @@ private fun RoutinesHero(
             }
         }
         Spacer(Modifier.height(14.dp))
+        TodayStrip(today, todayLeft)
+        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -355,7 +403,7 @@ private fun RoutinesHero(
                 Text(
                     text = "Nightly check-in",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.onPrimaryContainer
+                    color = onHero
                 )
                 Text(
                     text = if (checkIn.enabled && checkIn.days.isNotEmpty()) {
@@ -364,22 +412,91 @@ private fun RoutinesHero(
                         "Off · tap to turn on"
                     },
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.onPrimaryContainer.copy(alpha = 0.75f)
+                    color = onHero.copy(alpha = 0.75f)
                 )
                 if (pendingSync > 0) {
                     Text(
                         text = "☁️ ${if (pendingSync == 1) "1 answer" else "$pendingSync answers"} waiting to sync",
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.onPrimaryContainer.copy(alpha = 0.75f)
+                        color = onHero.copy(alpha = 0.75f)
                     )
                 }
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "Check-in settings",
-                tint = colors.onPrimaryContainer.copy(alpha = 0.7f)
+                tint = onHero.copy(alpha = 0.7f)
             )
         }
+    }
+}
+
+/** "▲ 6% vs previous 30 days", with the arrow in green or red. */
+@Composable
+private fun TrendLine(points: Int, color: Color) {
+    val (arrow, arrowColor) = when {
+        points > 0 -> "▲ $points%" to DayDoneColor
+        points < 0 -> "▼ ${-points}%" to DayMissedColor
+        else -> "=" to color
+    }
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = arrowColor, fontWeight = FontWeight.Black)) { append(arrow) }
+            append(if (points == 0) " same as previous 30 days" else " vs previous 30 days")
+        },
+        style = MaterialTheme.typography.labelMedium,
+        color = color.copy(alpha = 0.85f),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+/** Today so far, under the score: a small ring, what's left, and done out of due. */
+@Composable
+private fun TodayStrip(stats: DayStats?, left: Int) {
+    val colors = MaterialTheme.colorScheme
+    val onHero = colors.onPrimaryContainer
+    val hasDue = stats != null && stats.total > 0
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(colors.surface.copy(alpha = 0.45f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+            if (stats != null && hasDue) {
+                val track = onHero.copy(alpha = 0.14f)
+                val mix = stats.mix(stats.date)
+                Canvas(modifier = Modifier.fillMaxSize()) { drawMixRing(mix, track, strokeWidth = 4.dp.toPx()) }
+            } else {
+                Text("☀️", fontSize = 16.sp)
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Today",
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = onHero
+            )
+            Text(
+                text = when {
+                    left > 0 -> "$left left to answer"
+                    !hasDue -> "Nothing due today"
+                    stats?.missed == 0 -> "All done 🎉"
+                    else -> "All answered"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = onHero.copy(alpha = 0.75f)
+            )
+        }
+        Text(
+            text = if (stats != null && hasDue) "${stats.done}/${stats.total}" else "—",
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
+            color = onHero
+        )
     }
 }
 
@@ -392,58 +509,6 @@ private fun streakLine(streak: Streak?): String = when {
 
 private fun checkInDays(days: Set<DayOfWeek>): String =
     if (days.size == 7) "every night" else RoutineText.weekdays(days.fold(0) { mask, day -> mask or (1 shl (day.value - 1)) })
-
-/** Today so far: green for done, red for missed, the track for what's still open. */
-@Composable
-private fun TodayRing(stats: DayStats?) {
-    val colors = MaterialTheme.colorScheme
-    val fraction = stats?.fraction ?: 0f
-    val doneShare = stats?.takeIf { it.total > 0 }?.let { it.done.toFloat() / it.total } ?: 0f
-    val missedShare = stats?.takeIf { it.total > 0 }?.let { it.missed.toFloat() / it.total } ?: 0f
-    val done by animateFloatAsState(
-        targetValue = doneShare,
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "todayDone"
-    )
-    val missed by animateFloatAsState(
-        targetValue = missedShare,
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "todayMissed"
-    )
-    val track = colors.onPrimaryContainer.copy(alpha = 0.14f)
-    Box(modifier = Modifier.size(112.dp), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = 11.dp.toPx()
-            val inset = stroke / 2
-            val arc = Size(size.width - stroke, size.height - stroke)
-            // Round ends only while one colour fills the ring alone; butt ends where two meet.
-            val cap = if (done > 0f && missed > 0f) StrokeCap.Butt else StrokeCap.Round
-            drawArc(track, 0f, 360f, false, Offset(inset, inset), arc, style = Stroke(stroke))
-            if (done > 0f) {
-                drawArc(DayDoneColor, -90f, 360f * done, false, Offset(inset, inset), arc, style = Stroke(stroke, cap = cap))
-            }
-            if (missed > 0f) {
-                drawArc(DayMissedColor, -90f + 360f * done, 360f * missed, false, Offset(inset, inset), arc, style = Stroke(stroke, cap = cap))
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = if (stats != null && stats.total > 0) "${stats.done}/${stats.total}" else "—",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
-                color = colors.onPrimaryContainer
-            )
-            Text(
-                text = when {
-                    stats == null || stats.total == 0 -> "nothing due"
-                    fraction >= 1f -> "all done 🎉"
-                    else -> "today"
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.onPrimaryContainer.copy(alpha = 0.75f)
-            )
-        }
-    }
-}
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 

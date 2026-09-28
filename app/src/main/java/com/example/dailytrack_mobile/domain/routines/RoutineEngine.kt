@@ -123,6 +123,10 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
     fun consistency(today: LocalDate, days: Int = 30): Score =
         score(today.minusDays(days - 1L), today, today)
 
+    /** The [days] before the last [days]: what [consistency] is compared with. */
+    fun previousConsistency(today: LocalDate, days: Int = 30): Score =
+        score(today.minusDays(2L * days - 1), today.minusDays(days.toLong()), today)
+
     fun routineConsistency(routine: Routine, today: LocalDate, days: Int = 30): Score =
         score(today.minusDays(days - 1L), today, today, listOf(routine))
 
@@ -254,6 +258,25 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
         }
         return Streak(run, best, StreakUnit.DAY)
     }
+
+    /** The routine as it stood on [date]: null when it wasn't due or active. */
+    fun itemOn(routine: Routine, date: LocalDate): DayItem? = itemFor(routine, date)
+
+    /** Everything judged since the routine started. */
+    fun allTime(routine: Routine, today: LocalDate): Score =
+        score(routine.startDate, today, today, listOf(routine))
+
+    /** Every answer given for the routine, newest first. */
+    fun answersFor(routine: Routine): List<CheckIn> =
+        byRoutine[routine.id].orEmpty().values.sortedByDescending { it.date }
+
+    fun lastDone(routine: Routine): LocalDate? =
+        byRoutine[routine.id].orEmpty().values.filter { it.status == CheckInStatus.DONE }.maxOfOrNull { it.date }
+
+    /** A chore's open due date (past, if it's overdue); null for other routines or once finished. */
+    fun nextDue(routine: Routine): LocalDate? =
+        if (routine.schedule == RoutineSchedule.INTERVAL) cycles(routine).lastOrNull()?.takeIf { it.completed == null }?.due
+        else null
 
     /**
      * Due days before [today] with no answer at all, oldest first: what "mark

@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.auth.AuthManager
 import com.example.dailytrack_mobile.data.local.datastore.DemoModeManager
 import com.example.dailytrack_mobile.data.local.routines.RoutineCheckInSettings
+import com.example.dailytrack_mobile.data.local.routines.RoutineReminders
 import com.example.dailytrack_mobile.data.local.routines.RoutinesSnapshot
 import com.example.dailytrack_mobile.data.repository.RoutinesRepository
 import com.example.dailytrack_mobile.data.repository.engine
 import com.example.dailytrack_mobile.data.repository.toRoutine
+import com.example.dailytrack_mobile.domain.routines.CheckInStatus
 import com.example.dailytrack_mobile.domain.routines.DayItem
 import com.example.dailytrack_mobile.domain.routines.DayStats
 import com.example.dailytrack_mobile.domain.routines.Routine
@@ -18,7 +20,11 @@ import com.example.dailytrack_mobile.domain.routines.RoutineSchedule
 import com.example.dailytrack_mobile.domain.routines.Score
 import com.example.dailytrack_mobile.domain.routines.Streak
 import com.example.dailytrack_mobile.domain.routines.UpcomingItem
+import com.example.dailytrack_mobile.data.local.routines.RoutineAlarmSettings
+import com.example.dailytrack_mobile.notification.routines.RoutineAlarmService
 import com.example.dailytrack_mobile.notification.routines.RoutineCheckInNotifier
+import com.example.dailytrack_mobile.notification.routines.RoutineCheckInReceiver
+import com.example.dailytrack_mobile.notification.routines.RoutineReminderNotifier
 import com.example.dailytrack_mobile.notification.routines.RoutineCheckInScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -43,6 +49,8 @@ class RoutinesVM @Inject constructor(
     private val repository: RoutinesRepository,
     private val checkInSettings: RoutineCheckInSettings,
     private val scheduler: RoutineCheckInScheduler,
+    private val reminders: RoutineReminders,
+    private val alarmSettings: RoutineAlarmSettings,
     demoModeManager: DemoModeManager,
     authManager: AuthManager
 ) : ViewModel() {
@@ -52,6 +60,11 @@ class RoutinesVM @Inject constructor(
 
     private var engine: RoutineEngine? = null
     private var lastRefreshAt = 0L
+
+    // Which routine's page is open, the month on its calendar and the day picked.
+    private var detailId: Long? = null
+    private var detailMonth: YearMonth = YearMonth.now()
+    private var detailDay: LocalDate? = null
 
     init {
         // Every change to the phone's copy (a tick here, an answer from the
@@ -69,8 +82,13 @@ class RoutinesVM @Inject constructor(
             checkInSettings.settings.collect { settings -> _state.update { it.copy(checkIn = settings) } }
         }
         viewModelScope.launch {
-            // Keeps the nightly alarm set, e.g. after the app was updated or reinstalled.
+            reminders.reminders.collect { times -> _state.update { it.copy(reminders = times) } }
+        }
+        viewModelScope.launch {
+            // Keeps the nightly alarm and each reminder set, e.g. after the app was updated or reinstalled.
             scheduler.schedule(checkInSettings.current())
+            val alarms = reminders.alarmIds()
+            reminders.all().forEach { (id, time) -> scheduler.scheduleReminder(id, time, alarm = id in alarms) }
         }
     }
 
@@ -84,6 +102,11 @@ class RoutinesVM @Inject constructor(
             is RoutinesAction.SetStatus -> viewModelScope.launch {
                 _state.update { it.copy(skipping = null) }
                 repository.setCheckIn(action.routineId, action.date, action.status, action.note)
+                // Answered here: its reminder (or ringing alarm) for today has done its job.
+                if (action.status != null && action.date == LocalDate.now()) {
+                    RoutineAlarmService.stopIfFor(context, action.routineId)
+                    RoutineReminderNotifier.cancel(context, action.routineId)
+                }
                 repository.flush()
             }
             is RoutinesAction.AskSkipReason -> _state.update { it.copy(skipping = action.item) }
@@ -100,6 +123,24 @@ class RoutinesVM @Inject constructor(
             }
             RoutinesAction.CloseDay -> _state.update { it.copy(openDay = null, openDayItems = emptyList(), openDayStats = null) }
             RoutinesAction.ToggleHistory -> _state.update { it.copy(historyOpen = !it.historyOpen) }
+            is RoutinesAction.OpenRoutine -> {
+                detailId = action.id
+                detailMonth = YearMonth.now()
+                detailDay = LocalDate.now()
+                updateDetail()
+            }
+            RoutinesAction.CloseRoutine -> {
+                detailId = null
+                _state.update { it.copy(detail = null) }
+            }
+            is RoutinesAction.ShowRoutineMonth -> {
+                detailMonth = action.month
+                updateDetail()
+            }
+            is RoutinesAction.SelectRoutineDay -> {
+                detailDay = action.date
+                updateDetail()
+            }
             is RoutinesAction.ShowMonth -> {
                 _state.update { it.copy(historyMonth = action.month) }
                 val engine = engine ?: return
@@ -112,6 +153,7 @@ class RoutinesVM @Inject constructor(
             RoutinesAction.CloseCheckInSettings -> _state.update { it.copy(showCheckInSettings = false) }
             is RoutinesAction.SetCheckInEnabled -> updateCheckIn { it.copy(enabled = action.enabled) }
             is RoutinesAction.SetCheckInTime -> updateCheckIn { it.copy(time = action.time) }
+            is RoutinesAction.SetCheckInAlarm -> updateCheckIn { it.copy(alarm = action.alarm) }
             is RoutinesAction.ToggleCheckInDay -> updateCheckIn { settings ->
                 val days = if (action.day in settings.days) settings.days - action.day else settings.days + action.day
                 settings.copy(days = days)
@@ -119,13 +161,53 @@ class RoutinesVM @Inject constructor(
             RoutinesAction.TryCheckIn -> {
                 val engine = engine ?: return
                 val today = LocalDate.now()
-                if (!RoutineCheckInNotifier.ask(context, engine, today)) {
+                val open = engine.dayItems(today).count { it.needsAnswer }
+                if (_state.value.checkIn.alarm && open > 0) {
+                    viewModelScope.launch {
+                        if (!RoutineCheckInReceiver.ringCheckIn(context, alarmSettings.current(), today, open)) {
+                            RoutineCheckInNotifier.ask(context, engine, today)
+                        }
+                    }
+                } else if (!RoutineCheckInNotifier.ask(context, engine, today)) {
                     RoutineCheckInNotifier.showWrapUp(context, engine, today)
                     _state.update { it.copy(message = "Everything's answered for today, so here's how it ends") }
                 }
             }
             RoutinesAction.ConsumeMessage -> _state.update { it.copy(message = null) }
         }
+    }
+
+    private fun updateDetail() {
+        val engine = engine ?: return
+        viewModelScope.launch {
+            val detail = withContext(Dispatchers.Default) { buildDetail(engine, LocalDate.now()) }
+            _state.update { it.copy(detail = detail) }
+        }
+    }
+
+    /** The open routine's page, or null once it's gone (deleted or archived). */
+    private fun buildDetail(engine: RoutineEngine, today: LocalDate): RoutineDetail? {
+        val id = detailId ?: return null
+        val routine = engine.routines.firstOrNull { it.id == id } ?: return null
+        val month = detailMonth
+        val answers = engine.answersFor(routine)
+        return RoutineDetail(
+            routine = routine,
+            streak = engine.streak(routine, today),
+            last30 = engine.routineConsistency(routine, today),
+            allTime = engine.allTime(routine, today),
+            doneCount = answers.count { it.status == CheckInStatus.DONE },
+            month = month,
+            days = (1..month.lengthOfMonth()).map { dayOfMonth ->
+                val date = month.atDay(dayOfMonth)
+                if (date > today) null else engine.itemOn(routine, date)
+            },
+            selected = detailDay?.takeIf { it <= today }?.let { engine.itemOn(routine, it) },
+            skips = answers.filter { it.status == CheckInStatus.SKIPPED }.take(30),
+            nextDue = engine.nextDue(routine),
+            lastDone = engine.lastDone(routine),
+            progress = engine.itemOn(routine, today)?.progress
+        )
     }
 
     private fun updateCheckIn(transform: (RoutineCheckInSettings.Settings) -> RoutineCheckInSettings.Settings) {
@@ -156,6 +238,8 @@ class RoutinesVM @Inject constructor(
         val openDay = _state.value.openDay
         val historyMonth = _state.value.historyMonth
         val page = withContext(Dispatchers.Default) { buildPage(snapshot, today, openDay, historyMonth) }
+        val detail = withContext(Dispatchers.Default) { buildDetail(page.engine, today) }
+        if (detail == null) detailId = null
         engine = page.engine
         _state.update { current ->
             current.copy(
@@ -166,6 +250,7 @@ class RoutinesVM @Inject constructor(
                 todayStats = page.todayStats,
                 streaks = page.streaks,
                 consistency = page.consistency,
+                previousConsistency = page.previousConsistency,
                 perfectDays = page.perfectDays,
                 week = page.week,
                 history = if (current.historyMonth == historyMonth) page.history else current.history,
@@ -177,6 +262,7 @@ class RoutinesVM @Inject constructor(
                 pendingSync = snapshot.pending.size,
                 openDayItems = if (current.openDay == openDay && page.openDayItems != null) page.openDayItems else current.openDayItems,
                 openDayStats = if (current.openDay == openDay && page.openDayStats != null) page.openDayStats else current.openDayStats,
+                detail = detail,
                 skipping = current.skipping?.let { skipping ->
                     page.todayItems.firstOrNull { it.routine.id == skipping.routine.id && it.date == skipping.date }
                         ?: skipping
@@ -193,6 +279,7 @@ class RoutinesVM @Inject constructor(
         val todayStats: DayStats,
         val streaks: Map<Long, Streak>,
         val consistency: Score,
+        val previousConsistency: Score,
         val perfectDays: Streak,
         val week: List<DayStats?>,
         val history: List<DayStats?>,
@@ -224,6 +311,7 @@ class RoutinesVM @Inject constructor(
             todayStats = engine.dayStats(today),
             streaks = streaks,
             consistency = engine.consistency(today),
+            previousConsistency = engine.previousConsistency(today),
             perfectDays = engine.perfectDays(today),
             week = engine.week(today),
             history = historyFor(engine, historyMonth, today),

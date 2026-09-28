@@ -1,5 +1,15 @@
 <resources>
     <string name="app_name">DT</string>
-    <string name="shortcut_add_money_short">Add Money</string>
-    <string name="shortcut_add_money_long">Add Money Form</string>
+    <!-- App shortcuts: short labels fit the launcher's menu, long ones where there's room. -->
+    <string name="shortcut_add_money_short">Add money</string>
+    <string name="shortcut_add_money_long">Add a transaction</string>
+    <string name="shortcut_routines_short">Routines</string>
+    <string name="shortcut_routines_long">Today\'s routines</string>
+    <string name="shortcut_transactions_short">Transactions</string>
+    <string name="shortcut_transactions_long">Recent transactions</string>
+    <string name="shortcut_portfolio_short">Portfolio</string>
+    <string name="shortcut_portfolio_long">Your portfolio</string>
+    <!-- Home-screen widget -->
+    <string name="widget_routines_label">Routines</string>
+    <string name="widget_routines_description">Today\'s routines and your consistency. Tap ❤️ to tick one off.</string>
 </resources>

@@ -78,7 +78,7 @@ internal fun PrivacySecuritySettingsSubScreen(
 ) {
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var showTimeoutDialog by remember { mutableStateOf(false) }
 
     if (showTimeoutDialog) {
@@ -95,11 +95,11 @@ internal fun PrivacySecuritySettingsSubScreen(
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Text(
                         text = "Privacy & Security",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 },
