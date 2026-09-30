@@ -9,6 +9,7 @@ import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
+import com.example.dailytrack_mobile.data.remote.dto.CreateAccountRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
@@ -251,6 +252,44 @@ class MoneyRepository @Inject constructor(
         synchronized(this) {
             cachedAccounts = cachedAccounts?.map { if (it.account == account) it.copy(minBalance = min) else it }
         }
+    }
+
+    /**
+     * Adds a savings account (tracked, from [balance], with an optional [minBalance])
+     * or a credit card (named CC-… by the server, untracked). Fails with the
+     * server's reason, e.g. a name that's taken.
+     */
+    suspend fun createAccount(
+        name: String,
+        creditCard: Boolean,
+        balance: Double?,
+        minBalance: Double?
+    ): Result<AccountDto> = runCatching {
+        check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
+        val response = api.createAccount(
+            CreateAccountRequestDto(
+                name = name.trim(),
+                type = if (creditCard) "credit_card" else "savings",
+                balance = balance.takeUnless { creditCard },
+                minBalance = minBalance.takeUnless { creditCard }
+            )
+        )
+        val body = response.body()
+        val account = body?.account
+        if (!response.isSuccessful || body?.success != true || account == null) {
+            val reason = response.errorBody()?.string()?.let {
+                runCatching { org.json.JSONObject(it).optString("message") }.getOrNull()
+            }
+            throw Exception(reason?.takeIf { it.isNotBlank() } ?: body?.message ?: "Couldn't add the account")
+        }
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.plus(account)
+            cachedAccountNames = (cachedAccountNames + account.account).distinct().toMutableList()
+            try { listCache.write(KEY_ACCOUNTS, getCachedAccounts()) } catch (_: Exception) {}
+        }
+        // Home, Money and the account pickers pick it up from here.
+        demoDataManager.notifyDataUpdated()
+        account
     }
 
     /** Lets the server push low-balance alerts to this phone. Best effort. */

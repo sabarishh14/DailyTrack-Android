@@ -5,6 +5,8 @@ import com.example.dailytrack_mobile.data.remote.dto.AccessUserRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AccessUserResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AccessUsersResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
+import com.example.dailytrack_mobile.data.remote.dto.CreateAccountRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.CreateAccountResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MeResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.AddActivityRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.AddManualAssetRequestDto
@@ -57,6 +59,10 @@ interface DailyTrackApi {
     /** Account settings; send only the fields to change. "" clears min_balance. */
     @PUT("/api/accounts")
     suspend fun updateAccount(@Body body: Map<String, @JvmSuppressWildcards Any>): ApiResponseDto
+
+    /** Adds a savings account or a credit card. A refusal (bad name, taken) carries a message. */
+    @POST("/api/accounts")
+    suspend fun createAccount(@Body body: CreateAccountRequestDto): Response<CreateAccountResponseDto>
 
     /** Registers this phone for push alerts (low balance). */
     @POST("/api/devices")

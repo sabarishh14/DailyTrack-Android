@@ -137,6 +137,7 @@ private data class SettingsCategoryItem(
 /** How the categories are grouped on the root screen, each group one card. */
 private val CategoryGroups = listOf(
     "Admin" to listOf("AccessControl"),
+    "Money" to listOf("Accounts"),
     "Preferences" to listOf("General", "Appearance", "Reminders"),
     "Security & data" to listOf("PrivacySecurity", "Sync"),
     "App" to listOf("Updates", "About")
@@ -174,8 +175,22 @@ fun SettingsScreen(
     var currentSubScreen by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
 
-    val categories = remember(state.isAppLockEnabled, state.appVersion, state.updateStatus, state.latestUpdateInfo, state.isUserAdmin) {
+    // Adding accounts is a whole-ledger change, like the server's own rule.
+    val canManageAccounts = com.example.dailytrack_mobile.presentation.access.LocalAccess.current.fullMoneyAccess
+    val categories = remember(
+        state.isAppLockEnabled, state.appVersion, state.updateStatus, state.latestUpdateInfo, state.isUserAdmin, canManageAccounts
+    ) {
         listOfNotNull(
+            if (canManageAccounts) SettingsCategoryItem(
+                id = "Accounts",
+                icon = Icons.Default.AccountBalance,
+                title = "Accounts",
+                subtitle = "Savings accounts and credit cards",
+                keywords = listOf(
+                    "account", "accounts", "bank", "banks", "savings", "credit card", "card", "cards", "cc",
+                    "minimum", "min balance", "add account", "new account"
+                )
+            ) else null,
             // Admins only: who can sign in and what they can see (ACCESS_CONTROL.md)
             if (state.isUserAdmin) SettingsCategoryItem(
                 id = "AccessControl",
@@ -371,6 +386,12 @@ fun SettingsScreen(
     when (currentSubScreen) {
         "AccessControl" -> {
             com.example.dailytrack_mobile.presentation.screens.settings.components.AccessControlSubScreen(
+                onNavigateBack = { currentSubScreen = null }
+            )
+            return
+        }
+        "Accounts" -> {
+            com.example.dailytrack_mobile.presentation.screens.settings.components.AccountsSettingsSubScreen(
                 onNavigateBack = { currentSubScreen = null }
             )
             return
