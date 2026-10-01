@@ -27,7 +27,14 @@ data class AccessDto(
 @JsonClass(generateAdapter = true)
 data class MeResponseDto(
     @param:Json(name = "success") val success: Boolean,
-    @param:Json(name = "access") val access: AccessDto? = null
+    @param:Json(name = "access") val access: AccessDto? = null,
+    @param:Json(name = "settings") val settings: MySettingsDto? = null
+)
+
+/** The signed-in person's own settings, kept on the server so they follow them. */
+@JsonClass(generateAdapter = true)
+data class MySettingsDto(
+    @param:Json(name = "letterboxd_username") val letterboxdUsername: String? = null
 )
 
 // ---- Admin: people & permissions ----

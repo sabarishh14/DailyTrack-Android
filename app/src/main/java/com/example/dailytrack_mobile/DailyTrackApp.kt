@@ -1,6 +1,8 @@
 package com.example.dailytrack_mobile
 
 import android.app.Application
+import com.example.dailytrack_mobile.data.local.auth.AuthManager
+import com.example.dailytrack_mobile.data.local.auth.PersonalDataReset
 import com.example.dailytrack_mobile.data.repository.RoutinesRepository
 import com.example.dailytrack_mobile.widget.RoutinesWidget
 import dagger.hilt.android.HiltAndroidApp
@@ -10,18 +12,25 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
 @HiltAndroidApp
 class DailyTrackApp : Application() {
 
     @Inject lateinit var routinesRepository: RoutinesRepository
+    @Inject lateinit var authManager: AuthManager
+    @Inject lateinit var personalData: PersonalDataReset
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun onCreate() {
         super.onCreate()
+        // Before any screen reads a cache: a phone signed in from before each
+        // person's data was kept apart gets cleaned once (local work, no network).
+        runBlocking { authManager.userEmailFlow.first()?.let { personalData.claimFor(it) } }
         // The home-screen widget follows every change to the routines, wherever it
         // came from: the app, a notification, an alarm or the widget itself.
         appScope.launch {

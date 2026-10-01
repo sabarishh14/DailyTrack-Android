@@ -68,6 +68,14 @@ interface DailyTrackApi {
     @POST("/api/devices")
     suspend fun registerDevice(@Body body: Map<String, String>): ApiResponseDto
 
+    /** Signing out: this phone stops getting the person's alerts. */
+    @POST("/api/devices/unregister")
+    suspend fun unregisterDevice(@Body body: Map<String, String>): ApiResponseDto
+
+    /** Changes the signed-in person's own settings (e.g. letterboxd_username). */
+    @PUT("/api/me/settings")
+    suspend fun updateMySettings(@Body body: Map<String, String>): ApiResponseDto
+
     @GET("/api/transactions")
     suspend fun getTransactions(
         @Query("limit") limit: Int = 100,

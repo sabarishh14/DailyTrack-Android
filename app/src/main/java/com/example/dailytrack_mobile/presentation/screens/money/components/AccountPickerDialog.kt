@@ -35,7 +35,7 @@ fun AccountPickerDialog(
     val query = searchQuery.trim()
 
     val sortedAccounts = remember(accountsList) {
-        sortAccountsCanonical(if (accountsList.isNotEmpty()) accountsList else defaultAccounts)
+        sortAccountsCanonical(accountsList)
     }
 
     val filteredAccounts = remember(query, sortedAccounts) {

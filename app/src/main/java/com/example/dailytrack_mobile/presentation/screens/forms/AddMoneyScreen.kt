@@ -78,6 +78,7 @@ private val defaultIncomeCategories = listOf(
     "Salary", "Freelance", "Investment", "Gift", "Other"
 )
 
+/** The order accounts are listed in; never offered as accounts themselves. */
 private val defaultAccounts = listOf(
     "Cash", "KOTAK", "IDBI", "FEDERAL", "CUB", "INDIAN", "ICICI", "HDFC", "SBI", "Axis", "CC-PINNACLE 6360"
 )
@@ -155,9 +156,9 @@ fun AddMoneyScreen(
     var accountSearchDialogOpen by remember { mutableStateOf(false) }
     var accountSearchQuery by remember { mutableStateOf("") }
 
+    // Only the person's own accounts; the list below is just the order they're shown in.
     val accountsList = remember(formState.accounts) {
-        val list = if (formState.accounts.isNotEmpty()) formState.accounts else defaultAccounts
-        list.sortedBy { account ->
+        formState.accounts.sortedBy { account ->
             val index = defaultAccounts.indexOfFirst { it.equals(account, ignoreCase = true) }
             if (index == -1) Int.MAX_VALUE else index
         }
@@ -341,6 +342,16 @@ fun AddMoneyScreen(
     val toSave = entries.filterNot { it.isBlank }
     val firstIncomplete = toSave.firstOrNull { !it.isComplete }
     val canSave = !formState.isSaving && toSave.isNotEmpty() && firstIncomplete == null
+
+    // No account yet: nothing can be logged until there's one to log it in.
+    if (formState.noAccounts) {
+        Column(modifier = Modifier.fillMaxSize().padding(horizontal = dims.screenHorizontalPadding, vertical = 24.dp)) {
+            com.example.dailytrack_mobile.presentation.screens.settings.components.FirstAccountCard(
+                onAdded = { formsVM.refreshAccounts() }
+            )
+        }
+        return
+    }
 
     Box(
         modifier = Modifier

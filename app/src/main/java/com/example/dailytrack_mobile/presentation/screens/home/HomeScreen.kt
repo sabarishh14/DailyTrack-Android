@@ -176,6 +176,8 @@ fun HomeScreen(
         homeState.accounts.filter { it.balanceTracked }
     }
     val totalNetWorth = apiBankBalance + homeState.investmentTotalCurrent
+    // No accounts yet: one card to add the first, instead of a page of empty money sections.
+    val firstRun = canMoney && access.fullMoneyAccess && homeState.noAccounts
 
     val context = LocalContext.current
     LaunchedEffect(homeState.notice) {
@@ -219,7 +221,12 @@ fun HomeScreen(
                         access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
                 )
             }
-            if (showBalances) item {
+            if (firstRun) item {
+                com.example.dailytrack_mobile.presentation.screens.settings.components.FirstAccountCard(
+                    onAdded = { viewModel.onAction(HomeAction.Refresh(forceRefresh = true)) }
+                )
+            }
+            if (showBalances && !firstRun) item {
                 NetWorthSection(
                     totalBankBalance = apiBankBalance,
                     totalNetWorth = totalNetWorth,
@@ -230,7 +237,7 @@ fun HomeScreen(
                     totalInvestCount = homeState.totalInvestCategoriesCount
                 )
             }
-            if (showBalances) item {
+            if (showBalances && !firstRun) item {
                 BankAccountsSection(
                     accounts = apiAccounts,
                     totalBankBalance = apiBankBalance,
@@ -241,13 +248,13 @@ fun HomeScreen(
             if (canRoutines) item {
                 com.example.dailytrack_mobile.presentation.screens.routines.RoutinesHomeCard(onClick = onNavigateToRoutines)
             }
-            if (canMoney) item {
+            if (canMoney && !firstRun) item {
                 BudgetsSummaryCard(
                     moneyState = moneyState,
                     onClick = onNavigateToBudgets
                 )
             }
-            if (canInvest) item {
+            if (canInvest && !homeState.noInvestments) item {
                 InvestmentPortfolioSection(
                     totalInvested = homeState.investmentTotalInvested,
                     totalCurrent  = homeState.investmentTotalCurrent,
@@ -257,7 +264,7 @@ fun HomeScreen(
                     totalCount    = homeState.totalInvestCategoriesCount
                 ) 
             }
-            if (canMoney) item {
+            if (canMoney && !firstRun) item {
                 FlowSection(
                     title         = "INCOME BY ACCOUNT",
                     flows         = incomeFlows,
@@ -269,7 +276,7 @@ fun HomeScreen(
                     }
                 )
             }
-            if (canMoney) item {
+            if (canMoney && !firstRun) item {
                 FlowSection(
                     title         = "EXPENSES BY ACCOUNT",
                     flows         = expenseFlows,

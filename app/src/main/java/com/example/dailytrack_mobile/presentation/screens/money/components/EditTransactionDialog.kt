@@ -101,7 +101,7 @@ fun EditTransactionDialog(
     var showCategoryPicker by remember { mutableStateOf(false) }
 
     val accountsList = remember(availableAccounts) {
-        sortAccountsCanonical(availableAccounts.ifEmpty { defaultAccounts })
+        sortAccountsCanonical(availableAccounts)
     }
     val allCategories = remember(availableCategories) { availableCategories.ifEmpty { defaultCategories } }
     val typeCategories = remember(entry.type, history, allCategories) { history.categoriesFor(entry.type, allCategories) }

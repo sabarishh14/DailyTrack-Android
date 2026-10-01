@@ -93,8 +93,7 @@ fun BulkEditTransactionsSheet(
     var expandedItemId by remember { mutableStateOf<Long?>(null) }
 
     val accountsList = remember(availableAccounts) {
-        val list = if (availableAccounts.isNotEmpty()) availableAccounts else defaultAccounts
-        sortAccountsCanonical(list)
+        sortAccountsCanonical(availableAccounts)
     }
     val allCategories = remember(availableCategories) {
         if (availableCategories.isNotEmpty()) availableCategories else defaultCategories

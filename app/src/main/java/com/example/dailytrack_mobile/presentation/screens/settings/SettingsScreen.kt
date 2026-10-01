@@ -191,12 +191,12 @@ fun SettingsScreen(
                     "minimum", "min balance", "add account", "new account"
                 )
             ) else null,
-            // Admins only: who can sign in and what they can see (ACCESS_CONTROL.md)
+            // Admins only: who can sign in (ACCESS_CONTROL.md)
             if (state.isUserAdmin) SettingsCategoryItem(
                 id = "AccessControl",
                 icon = Icons.Default.AdminPanelSettings,
-                title = "Access Control",
-                subtitle = "Who can see and change what",
+                title = "People",
+                subtitle = "Who can sign in",
                 keywords = listOf("access", "people", "users", "share", "permissions", "roles", "admin", "email", "invite")
             ) else null,
             SettingsCategoryItem(

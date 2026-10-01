@@ -149,7 +149,9 @@ class HomeVM @Inject constructor(
                         incomeByCategory = income,
                         expenseByCategory = expense,
                         investmentTotalInvested = totalInvested,
-                        investmentTotalCurrent = totalCurrent
+                        investmentTotalCurrent = totalCurrent,
+                        noAccounts = accountsResult.getOrThrow().isEmpty(),
+                        noInvestments = portfolioData != null && portfolioData.snapshots.isEmpty()
                     )
                 }
             } else {

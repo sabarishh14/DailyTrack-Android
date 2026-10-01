@@ -81,11 +81,11 @@ internal fun SyncSettingsSubScreen(
     BackHandler { onNavigateBack() }
     val dims = Dimens.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    // Whole-ledger actions need unrestricted money edit; see ACCESS_CONTROL.md.
+    // Google Sheets and the Drive screenshots for Reconcile are the owner's own; see ACCESS_CONTROL.md.
     val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
-    val canPushTransactions = access.fullMoneyAccess
-    val canPushInvestments = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
-    val canReconcile = access.fullMoneyAccess
+    val canPushTransactions = access.isOwner
+    val canPushInvestments = access.isOwner
+    val canReconcile = access.isOwner
     val canImportLetterboxd = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
 
     // Checking the Sheets queue is a network call, so it waits until the screen

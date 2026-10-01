@@ -35,6 +35,12 @@ class SabdekhoRepository @Inject constructor(
         cachedMediaDetails.clear()
     }
 
+    /** Someone else is signing in on this phone: none of the last person's library stays. */
+    fun forgetPerson() {
+        clearCache()
+        cachedMediaFilters = null
+    }
+
     suspend fun getMediaLibrary(
         limit: Int = 60,
         offset: Int = 0,

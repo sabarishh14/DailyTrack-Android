@@ -4,6 +4,8 @@ import com.example.dailytrack_mobile.data.local.auth.AccessInfo
 import com.example.dailytrack_mobile.data.local.auth.AccessLevel
 import com.example.dailytrack_mobile.data.local.auth.AccessModule
 import com.example.dailytrack_mobile.data.local.auth.AuthManager
+import com.example.dailytrack_mobile.data.local.auth.PersonalDataReset
+import com.example.dailytrack_mobile.data.local.datastore.SyncPreferencesManager
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.example.dailytrack_mobile.data.remote.dto.AccessDto
 import com.example.dailytrack_mobile.data.remote.dto.AccessOptionsResponseDto
@@ -19,7 +21,10 @@ import javax.inject.Singleton
 @Singleton
 class AuthRepository @Inject constructor(
     private val api: DailyTrackApi,
-    private val authManager: AuthManager
+    private val authManager: AuthManager,
+    private val personalData: PersonalDataReset,
+    private val moneyRepository: MoneyRepository,
+    private val syncPreferences: SyncPreferencesManager
 ) {
     val isLoggedInFlow: StateFlow<Boolean?> = authManager.isLoggedInFlow
     val userEmailFlow: Flow<String?> = authManager.userEmailFlow
@@ -38,7 +43,10 @@ class AuthRepository @Inject constructor(
             val dto = response.body()?.access
             if (response.isSuccessful && dto != null) {
                 val access = dto.toAccessInfo()
+                // Sessions from before people were kept apart never claimed this phone.
+                personalData.claimFor(access.email)
                 authManager.saveAccess(access)
+                response.body()?.settings?.let { mirrorSettings(it.letterboxdUsername) }
                 Result.success(access)
             } else {
                 // 401s are handled centrally by the network layer (signs out).
@@ -46,6 +54,19 @@ class AuthRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * The Letterboxd username lives on the server now, so it follows the person.
+     * One typed on this phone before that is handed up once instead of lost.
+     */
+    private suspend fun mirrorSettings(serverLetterboxd: String?) {
+        val onServer = serverLetterboxd.orEmpty().trim()
+        val onPhone = syncPreferences.getLetterboxdUsername()
+        when {
+            onServer.isNotEmpty() -> if (onServer != onPhone) syncPreferences.setLetterboxdUsername(onServer)
+            onPhone.isNotEmpty() -> runCatching { api.updateMySettings(mapOf("letterboxd_username" to onPhone)) }
         }
     }
 
@@ -87,6 +108,8 @@ class AuthRepository @Inject constructor(
             if (response.isSuccessful) {
                 val body = response.body()
                 if (body != null && body.success && !body.token.isNullOrBlank()) {
+                    // Someone else signing in on this phone starts clean.
+                    personalData.claimFor(email)
                     authManager.saveSession(
                         token = body.token,
                         email = email,
@@ -113,6 +136,8 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun logout() {
+        // While still signed in: this phone stops getting their low-balance alerts.
+        moneyRepository.unregisterPushToken()
         try {
             FirebaseAuth.getInstance().signOut()
         } catch (_: Exception) { }

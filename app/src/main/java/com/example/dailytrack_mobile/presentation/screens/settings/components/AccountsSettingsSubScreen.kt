@@ -232,6 +232,82 @@ fun AccountsSettingsSubScreen(
     }
 }
 
+/**
+ * Until someone has an account: one card that adds their first, with the same
+ * sheet as Settings → Accounts. Home and Add money show it.
+ */
+@Composable
+fun FirstAccountCard(
+    onAdded: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: AccountsSettingsVM = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+    val colors = MaterialTheme.colorScheme
+    var adding by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(state.addedCount) {
+        if (state.addedCount > 0) {
+            adding = false
+            onAdded()
+        }
+    }
+
+    SettingsCard(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(colors.primary.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.AccountBalance, contentDescription = null, tint = colors.primary, modifier = Modifier.size(30.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = "Add your first account",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = colors.onSurface
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "A bank account or a credit card",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant
+            )
+            Spacer(Modifier.height(18.dp))
+            Button(
+                onClick = {
+                    viewModel.clearAddError()
+                    adding = true
+                },
+                shape = RoundedCornerShape(26.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Add account", fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+
+    if (adding) {
+        AddAccountSheet(
+            existingNames = state.names,
+            saving = state.adding,
+            serverError = state.addError,
+            onEdited = viewModel::clearAddError,
+            onAdd = viewModel::add,
+            onDismiss = { adding = false }
+        )
+    }
+}
+
 /** What's in savings altogether, and how many of each there are. */
 @Composable
 private fun Summary(total: Double, savings: Int, cards: Int) {

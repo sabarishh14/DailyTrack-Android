@@ -48,6 +48,14 @@ class RoutineReminders @Inject constructor(
         }
     }
 
+    /** Drops every reminder, e.g. when someone else signs in on this phone. */
+    suspend fun clearAll() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(KEY)
+            preferences.remove(ALARMS_KEY)
+        }
+    }
+
     private companion object {
         val KEY = stringSetPreferencesKey("routine_reminders")
         val ALARMS_KEY = stringSetPreferencesKey("routine_reminder_alarms")

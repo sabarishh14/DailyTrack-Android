@@ -17,7 +17,11 @@ data class HomeState(
     val expenseByCategory: Map<String, Double> = emptyMap(),
     val investmentTotalInvested: Double = 0.0,
     val investmentTotalCurrent: Double = 0.0,
-    val hiddenInvestCategories: Set<com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory> = emptySet()
+    val hiddenInvestCategories: Set<com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory> = emptySet(),
+    /** Accounts loaded and there are none yet: Home offers to add the first instead of empty sections. */
+    val noAccounts: Boolean = false,
+    /** The portfolio loaded and has nothing in it yet. */
+    val noInvestments: Boolean = false
 ) {
     val isInvestFiltered: Boolean get() = hiddenInvestCategories.isNotEmpty()
     val visibleInvestCategoriesCount: Int get() = com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory.entries.size - hiddenInvestCategories.size

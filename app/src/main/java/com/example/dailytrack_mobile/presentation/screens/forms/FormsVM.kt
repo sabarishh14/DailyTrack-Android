@@ -34,7 +34,9 @@ data class AddMoneyFormState(
     val accountDetails: List<AccountDto> = emptyList(),
     val categories: List<String> = emptyList(),
     val history: EntryHistory = EntryHistory.EMPTY,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    /** Accounts loaded and there are none: the form offers to add the first. */
+    val noAccounts: Boolean = false
 )
 
 data class AddActivityFormState(
@@ -99,11 +101,14 @@ class FormsVM @Inject constructor(
             val accountsRes = moneyRepository.getAccounts()
             val categoriesRes = moneyRepository.getCategories()
 
+            // What the server says wins, even when it's empty: cached names may not be this person's.
             _addMoneyState.update { state ->
+                val fresh = accountsRes.getOrNull()
                 state.copy(
-                    accounts = accountsRes.getOrNull()?.map { it.account }?.takeIf { it.isNotEmpty() } ?: state.accounts,
-                    accountDetails = accountsRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.accountDetails,
-                    categories = categoriesRes.getOrNull()?.takeIf { it.isNotEmpty() } ?: state.categories
+                    accounts = fresh?.map { it.account } ?: state.accounts,
+                    accountDetails = fresh ?: state.accountDetails,
+                    categories = categoriesRes.getOrNull() ?: state.categories,
+                    noAccounts = fresh?.isEmpty() ?: state.noAccounts
                 )
             }
 
@@ -123,8 +128,10 @@ class FormsVM @Inject constructor(
      */
     fun refreshAccounts() {
         viewModelScope.launch {
-            moneyRepository.getAccounts(forceRefresh = true).getOrNull()?.takeIf { it.isNotEmpty() }?.let { fresh ->
-                _addMoneyState.update { it.copy(accounts = fresh.map { a -> a.account }, accountDetails = fresh) }
+            moneyRepository.getAccounts(forceRefresh = true).getOrNull()?.let { fresh ->
+                _addMoneyState.update {
+                    it.copy(accounts = fresh.map { a -> a.account }, accountDetails = fresh, noAccounts = fresh.isEmpty())
+                }
             }
         }
     }

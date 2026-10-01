@@ -46,6 +46,7 @@ class MoneyRepository @Inject constructor(
         private const val KEY_ACCOUNTS = "cached_accounts"
         private const val KEY_CATEGORIES = "cached_categories"
         private const val KEY_DEMO_BUDGETS = "demo_budgets"
+        private const val KEY_PUSH_TOKEN = "push_token"
         private const val MAX_SHEET_SYNC_BATCHES = 200
     }
 
@@ -85,6 +86,26 @@ class MoneyRepository @Inject constructor(
     fun clearCache() {
         cachedTransactions.clear()
         cachedBudgets = null
+    }
+
+    /**
+     * Someone else is signing in on this phone: nothing of the last person's may
+     * show, so every cache goes, in memory and on disk. The push token stays: it
+     * belongs to the phone.
+     */
+    fun forgetPerson() {
+        synchronized(this) {
+            cachedAccounts = null
+            cachedAccountNames = mutableListOf()
+            cachedTransactions.clear()
+            cachedCategories = null
+            cachedBudgets = null
+            historyRows.clear()
+            fullHistoryFetched = false
+            savedTypeCategories = emptyMap()
+        }
+        val pushToken = prefs.getString(KEY_PUSH_TOKEN, null)
+        prefs.edit().clear().apply { if (pushToken != null) putString(KEY_PUSH_TOKEN, pushToken) }.apply()
     }
 
     /** Suggestions from what has been seen so far; until anything has, the per-type categories saved last time. */
@@ -295,7 +316,14 @@ class MoneyRepository @Inject constructor(
     /** Lets the server push low-balance alerts to this phone. Best effort. */
     suspend fun registerPushToken(token: String) {
         if (demoDataManager.isDemoModeEnabled()) return
+        prefs.edit().putString(KEY_PUSH_TOKEN, token).apply()
         runCatching { api.registerDevice(mapOf("token" to token)) }
+    }
+
+    /** Signing out: the signed-in person's alerts stop coming to this phone. Best effort. */
+    suspend fun unregisterPushToken() {
+        val token = prefs.getString(KEY_PUSH_TOKEN, null) ?: return
+        runCatching { api.unregisterDevice(mapOf("token" to token)) }
     }
 
     /** Keeps cached balances current so the next entry's preview starts from the right number. */

@@ -36,6 +36,7 @@ enum class QuickFilterPreset {
     INCOME_ONLY
 }
 
+/** Only the order account lists are shown in; never offered as accounts themselves. */
 val DEFAULT_CANONICAL_ACCOUNTS = listOf(
     "Cash", "KOTAK", "IDBI", "FEDERAL", "CUB", "INDIAN", "ICICI", "HDFC", "SBI", "Axis", "CC-PINNACLE 6360"
 )
@@ -414,8 +415,7 @@ data class MoneyState(
         get() {
             val raw = if (accounts.isNotEmpty()) accounts.map { it.account }
                       else transactions.map { it.bank }.distinct()
-            val list = if (raw.isNotEmpty()) raw else DEFAULT_CANONICAL_ACCOUNTS
-            return sortAccountsCanonical(list)
+            return sortAccountsCanonical(raw)
         }
 
     // ── Budgets ──────────────────────────────────────────────────────
