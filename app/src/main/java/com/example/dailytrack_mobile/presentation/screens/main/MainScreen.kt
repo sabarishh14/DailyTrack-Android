@@ -149,6 +149,10 @@ fun MainScreen(
     val moneyViewModel: MoneyVM = hiltViewModel()
     val moneyState by moneyViewModel.state.collectAsState()
 
+    // Someone's shared data on screen (read-only), or null for your own.
+    val sharingViewModel: com.example.dailytrack_mobile.presentation.screens.settings.SharingVM = hiltViewModel()
+    val viewAs by sharingViewModel.viewAs.collectAsState()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val dims = Dimens.current
@@ -470,6 +474,12 @@ fun MainScreen(
                         ),
                         modifier = Modifier.statusBarsPadding()
                     )
+                    viewAs?.let { owner ->
+                        com.example.dailytrack_mobile.presentation.screens.settings.components.ViewingBar(
+                            owner = owner,
+                            onBack = { sharingViewModel.switchView(null) }
+                        )
+                    }
                     // Subtle divider between topbar and canvas
                     HorizontalDivider(
                         thickness = 0.5.dp,
@@ -600,8 +610,9 @@ fun MainScreen(
             }
 
             // Floating nav toolbar drawn over the content (not a Scaffold bottomBar,
-            // which would reserve an opaque strip behind it).
-            if (!isFormScreen) {
+            // which would reserve an opaque strip behind it). Hidden while selecting
+            // transactions: the Edit/Delete selection bar takes its place.
+            if (!isFormScreen && !moneyState.isSelectionMode) {
                 val displayRoute = if (currentRoute in mainTabRoutes) {
                     pageToRoute(pageAt(pagerState.targetPage))
                 } else {

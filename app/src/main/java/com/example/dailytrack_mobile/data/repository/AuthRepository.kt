@@ -24,7 +24,8 @@ class AuthRepository @Inject constructor(
     private val authManager: AuthManager,
     private val personalData: PersonalDataReset,
     private val moneyRepository: MoneyRepository,
-    private val syncPreferences: SyncPreferencesManager
+    private val syncPreferences: SyncPreferencesManager,
+    private val demoDataManager: com.example.dailytrack_mobile.data.local.demo.DemoDataManager
 ) {
     val isLoggedInFlow: StateFlow<Boolean?> = authManager.isLoggedInFlow
     val userEmailFlow: Flow<String?> = authManager.userEmailFlow
@@ -32,6 +33,10 @@ class AuthRepository @Inject constructor(
     val isAdminFlow: Flow<Boolean> = authManager.isAdminFlow
     val accessFlow: StateFlow<AccessInfo?> = authManager.accessFlow
     val sessionNotice: StateFlow<String?> = authManager.sessionNotice
+    /** Whose data is on screen: null = yours, else someone's shared with you (read-only). */
+    val viewAsFlow: StateFlow<String?> = authManager.viewAsFlow
+    val sharedWithMe: StateFlow<List<AuthManager.SharedWithMe>> = authManager.sharedWithMe
+    val pendingRequests: StateFlow<Int> = authManager.pendingRequests
 
     fun consumeSessionNotice() = authManager.consumeSessionNotice()
 
@@ -41,12 +46,21 @@ class AuthRepository @Inject constructor(
         return try {
             val response = api.getMyAccess()
             val dto = response.body()?.access
+            if (response.code() == 403 && authManager.getViewAs() != null) {
+                // No longer shared with you: back to your own data.
+                switchView(null)
+                return Result.failure(Exception("No longer shared with you"))
+            }
             if (response.isSuccessful && dto != null) {
                 val access = dto.toAccessInfo()
                 // Sessions from before people were kept apart never claimed this phone.
                 personalData.claimFor(access.email)
                 authManager.saveAccess(access)
-                response.body()?.settings?.let { mirrorSettings(it.letterboxdUsername) }
+                response.body()?.let { body ->
+                    authManager.saveSharedWithMe(body.sharedWithMe.map { AuthManager.SharedWithMe(it.owner, it.modules) })
+                    authManager.savePendingRequests(body.pendingRequests)
+                    if (access.viewing == null) body.settings?.let { mirrorSettings(it.letterboxdUsername) }
+                }
                 Result.success(access)
             } else {
                 // 401s are handled centrally by the network layer (signs out).
@@ -69,6 +83,35 @@ class AuthRepository @Inject constructor(
             onPhone.isNotEmpty() -> runCatching { api.updateMySettings(mapOf("letterboxd_username" to onPhone)) }
         }
     }
+
+    /**
+     * Shows someone's shared data (read-only), or your own with null. Cached data
+     * is dropped so nothing of one shows as the other's, and every screen reloads.
+     */
+    suspend fun switchView(owner: String?) {
+        authManager.setViewAs(owner)
+        personalData.forgetCachedData()
+        runCatching {
+            val response = api.getMyAccess()
+            response.body()?.access?.takeIf { response.isSuccessful }?.let { authManager.saveAccess(it.toAccessInfo()) }
+        }
+        demoDataManager.notifyDataUpdated()
+    }
+
+    // ---- Sharing ----
+    suspend fun getShares(): Result<com.example.dailytrack_mobile.data.remote.dto.SharesResponseDto> = call { api.getShares() }
+
+    /** Shares those modules with [viewer], view-only; an empty list stops sharing with them. */
+    suspend fun setShare(viewer: String, modules: List<String>): Result<Unit> =
+        call { api.setShare(viewer.trim().lowercase(), com.example.dailytrack_mobile.data.remote.dto.ShareRequestDto(modules)) }
+            .mapCatching { if (!it.success) throw Exception(it.message ?: "Couldn't save") }
+
+    // ---- Admin: requests to join ----
+    suspend fun approveRequest(email: String): Result<Unit> =
+        call { api.approveAccessRequest(email) }.mapCatching { if (!it.success) throw Exception(it.message ?: "Couldn't approve") }
+
+    suspend fun declineRequest(email: String): Result<Unit> =
+        call { api.declineAccessRequest(email) }.mapCatching { if (!it.success) throw Exception(it.message ?: "Couldn't decline") }
 
     // ---- Admin: people & permissions ----
     suspend fun getAccessUsers(): Result<AccessUsersResponseDto> = call { api.getAccessUsers() }
@@ -123,9 +166,13 @@ class AuthRepository @Inject constructor(
                     Result.failure(Exception(body?.message ?: "Login failed. You may not be an authorized user."))
                 }
             } else {
-                val errorMsg = when (response.code()) {
-                    403 -> "Access denied. Your Google account ($email) is not authorized."
-                    401 -> "Invalid credentials or expired Google session."
+                // Not in yet: the server sent the owner a request to approve.
+                val requested = response.code() == 403 &&
+                    (response.errorBody()?.string()?.contains("REQUESTED") == true)
+                val errorMsg = when {
+                    requested -> "Request sent. You can sign in once it's approved."
+                    response.code() == 403 -> "Access denied. Your Google account ($email) is not authorized."
+                    response.code() == 401 -> "Invalid credentials or expired Google session."
                     else -> "Server error (${response.code()}). Please try again."
                 }
                 Result.failure(Exception(errorMsg))
@@ -150,10 +197,15 @@ fun AccessDto.toAccessInfo(): AccessInfo = AccessInfo(
     role = role,
     isOwner = isOwner,
     isAdmin = isAdmin,
-    modules = AccessModule.entries.associateWith { AccessLevel.from(modules[it.key]) },
+    // The phone's routines (alarms, check-ins, widget) are always your own, so
+    // Routines hides while someone else's data is on screen.
+    modules = AccessModule.entries.associateWith {
+        if (it == AccessModule.GYM && !viewing.isNullOrBlank()) AccessLevel.NONE else AccessLevel.from(modules[it.key])
+    },
     categories = money.categories,
     accounts = money.accounts,
     moneyRestricted = money.restricted,
     balancesVisible = money.balancesVisible,
-    fullMoneyAccess = money.fullAccess
+    fullMoneyAccess = money.fullAccess,
+    viewing = viewing?.takeIf { it.isNotBlank() }
 )

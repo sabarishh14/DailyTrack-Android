@@ -106,6 +106,7 @@ internal fun AccessControlSubScreen(
                 currentEmail = LocalAccess.current.email,
                 onAdd = viewModel::add,
                 onEdit = viewModel::edit,
+                onAnswer = viewModel::answer,
                 onRetry = viewModel::load,
                 modifier = Modifier.padding(padding)
             )
@@ -126,6 +127,7 @@ private fun PeopleList(
     currentEmail: String,
     onAdd: (String) -> Unit,
     onEdit: (com.example.dailytrack_mobile.data.remote.dto.AccessUserDto) -> Unit,
+    onAnswer: (String, Boolean) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -172,6 +174,35 @@ private fun PeopleList(
                 }
             }
             else -> {
+                if (state.requests.isNotEmpty()) {
+                    item { Spacer(Modifier.height(4.dp)); SettingsSectionLabel("Requests") }
+                    items(state.requests, key = { "req-" + it.email }) { request ->
+                        SettingsCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(40.dp).clip(CircleShape).background(avatarColor(request.email)),
+                                    contentAlignment = Alignment.Center
+                                ) { Text(request.email.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold) }
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        request.email,
+                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    )
+                                    request.name?.takeIf { it.isNotBlank() }?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                TextButton(onClick = { onAnswer(request.email, false) }) { Text("Decline") }
+                                Button(onClick = { onAnswer(request.email, true) }) { Text("Approve") }
+                            }
+                        }
+                    }
+                }
                 item { Spacer(Modifier.height(4.dp)); SettingsSectionLabel("Owners") }
                 items(state.owners) { email ->
                     PersonRow(

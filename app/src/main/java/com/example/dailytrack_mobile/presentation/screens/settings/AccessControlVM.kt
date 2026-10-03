@@ -28,6 +28,8 @@ data class AccessControlState(
     val error: String? = null,
     val owners: List<String> = emptyList(),
     val users: List<AccessUserDto> = emptyList(),
+    /** People who tried to sign in and are waiting to be let in. */
+    val requests: List<com.example.dailytrack_mobile.data.remote.dto.AccessRequestDto> = emptyList(),
     val draft: AccessDraft? = null,
     val isSaving: Boolean = false,
     val message: String? = null
@@ -47,7 +49,7 @@ class AccessControlVM @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
             repo.getAccessUsers()
-                .onSuccess { res -> _state.update { it.copy(isLoading = false, owners = res.owners, users = res.users) } }
+                .onSuccess { res -> _state.update { it.copy(isLoading = false, owners = res.owners, users = res.users, requests = res.requests) } }
                 .onFailure { e -> _state.update { it.copy(isLoading = false, error = e.message ?: "Couldn't load people") } }
         }
     }
@@ -73,6 +75,16 @@ class AccessControlVM @Inject constructor(
                     load()
                 }
                 .onFailure { e -> _state.update { it.copy(isSaving = false, message = e.message ?: "Could not add") } }
+        }
+    }
+
+    /** Approve lets them sign in as a member with their own data; decline clears the request. */
+    fun answer(email: String, approve: Boolean) {
+        _state.update { s -> s.copy(requests = s.requests.filterNot { it.email == email }) }
+        viewModelScope.launch {
+            (if (approve) repo.approveRequest(email) else repo.declineRequest(email))
+                .onSuccess { _state.update { it.copy(message = if (approve) "$email can now sign in" else "Request declined") }; load() }
+                .onFailure { e -> _state.update { it.copy(message = e.message ?: "Couldn't save") }; load() }
         }
     }
 

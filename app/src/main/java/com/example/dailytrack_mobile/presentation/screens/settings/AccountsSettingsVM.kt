@@ -73,6 +73,22 @@ class AccountsSettingsVM @Inject constructor(
         }
     }
 
+    /** Saves a savings account's balance and minimum (null = none) from the edit dialog. */
+    fun saveAccount(account: AccountDto, balance: Double, min: Double?) {
+        viewModelScope.launch {
+            repository.updateBalance(account.account, balance, min)
+                .onSuccess {
+                    _state.update { s ->
+                        s.copy(
+                            savings = s.savings.map { if (it.account == account.account) it.copy(balance = balance, minBalance = min) else it },
+                            message = "${account.account} saved"
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(message = e.message ?: "Couldn't save") } }
+        }
+    }
+
     /** Sets or, with null, removes a savings account's minimum balance. */
     fun setMinBalance(account: String, min: Double?) {
         viewModelScope.launch {

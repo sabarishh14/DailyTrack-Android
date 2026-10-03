@@ -266,6 +266,18 @@ class MoneyRepository @Inject constructor(
     }
 
     /** Sets or clears ([min] null) the balance an account shouldn't go under. */
+    /** Sets a savings account's balance (recorded as an adjustment) and its minimum (null = none). */
+    suspend fun updateBalance(account: String, balance: Double, min: Double?): Result<Unit> = runCatching {
+        check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
+        val response = api.updateAccount(mapOf("account" to account, "balance" to balance, "min_balance" to (min ?: "")))
+        if (!response.success) throw Exception(response.message ?: "Couldn't save the balance")
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.map { if (it.account == account) it.copy(balance = balance, minBalance = min) else it }
+            cachedTransactions.clear() // running balances shift
+        }
+        demoDataManager.notifyDataUpdated()
+    }
+
     suspend fun setMinBalance(account: String, min: Double?): Result<Unit> = runCatching {
         check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
         val response = api.updateAccount(mapOf("account" to account, "min_balance" to (min ?: "")))

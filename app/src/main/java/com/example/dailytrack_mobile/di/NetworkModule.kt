@@ -31,6 +31,15 @@ object NetworkModule {
         "/api/movies/sync/rss"
     )
 
+    /** Always about the signed-in person, even while viewing someone's shared data. */
+    private val OWN_ONLY_PATHS = listOf(
+        "/api/routines",
+        "/api/devices",
+        "/api/me/",
+        "/api/shares",
+        "/api/admin/"
+    )
+
     @Provides
     @Singleton
     fun provideMoshi(): Moshi = Moshi.Builder()
@@ -59,6 +68,13 @@ object NetworkModule {
 
             if (!token.isNullOrBlank()) {
                 requestBuilder.header("Authorization", "Bearer $token")
+            }
+            // Someone's data shared with you, on screen: read it as theirs. Routines
+            // (alarms, check-ins, the widget sync in the background), push tokens,
+            // your settings and sharing are always yours.
+            val path = original.url.encodedPath
+            if (OWN_ONLY_PATHS.none { path.startsWith(it) }) {
+                authManager.getViewAs()?.let { requestBuilder.header("X-View-As", it) }
             }
 
             chain.proceed(requestBuilder.build())

@@ -199,8 +199,7 @@ fun AccountsSettingsSubScreen(
                 }
                 item {
                     Text(
-                        text = "Tap a savings account to set the balance it shouldn't drop below. " +
-                            "Card spends are recorded against the card; a card's balance doesn't move.",
+                        text = "Tap a savings account to edit its balance or minimum.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
@@ -223,8 +222,8 @@ fun AccountsSettingsSubScreen(
     editingMin?.let { account ->
         MinBalanceDialog(
             account = account,
-            onSave = { min ->
-                viewModel.setMinBalance(account.account, min)
+            onSave = { balance, min ->
+                viewModel.saveAccount(account, balance, min)
                 editingMin = null
             },
             onDismiss = { editingMin = null }
@@ -687,28 +686,42 @@ private fun MoneyField(value: String, onChange: (String) -> Unit, label: String,
 // ── A savings account's minimum ──────────────────────────────────────────────
 
 /** Set, change or remove the balance a savings account shouldn't drop below. */
+/** A savings account's balance (set to what the bank shows) and its minimum. Blank minimum = none. */
 @Composable
-private fun MinBalanceDialog(account: AccountDto, onSave: (Double?) -> Unit, onDismiss: () -> Unit) {
-    var text by remember { mutableStateOf(account.minBalance?.let { "%.0f".format(it) } ?: "") }
-    val value = amount(text)
+private fun MinBalanceDialog(account: AccountDto, onSave: (balance: Double, min: Double?) -> Unit, onDismiss: () -> Unit) {
+    fun plain(v: Double?) = v?.let { if (it % 1.0 == 0.0) "%.0f".format(it) else "%.2f".format(it) } ?: ""
+    var balanceText by remember { mutableStateOf(plain(account.balance)) }
+    var minText by remember { mutableStateOf(plain(account.minBalance)) }
+    val balance = amount(balanceText)
+    val min = amount(minText)
+    val minOk = minText.isBlank() || min != null
     val accent = bankColor(account.account) ?: MaterialTheme.colorScheme.primary
+    val clean: (String) -> String = { new ->
+        val c = new.filter { it.isDigit() || it == '.' }
+        if (c.count { it == '.' } <= 1) c.take(15) else c.dropLast(1)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { AccountBadge(creditCard = false, accent = accent, size = 36.dp) },
-        title = { Text("Minimum for ${account.account}") },
+        title = { Text(account.account) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Get an alert when a transaction takes this account below it." +
-                        (account.balance?.let { " Balance now: ₹${formatRupees(it)}." } ?: ""),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                OutlinedTextField(
+                    value = balanceText,
+                    onValueChange = { balanceText = clean(it) },
+                    label = { Text("Balance") },
+                    prefix = { Text("₹") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
-                    value = text,
-                    onValueChange = { new -> text = new.filter { it.isDigit() || it == '.' } },
+                    value = minText,
+                    onValueChange = { minText = clean(it) },
+                    label = { Text("Minimum (optional)") },
                     prefix = { Text("₹") },
-                    placeholder = { Text("2000") },
+                    placeholder = { Text("None") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(12.dp),
@@ -717,19 +730,11 @@ private fun MinBalanceDialog(account: AccountDto, onSave: (Double?) -> Unit, onD
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(value) }, enabled = value != null && value > 0) {
-                Text("Save", fontWeight = FontWeight.Bold)
-            }
+            TextButton(
+                onClick = { balance?.let { onSave(it, min) } },
+                enabled = balance != null && minOk
+            ) { Text("Save", fontWeight = FontWeight.Bold) }
         },
-        dismissButton = {
-            Row {
-                if (account.minBalance != null) {
-                    TextButton(onClick = { onSave(null) }) {
-                        Text("Remove", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

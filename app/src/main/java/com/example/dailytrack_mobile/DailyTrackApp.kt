@@ -30,7 +30,10 @@ class DailyTrackApp : Application() {
         super.onCreate()
         // Before any screen reads a cache: a phone signed in from before each
         // person's data was kept apart gets cleaned once (local work, no network).
-        runBlocking { authManager.userEmailFlow.first()?.let { personalData.claimFor(it) } }
+        runBlocking {
+            authManager.primeViewAs()
+            authManager.userEmailFlow.first()?.let { personalData.claimFor(it) }
+        }
         // The home-screen widget follows every change to the routines, wherever it
         // came from: the app, a notification, an alarm or the widget itself.
         appScope.launch {

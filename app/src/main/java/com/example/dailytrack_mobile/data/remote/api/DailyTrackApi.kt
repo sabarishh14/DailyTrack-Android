@@ -321,6 +321,23 @@ interface DailyTrackApi {
     @GET("/api/auth/me")
     suspend fun getMyAccess(): Response<MeResponseDto>
 
+    // ---- Sharing (view-only) and asking to join ----
+    @GET("/api/shares")
+    suspend fun getShares(): Response<com.example.dailytrack_mobile.data.remote.dto.SharesResponseDto>
+
+    /** Empty modules stops sharing with them. */
+    @PUT("/api/shares/{viewer}")
+    suspend fun setShare(
+        @Path("viewer") viewer: String,
+        @Body body: com.example.dailytrack_mobile.data.remote.dto.ShareRequestDto
+    ): Response<ApiResponseDto>
+
+    @POST("/api/admin/requests/{email}/approve")
+    suspend fun approveAccessRequest(@Path("email") email: String): Response<ApiResponseDto>
+
+    @DELETE("/api/admin/requests/{email}")
+    suspend fun declineAccessRequest(@Path("email") email: String): Response<ApiResponseDto>
+
     @GET("/api/admin/users")
     suspend fun getAccessUsers(): Response<AccessUsersResponseDto>
 

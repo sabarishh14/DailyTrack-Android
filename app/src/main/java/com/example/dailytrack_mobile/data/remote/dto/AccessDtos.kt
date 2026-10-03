@@ -20,6 +20,7 @@ data class AccessDto(
     @param:Json(name = "role") val role: String = "member",
     @param:Json(name = "isOwner") val isOwner: Boolean = false,
     @param:Json(name = "isAdmin") val isAdmin: Boolean = false,
+    @param:Json(name = "viewing") val viewing: String? = null,
     @param:Json(name = "modules") val modules: Map<String, String> = emptyMap(),
     @param:Json(name = "money") val money: MoneyAccessDto = MoneyAccessDto()
 )
@@ -28,7 +29,42 @@ data class AccessDto(
 data class MeResponseDto(
     @param:Json(name = "success") val success: Boolean,
     @param:Json(name = "access") val access: AccessDto? = null,
-    @param:Json(name = "settings") val settings: MySettingsDto? = null
+    @param:Json(name = "settings") val settings: MySettingsDto? = null,
+    @param:Json(name = "shared_with_me") val sharedWithMe: List<SharedWithMeDto> = emptyList(),
+    @param:Json(name = "pending_requests") val pendingRequests: Int = 0
+)
+
+// ---- Sharing: someone's data, view-only ----
+
+@JsonClass(generateAdapter = true)
+data class SharedWithMeDto(
+    @param:Json(name = "owner") val owner: String,
+    @param:Json(name = "modules") val modules: List<String> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class MyShareDto(
+    @param:Json(name = "viewer") val viewer: String,
+    @param:Json(name = "modules") val modules: List<String> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class SharesResponseDto(
+    @param:Json(name = "success") val success: Boolean,
+    @param:Json(name = "mine") val mine: List<MyShareDto> = emptyList(),
+    @param:Json(name = "with_me") val withMe: List<SharedWithMeDto> = emptyList(),
+    @param:Json(name = "message") val message: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ShareRequestDto(
+    @param:Json(name = "modules") val modules: List<String>
+)
+
+@JsonClass(generateAdapter = true)
+data class AccessRequestDto(
+    @param:Json(name = "email") val email: String,
+    @param:Json(name = "name") val name: String? = null
 )
 
 /** The signed-in person's own settings, kept on the server so they follow them. */
@@ -65,6 +101,7 @@ data class AccessUsersResponseDto(
     @param:Json(name = "success") val success: Boolean,
     @param:Json(name = "owners") val owners: List<String> = emptyList(),
     @param:Json(name = "users") val users: List<AccessUserDto> = emptyList(),
+    @param:Json(name = "requests") val requests: List<AccessRequestDto> = emptyList(),
     @param:Json(name = "message") val message: String? = null
 )
 

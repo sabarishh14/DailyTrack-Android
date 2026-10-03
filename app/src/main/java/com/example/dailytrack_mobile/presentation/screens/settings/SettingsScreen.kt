@@ -191,6 +191,13 @@ fun SettingsScreen(
                     "minimum", "min balance", "add account", "new account"
                 )
             ) else null,
+            SettingsCategoryItem(
+                id = "Sharing",
+                icon = Icons.Default.Group,
+                title = "Sharing",
+                subtitle = "Let friends view your data",
+                keywords = listOf("share", "sharing", "friends", "family", "view", "partner", "read only")
+            ),
             // Admins only: who can sign in (ACCESS_CONTROL.md)
             if (state.isUserAdmin) SettingsCategoryItem(
                 id = "AccessControl",
@@ -386,6 +393,12 @@ fun SettingsScreen(
     when (currentSubScreen) {
         "AccessControl" -> {
             com.example.dailytrack_mobile.presentation.screens.settings.components.AccessControlSubScreen(
+                onNavigateBack = { currentSubScreen = null }
+            )
+            return
+        }
+        "Sharing" -> {
+            com.example.dailytrack_mobile.presentation.screens.settings.components.SharingSubScreen(
                 onNavigateBack = { currentSubScreen = null }
             )
             return

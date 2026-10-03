@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -35,7 +36,41 @@ class AuthManager @Inject constructor(
         val KEY_USER_PHOTO = stringPreferencesKey("auth_user_photo")
         val KEY_IS_ADMIN = booleanPreferencesKey("auth_is_admin")
         val KEY_ACCESS_JSON = stringPreferencesKey("auth_access_json")
+        val KEY_VIEW_AS = stringPreferencesKey("auth_view_as")
     }
+
+    /**
+     * Whose data is on screen: null for your own, or the email of someone who
+     * shared theirs with you (read-only; the server enforces it). Sent as
+     * X-View-As on every request.
+     */
+    val viewAsFlow: StateFlow<String?> = context.authDataStore.data.map { it[KEY_VIEW_AS] }
+        .stateIn(scope = scope, started = SharingStarted.Eagerly, initialValue = null)
+
+    @Volatile
+    private var inMemoryViewAs: String? = null
+
+    fun getViewAs(): String? = inMemoryViewAs
+
+    suspend fun setViewAs(email: String?) {
+        val next = email?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        inMemoryViewAs = next
+        context.authDataStore.edit { preferences ->
+            if (next == null) preferences.remove(KEY_VIEW_AS) else preferences[KEY_VIEW_AS] = next
+        }
+    }
+
+    /** People who shared their data with you, and what (from /api/auth/me). */
+    private val _sharedWithMe = MutableStateFlow<List<SharedWithMe>>(emptyList())
+    val sharedWithMe: StateFlow<List<SharedWithMe>> = _sharedWithMe.asStateFlow()
+    fun saveSharedWithMe(list: List<SharedWithMe>) { _sharedWithMe.value = list }
+
+    /** Admins: people waiting to be let in. */
+    private val _pendingRequests = MutableStateFlow(0)
+    val pendingRequests: StateFlow<Int> = _pendingRequests.asStateFlow()
+    fun savePendingRequests(count: Int) { _pendingRequests.value = count }
+
+    data class SharedWithMe(val owner: String, val modules: List<String>)
 
     val authTokenFlow: Flow<String?> = context.authDataStore.data.map { preferences ->
         preferences[KEY_AUTH_TOKEN]
@@ -94,6 +129,12 @@ class AuthManager @Inject constructor(
                 inMemoryToken = token
             }
         }
+        scope.launch { context.authDataStore.data.collect { inMemoryViewAs = it[KEY_VIEW_AS] } }
+    }
+
+    /** Reads the stored view before the first request goes out (app start). */
+    suspend fun primeViewAs() {
+        inMemoryViewAs = context.authDataStore.data.first()[KEY_VIEW_AS]
     }
 
     fun getCachedToken(): String? = inMemoryToken
@@ -143,7 +184,11 @@ class AuthManager @Inject constructor(
 
     suspend fun clearSession() {
         inMemoryToken = null
+        inMemoryViewAs = null
+        _sharedWithMe.value = emptyList()
+        _pendingRequests.value = 0
         context.authDataStore.edit { preferences ->
+            preferences.remove(KEY_VIEW_AS)
             preferences.remove(KEY_AUTH_TOKEN)
             preferences.remove(KEY_USER_EMAIL)
             preferences.remove(KEY_USER_NAME)

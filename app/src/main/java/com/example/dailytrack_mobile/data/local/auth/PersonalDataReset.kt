@@ -58,6 +58,9 @@ class PersonalDataReset @Inject constructor(
         prefs.edit().putString(KEY_LAST_PERSON, person).apply()
     }
 
+    /** Switching whose data is on screen (sharing): drop every cached copy so screens reload theirs. */
+    fun forgetCachedData() = forgetCaches()
+
     private fun forgetCaches() {
         moneyRepository.forgetPerson()
         investmentsRepository.clearCache()

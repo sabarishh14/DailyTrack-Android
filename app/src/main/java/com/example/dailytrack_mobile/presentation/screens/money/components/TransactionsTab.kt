@@ -288,7 +288,9 @@ fun TransactionsTab(
                         contentPadding = PaddingValues(
                             start = dims.screenHorizontalPadding,
                             end = dims.screenHorizontalPadding,
-                            bottom = (if (state.isSelectionMode) dims.screenBottomPadding + 84.dp else dims.screenBottomPadding) + LocalFloatingBarClearance.current
+                            // Selecting, the action bar replaces the floating nav bar.
+                            bottom = if (state.isSelectionMode) dims.screenBottomPadding + 84.dp
+                                     else dims.screenBottomPadding + LocalFloatingBarClearance.current
                         ),
                         // Compact rows sit edge to edge with hairline gaps: one table, not a stack of cards.
                         verticalArrangement = Arrangement.spacedBy(if (compactRows) 1.dp else dims.itemSpacingMedium)
@@ -354,6 +356,7 @@ fun TransactionsTab(
                 visible = state.isSelectionMode,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                // Takes the floating nav bar's place: MainScreen hides it while selecting.
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()

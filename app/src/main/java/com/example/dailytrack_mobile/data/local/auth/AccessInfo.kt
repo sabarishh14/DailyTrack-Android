@@ -34,7 +34,9 @@ data class AccessInfo(
     /** Account balances / net worth may be shown (false while categories are limited). */
     val balancesVisible: Boolean = false,
     /** Whole-ledger actions: Sheets sync, reconcile, balance overrides. */
-    val fullMoneyAccess: Boolean = false
+    val fullMoneyAccess: Boolean = false,
+    /** Whose shared data is on screen (read-only), or null for your own. */
+    val viewing: String? = null
 ) {
     fun level(module: AccessModule): AccessLevel = modules[module] ?: AccessLevel.NONE
     fun canView(module: AccessModule) = level(module).rank >= AccessLevel.VIEW.rank
@@ -45,6 +47,7 @@ data class AccessInfo(
         put("role", role)
         put("isOwner", isOwner)
         put("isAdmin", isAdmin)
+        put("viewing", viewing ?: JSONObject.NULL)
         put("modules", JSONObject().apply { modules.forEach { (m, l) -> put(m.key, l.key) } })
         put("money", JSONObject().apply {
             put("categories", categories?.let { JSONArray(it) } ?: JSONObject.NULL)
@@ -85,7 +88,8 @@ data class AccessInfo(
                     accounts = money?.optStringListOrNull("accounts"),
                     moneyRestricted = money?.optBoolean("restricted", false) ?: false,
                     balancesVisible = money?.optBoolean("balancesVisible", false) ?: false,
-                    fullMoneyAccess = money?.optBoolean("fullAccess", false) ?: false
+                    fullMoneyAccess = money?.optBoolean("fullAccess", false) ?: false,
+                    viewing = o.optString("viewing", "").takeIf { it.isNotBlank() && it != "null" }
                 )
             } catch (_: Exception) {
                 null
