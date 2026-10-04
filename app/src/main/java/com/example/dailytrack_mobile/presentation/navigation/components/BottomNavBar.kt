@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import com.example.dailytrack_mobile.presentation.navigation.Routes
 import com.example.dailytrack_mobile.data.local.auth.AccessModule
@@ -114,7 +116,7 @@ fun BottomNavBar(
     val rimColor = if (isDark) colors.onSurface.copy(alpha = 0.12f) else colors.outlineVariant.copy(alpha = 0.7f)
     val background = colors.background
 
-    Row(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             // Content fades out under the bar; the fade doesn't take touches, so
@@ -126,49 +128,70 @@ fun BottomNavBar(
                     1f to background
                 )
             )
-            .padding(top = FadeHeight, bottom = ScreenOffset),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(top = FadeHeight, bottom = ScreenOffset)
     ) {
-        Surface(
-            shape = CircleShape,
-            color = pillColor,
-            contentColor = colors.onSurfaceVariant,
-            border = BorderStroke(1.dp, rimColor),
-            shadowElevation = 12.dp
+        // Sized from the width there is, so a narrow screen (or display zoom)
+        // narrows the tabs instead of squeezing the Add button out of shape.
+        val fabSize = if (maxWidth < 360.dp) 52.dp else 56.dp
+        val fabSpace = if (onFabClick != null) fabSize + FabGap else 0.dp
+        val pillChrome = 14.dp // the pill's inner padding and rim
+        val perTab = (maxWidth - SideMargin * 2 - fabSpace - pillChrome) / items.size.coerceAtLeast(1)
+        val tabWidth = (perTab - TabGap * 2).coerceIn(MinTabWidth, MaxTabWidth)
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(FabGap, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = CircleShape,
+                color = pillColor,
+                contentColor = colors.onSurfaceVariant,
+                border = BorderStroke(1.dp, rimColor),
+                shadowElevation = 12.dp
             ) {
-                items.forEach { item ->
-                    ToolbarTab(
-                        item = item,
-                        selected = currentRoute == item.route,
-                        onClick = { onNavigate(item.route) }
-                    )
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items.forEach { item ->
+                        ToolbarTab(
+                            item = item,
+                            selected = currentRoute == item.route,
+                            width = tabWidth,
+                            onClick = { onNavigate(item.route) }
+                        )
+                    }
                 }
             }
-        }
 
-        if (onFabClick != null) {
-            FloatingActionButton(
-                onClick = onFabClick,
-                shape = RoundedCornerShape(20.dp),
-                containerColor = colors.primary,
-                contentColor = colors.onPrimary,
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 12.dp, pressedElevation = 8.dp)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add")
+            if (onFabClick != null) {
+                FloatingActionButton(
+                    onClick = onFabClick,
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 12.dp, pressedElevation = 8.dp),
+                    modifier = Modifier.size(fabSize)
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add")
+                }
             }
         }
     }
 }
 
+private val SideMargin = 12.dp
+private val FabGap = 8.dp
+private val TabGap = 2.dp
+private val MinTabWidth = 36.dp
+private val MaxTabWidth = 52.dp
+
 @Composable
 private fun ToolbarTab(
     item: BottomNavItem,
     selected: Boolean,
+    width: Dp,
     onClick: () -> Unit
 ) {
     val containerColor by animateColorAsState(
@@ -188,8 +211,8 @@ private fun ToolbarTab(
         color = containerColor,
         contentColor = contentColor,
         modifier = Modifier
-            .padding(vertical = 4.dp, horizontal = 2.dp)
-            .size(52.dp, 40.dp)
+            .padding(vertical = 4.dp, horizontal = TabGap)
+            .size(width, 40.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
