@@ -27,6 +27,14 @@ enum class EntryType(val label: String, val dbValue: String) {
     }
 }
 
+/** The film a Cinema entry was for, as picked from TMDB. */
+data class LinkedMovie(
+    val tmdbId: Int,
+    val title: String,
+    val posterPath: String?,
+    val year: String
+)
+
 /**
  * One transaction being typed or edited. Fields are snapshot state so a card
  * can be edited in place and every summary of it stays current.
@@ -41,7 +49,9 @@ class TransactionEntryState(
     note: String = "",
     account: String? = null,
     dateMillis: Long = System.currentTimeMillis(),
-    excludeAnalytics: Boolean = false
+    excludeAnalytics: Boolean = false,
+    movie: LinkedMovie? = null,
+    movieTags: List<String> = emptyList()
 ) {
     var type by mutableStateOf(type)
     var category by mutableStateOf(category)
@@ -50,14 +60,23 @@ class TransactionEntryState(
     var account by mutableStateOf(account)
     var dateMillis by mutableStateOf(dateMillis)
     var excludeAnalytics by mutableStateOf(excludeAnalytics)
+    var movie by mutableStateOf(movie)
+    var movieTags by mutableStateOf(movieTags)
+
+    /** A trip to the movies: the note searches films, and a picked one is logged to SabDekho. */
+    val isCinema: Boolean
+        get() = category.trim().equals("Cinema", ignoreCase = true)
 
     /** The amount the entry will save as, with any arithmetic worked out. */
     val evaluatedAmount: Double?
         get() = AmountExpression.evaluate(amount)
 
-    /** Nothing typed yet — such an entry is skipped rather than blocking a save. */
+    /**
+     * Nothing typed yet — such an entry is skipped rather than blocking a save.
+     * A category alone doesn't count: the next card carries it over.
+     */
     val isBlank: Boolean
-        get() = amount.isBlank() && category.isBlank() && note.isBlank()
+        get() = amount.isBlank() && note.isBlank()
 
     /** What still has to be filled in, in the order the form asks for it. */
     val missingFields: List<String>
@@ -73,9 +92,10 @@ class TransactionEntryState(
     val apiDate: String
         get() = API_DATE.get()!!.format(Date(dateMillis))
 
-    /** A copy for the next card: same account, date and type, fresh details. */
+    /** A copy for the next card: same account, date, type and category; amount and note left empty. */
     fun nextFromThis(): TransactionEntryState = TransactionEntryState(
         type = type,
+        category = category,
         account = account,
         dateMillis = dateMillis
     )
@@ -87,7 +107,9 @@ class TransactionEntryState(
         note = note,
         account = account,
         dateMillis = dateMillis,
-        excludeAnalytics = excludeAnalytics
+        excludeAnalytics = excludeAnalytics,
+        movie = movie,
+        movieTags = movieTags
     )
 
     companion object {

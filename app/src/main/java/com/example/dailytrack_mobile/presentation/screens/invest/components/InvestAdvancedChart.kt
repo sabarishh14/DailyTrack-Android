@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -175,11 +176,15 @@ internal fun AdvancedChart(
                         )
                     }
             ) {
-                val textPaint = remember {
+                // Canvas text skips the theme, so hand it the app's label font.
+                val labelFamily = MaterialTheme.typography.labelSmall.fontFamily
+                val fontResolver = LocalFontFamilyResolver.current
+                val textPaint = remember(labelFamily, fontResolver) {
                     android.graphics.Paint().apply {
                         color = android.graphics.Color.GRAY
                         textSize = 28f
                         textAlign = android.graphics.Paint.Align.CENTER
+                        typeface = fontResolver.resolve(labelFamily, FontWeight.Medium).value as? android.graphics.Typeface
                     }
                 }
 

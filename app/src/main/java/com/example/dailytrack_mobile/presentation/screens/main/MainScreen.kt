@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
@@ -152,6 +154,8 @@ fun MainScreen(
     // Someone's shared data on screen (read-only), or null for your own.
     val sharingViewModel: com.example.dailytrack_mobile.presentation.screens.settings.SharingVM = hiltViewModel()
     val viewAs by sharingViewModel.viewAs.collectAsState()
+    val sharedWithMe by sharingViewModel.sharedWithMe.collectAsState()
+    var showViewMenu by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -460,6 +464,30 @@ fun MainScreen(
                             }
                         },
                         actions = {
+                            // Whose data: yours, or someone's who shared with you.
+                            if (sharedWithMe.isNotEmpty() || viewAs != null) Box {
+                                FilledIconButton(colors = topBarIconButtonColors(), onClick = { showViewMenu = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.People,
+                                        contentDescription = "Switch whose data",
+                                        tint = if (viewAs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(dims.iconSizeMedium)
+                                    )
+                                }
+                                DropdownMenu(expanded = showViewMenu, onDismissRequest = { showViewMenu = false }) {
+                                    (listOf<String?>(null) + sharedWithMe.map { it.owner }).forEach { owner ->
+                                        DropdownMenuItem(
+                                            text = { Text(owner ?: "Mine", maxLines = 1) },
+                                            leadingIcon = { Text(if (owner == null) "🙂" else "👀") },
+                                            trailingIcon = if (viewAs == owner) ({ Icon(Icons.Default.Check, contentDescription = null) }) else null,
+                                            onClick = {
+                                                showViewMenu = false
+                                                if (viewAs != owner) sharingViewModel.switchView(owner)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                             FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateToSettings) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
@@ -574,10 +602,11 @@ fun MainScreen(
                         )
                         Routes.AddMoney.route -> AddMoneyScreen(
                             onDirtyStateChanged = { isCurrentFormDirty = it },
-                            onSaveSuccess = { count, balances ->
+                            onSaveSuccess = { count, result ->
                                 val saved = if (count > 1) "$count transactions saved!" else "Transaction saved successfully!"
-                                val message = balanceSummaryLine(balances)?.let { "$saved\n$it" } ?: saved
-                                onFormSaved(message, Routes.Money.route, long = balances.any { it.belowMin })
+                                val message = balanceSummaryLine(result.balances, result.cards)?.let { "$saved\n$it" } ?: saved
+                                val needsAttention = result.balances.any { it.belowMin } || result.cards.any { it.overBudget }
+                                onFormSaved(message, Routes.Money.route, long = needsAttention)
                             }
                         )
                         Routes.AddActivity.route -> AddActivityScreen(

@@ -262,6 +262,8 @@ fun EntryAmountCard(
                         }
                     },
                     textStyle = TextStyle(
+                        // The amount reads as a hero number: the heading font, like the balances.
+                        fontFamily = MaterialTheme.typography.headlineMedium.fontFamily,
                         fontSize = if (amount.length > 12) smallSize else bigSize,
                         fontWeight = FontWeight.Bold,
                         color = accent
@@ -619,7 +621,11 @@ fun EntryDescriptionCard(
             BasicTextField(
                 value = note,
                 onValueChange = onNoteChange,
-                textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                textStyle = TextStyle(
+                    fontFamily = MaterialTheme.typography.bodyMedium.fontFamily,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 minLines = 2,
                 maxLines = 3,

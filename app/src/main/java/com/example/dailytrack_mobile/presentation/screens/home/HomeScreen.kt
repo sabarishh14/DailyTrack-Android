@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.home
 
+import com.example.dailytrack_mobile.presentation.components.FitText
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -73,6 +74,9 @@ import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRef
 import com.example.dailytrack_mobile.presentation.components.transaction.BalanceLevel
 import com.example.dailytrack_mobile.presentation.components.transaction.balanceLevel
 import com.example.dailytrack_mobile.presentation.components.transaction.balanceLevelColor
+import com.example.dailytrack_mobile.presentation.components.transaction.cardLevel
+import com.example.dailytrack_mobile.presentation.components.AmountLimitDialog
+import com.example.dailytrack_mobile.presentation.components.CardBudgetDialog
 import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
 import android.Manifest
 import android.content.pm.PackageManager
@@ -80,9 +84,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import com.example.dailytrack_mobile.presentation.components.MonthYearPickerDialog
 
@@ -188,13 +190,20 @@ fun HomeScreen(
     }
     // A minimum is only useful if its alert can show, so ask when one is first set.
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    val setMinBalance: (String, Double?) -> Unit = { account, min ->
-        viewModel.onAction(HomeAction.SetMinBalance(account, min))
-        if (min != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+    val askForAlerts = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+    val setMinBalance: (String, Double?) -> Unit = { account, min ->
+        viewModel.onAction(HomeAction.SetMinBalance(account, min))
+        if (min != null) askForAlerts()
+    }
+    val setCardBudget: (String, Double?) -> Unit = { account, budget ->
+        viewModel.onAction(HomeAction.SetCardBudget(account, budget))
+        if (budget != null) askForAlerts()
     }
 
     DailyTrackPullToRefreshBox(
@@ -242,7 +251,8 @@ fun HomeScreen(
                     accounts = apiAccounts,
                     totalBankBalance = apiBankBalance,
                     isLoading = homeState.isLoading,
-                    onSetMinBalance = if (access.fullMoneyAccess) setMinBalance else null
+                    onSetMinBalance = if (access.fullMoneyAccess) setMinBalance else null,
+                    onSetCardBudget = if (access.fullMoneyAccess) setCardBudget else null
                 )
             }
             if (canRoutines) item {
@@ -351,7 +361,7 @@ private fun NetWorthSection(
                             targetState = isBalanceVisible,
                             label       = "BankBalanceVisibility"
                         ) { visible ->
-                            Text(
+                            FitText(
                                 text  = if (visible) formatCurrencyFull(totalBankBalance) else "₹XXXX",
                                 style = MaterialTheme.typography.displaySmall.copy(
                                     fontWeight = FontWeight.Bold,
@@ -428,7 +438,7 @@ private fun NetWorthSection(
                             targetState = isBalanceVisible,
                             label       = "NetWorthVisibility"
                         ) { visible ->
-                            Text(
+                            FitText(
                                 text  = if (visible) formatCurrencyFull(totalNetWorth) else "₹XXXX",
                                 style = MaterialTheme.typography.displaySmall.copy(
                                     fontWeight = FontWeight.Bold,
@@ -470,12 +480,15 @@ private fun BankAccountsSection(
     totalBankBalance: Double,
     isLoading: Boolean,
     /** Null for users who can't change account settings: cards then aren't tappable. */
-    onSetMinBalance: ((String, Double?) -> Unit)? = null
+    onSetMinBalance: ((String, Double?) -> Unit)? = null,
+    onSetCardBudget: ((String, Double?) -> Unit)? = null
 ) {
     val dims = Dimens.current
     var isExpanded by rememberSaveable { mutableStateOf(false) }
     var isGridView by rememberSaveable { mutableStateOf(true) }
     var editingMinFor by remember { mutableStateOf<AccountInfo?>(null) }
+    var editingBudgetFor by remember { mutableStateOf<AccountInfo?>(null) }
+    val cardsUsed = accounts.filter { it.isCreditCard }.sumOf { it.usedThisMonth ?: 0.0 }
 
     editingMinFor?.let { account ->
         MinBalanceDialog(
@@ -487,9 +500,27 @@ private fun BankAccountsSection(
             onDismiss = { editingMinFor = null }
         )
     }
-    // Credit cards aren't balance-tracked, so a floor means nothing for them.
-    val onAccountClick: ((AccountInfo) -> Unit)? = onSetMinBalance?.let {
-        { account: AccountInfo -> if (!account.account.startsWith("CC", ignoreCase = true)) editingMinFor = account }
+    editingBudgetFor?.let { card ->
+        CardBudgetDialog(
+            card = card.account,
+            usedThisMonth = card.usedThisMonth ?: 0.0,
+            budget = card.monthlyBudget,
+            onSave = { budget ->
+                onSetCardBudget?.invoke(card.account, budget)
+                editingBudgetFor = null
+            },
+            onDismiss = { editingBudgetFor = null }
+        )
+    }
+    // A card has no balance to keep a floor under; it gets a monthly budget instead.
+    val onAccountClick: ((AccountInfo) -> Unit)? = if (onSetMinBalance == null && onSetCardBudget == null) null else {
+        { account: AccountInfo ->
+            if (account.isCreditCard) {
+                if (onSetCardBudget != null) editingBudgetFor = account
+            } else if (onSetMinBalance != null) {
+                editingMinFor = account
+            }
+        }
     }
 
     SectionCard {
@@ -663,6 +694,25 @@ private fun BankAccountsSection(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
+                    // Card spending stays out of the total: it's this month's, not money held.
+                    if (cardsUsed > 0) {
+                        Row(
+                            modifier              = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text  = "Cards used this month",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text  = formatCurrencyFull(-cardsUsed),
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -672,8 +722,8 @@ private fun BankAccountsSection(
 @Composable
 private fun BankAccountRow(account: AccountInfo, onClick: (() -> Unit)? = null) {
     val dims = Dimens.current
-    val isCreditCard = account.account.startsWith("CC-", ignoreCase = true)
-    val level = account.minBalance?.let { balanceLevel(account.balance, it) }
+    val isCreditCard = account.isCreditCard
+    val level = accountLevel(account)
     Row(
         modifier              = Modifier
             .fillMaxWidth()
@@ -708,12 +758,12 @@ private fun BankAccountRow(account: AccountInfo, onClick: (() -> Unit)? = null) 
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                MinBalanceCaption(account, level)
+                AccountCaption(account, level)
             }
         }
         Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
         Text(
-            text     = formatCurrencyFull(account.balance),
+            text     = formatCurrencyFull(shownAmount(account)),
             style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
             color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else balanceLevelColor(level),
             maxLines = 1,
@@ -729,8 +779,8 @@ private fun BankAccountCard(
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
-    val isCreditCard = account.account.startsWith("CC-", ignoreCase = true)
-    val level = account.minBalance?.let { balanceLevel(account.balance, it) }
+    val isCreditCard = account.isCreditCard
+    val level = accountLevel(account)
     Card(
         onClick   = onClick ?: {},
         enabled   = onClick != null,
@@ -775,14 +825,62 @@ private fun BankAccountCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text     = formatCurrencyFull(account.balance),
+                    text     = formatCurrencyFull(shownAmount(account)),
                     style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.primary else balanceLevelColor(level),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                MinBalanceCaption(account, level)
+                AccountCaption(account, level)
             }
+        }
+    }
+}
+
+/** What an account shows: a card's spending this month as a negative, otherwise its balance. */
+private fun shownAmount(account: AccountInfo): Double =
+    if (account.isCreditCard) -(account.usedThisMonth ?: 0.0) else account.balance
+
+/** How near an account is to its minimum, or a card to its budget; null when neither is set. */
+private fun accountLevel(account: AccountInfo): BalanceLevel? =
+    if (account.isCreditCard) account.monthlyBudget?.let { cardLevel(account.usedThisMonth ?: 0.0, it) }
+    else account.minBalance?.let { balanceLevel(account.balance, it) }
+
+@Composable
+private fun AccountCaption(account: AccountInfo, level: BalanceLevel?) =
+    if (account.isCreditCard) CardBudgetCaption(account, level) else MinBalanceCaption(account, level)
+
+/** "Used this month", or against a budget: "of ₹20,000 budget" with a bar, "⚠ ₹1,200 over ₹20,000 budget". */
+@Composable
+private fun CardBudgetCaption(card: AccountInfo, level: BalanceLevel?) {
+    val used = card.usedThisMonth ?: 0.0
+    val budget = card.monthlyBudget
+    val color = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+    else balanceLevelColor(level)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = when {
+                budget == null -> "Used this month"
+                level == BalanceLevel.DANGER -> "⚠ ${formatCurrencyFull(used - budget)} over ${formatCurrencyFull(budget)} budget"
+                else -> "of ${formatCurrencyFull(budget)} budget"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (budget != null) {
+            LinearProgressIndicator(
+                progress = { (used / budget).toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp),
+                color = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.primary else balanceLevelColor(level),
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                strokeCap = StrokeCap.Round,
+                gapSize = 0.dp,
+                drawStopIndicator = {}
+            )
         }
     }
 }
@@ -808,61 +906,17 @@ private fun MinBalanceDialog(
     account: AccountInfo,
     onSave: (Double?) -> Unit,
     onDismiss: () -> Unit
-) {
-    var text by remember { mutableStateOf(account.minBalance?.let { "%.0f".format(it) } ?: "") }
-    val value = text.trim().toDoubleOrNull()
-    val accent = bankColor(account.account) ?: MaterialTheme.colorScheme.primary
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.18f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Default.AccountBalance, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
-            }
-        },
-        title = { Text("Minimum for ${account.account}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = "Get an alert when a transaction takes this account below it. " +
-                        "Balance now: ${formatCurrencyFull(account.balance)}.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { new -> text = new.filter { it.isDigit() || it == '.' } },
-                    prefix = { Text("₹") },
-                    placeholder = { Text("2000") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(value) }, enabled = value != null && value > 0) {
-                Text("Save", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            Row {
-                if (account.minBalance != null) {
-                    TextButton(onClick = { onSave(null) }) {
-                        Text("Remove", color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
-        }
-    )
-}
+) = AmountLimitDialog(
+    account = account.account,
+    icon = Icons.Default.AccountBalance,
+    title = "Minimum for ${account.account}",
+    explanation = "Get an alert when a transaction takes this account below it. " +
+        "Balance now: ${formatCurrencyFull(account.balance)}.",
+    current = account.minBalance,
+    placeholder = "2000",
+    onSave = onSave,
+    onDismiss = onDismiss
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Budgets — a small teaser card under Bank Accounts that redirects to the

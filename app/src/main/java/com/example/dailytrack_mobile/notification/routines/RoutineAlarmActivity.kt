@@ -129,7 +129,8 @@ class RoutineAlarmActivity : ComponentActivity() {
             DailyTrackTheme(
                 themeMode = ThemeMode.DARK,
                 appTheme = themes.getInitialTheme(),
-                withAmoled = themes.getInitialAmoled()
+                withAmoled = themes.getInitialAmoled(),
+                appFont = themes.getInitialFont()
             ) {
                 alarm?.let { current ->
                     AlarmScreen(

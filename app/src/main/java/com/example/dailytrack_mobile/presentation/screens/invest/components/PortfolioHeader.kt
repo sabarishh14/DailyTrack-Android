@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.invest.components
 
+import com.example.dailytrack_mobile.presentation.components.FitText
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestColors
 import com.example.dailytrack_mobile.presentation.screens.invest.InvestState
@@ -269,7 +270,7 @@ internal fun PortfolioHeader(
             "${if (isGain) "+" else ""}${String.format(java.util.Locale.US, "%.2f", displayPnlPercent)}%"
         }
 
-        Text(
+        FitText(
             text = heroValue,
             style = MaterialTheme.typography.displaySmall.copy(
                 fontWeight = FontWeight.ExtraBold

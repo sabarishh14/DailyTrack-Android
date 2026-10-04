@@ -25,6 +25,8 @@ class SharingVM @Inject constructor(
     data class State(
         val loading: Boolean = true,
         val mine: List<MyShareDto> = emptyList(),
+        /** From the same call as [mine], so the screen fills in one go. */
+        val withMe: List<AuthManager.SharedWithMe>? = null,
         val busy: Boolean = false,
         val error: String? = null,
         val message: String? = null
@@ -40,7 +42,11 @@ class SharingVM @Inject constructor(
     fun load() {
         viewModelScope.launch {
             repo.getShares()
-                .onSuccess { res -> _state.update { it.copy(loading = false, mine = res.mine) } }
+                .onSuccess { res ->
+                    _state.update {
+                        it.copy(loading = false, mine = res.mine, withMe = res.withMe.map { w -> AuthManager.SharedWithMe(w.owner, w.modules) })
+                    }
+                }
                 .onFailure { _state.update { it.copy(loading = false) } }
         }
     }

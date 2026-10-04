@@ -52,7 +52,7 @@ class RoutinesVM @Inject constructor(
     private val reminders: RoutineReminders,
     private val alarmSettings: RoutineAlarmSettings,
     demoModeManager: DemoModeManager,
-    authManager: AuthManager
+    private val authManager: AuthManager
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(RoutinesState())
@@ -69,12 +69,16 @@ class RoutinesVM @Inject constructor(
     init {
         // Every change to the phone's copy (a tick here, an answer from the
         // notification, a refresh) rebuilds the page.
+        // Viewing someone's shared routines, their copy is shown instead (see refresh).
         viewModelScope.launch {
-            repository.snapshot.filterNotNull().collectLatest { rebuild(it) }
+            combine(repository.snapshot.filterNotNull(), authManager.viewAsFlow) { snapshot, viewAs -> snapshot to viewAs }
+                .collectLatest { (snapshot, viewAs) -> if (viewAs == null) rebuild(snapshot) }
         }
-        // Whose routines these are: reload whenever demo mode or the signed-in person changes.
+        // Whose routines these are: reload whenever demo mode, the signed-in person or the view changes.
         viewModelScope.launch {
-            combine(demoModeManager.isDemoModeEnabledFlow, authManager.userEmailFlow) { demo, email -> demo to email }
+            combine(demoModeManager.isDemoModeEnabledFlow, authManager.userEmailFlow, authManager.viewAsFlow) { demo, email, viewAs ->
+                Triple(demo, email, viewAs)
+            }
                 .distinctUntilChanged()
                 .collect { refresh(showSpinner = false) }
         }
@@ -93,6 +97,11 @@ class RoutinesVM @Inject constructor(
     }
 
     fun onAction(action: RoutinesAction) {
+        // Someone else's routines: everything can be looked at, nothing changed.
+        if (_state.value.readOnly && action.changesSomething()) {
+            _state.update { it.copy(message = "View only") }
+            return
+        }
         when (action) {
             RoutinesAction.Refresh -> refresh(showSpinner = true)
             RoutinesAction.Resume -> {
@@ -220,6 +229,19 @@ class RoutinesVM @Inject constructor(
     private fun refresh(showSpinner: Boolean) {
         viewModelScope.launch {
             if (showSpinner) _state.update { it.copy(isRefreshing = true) }
+            val viewAs = authManager.viewAsFlow.value
+            if (viewAs != null) {
+                // Their routines, fresh from the server; nothing of theirs is stored here.
+                _state.update { it.copy(readOnly = true, detail = null, openDay = null, skipping = null) }
+                val result = repository.fetchShared(viewAs)
+                result.getOrNull()?.let { rebuild(it) }
+                lastRefreshAt = System.currentTimeMillis()
+                _state.update {
+                    it.copy(isLoading = false, isRefreshing = false, error = result.exceptionOrNull()?.message)
+                }
+                return@launch
+            }
+            if (_state.value.readOnly) _state.update { it.copy(readOnly = false, detail = null, openDay = null) }
             repository.load()
             val result = repository.refresh()
             lastRefreshAt = System.currentTimeMillis()
@@ -339,4 +361,12 @@ class RoutinesVM @Inject constructor(
     private companion object {
         const val REFRESH_AFTER_MS = 60_000L
     }
+}
+
+private fun RoutinesAction.changesSomething(): Boolean = when (this) {
+    is RoutinesAction.SetStatus, is RoutinesAction.AskSkipReason,
+    RoutinesAction.OpenCheckInSettings, RoutinesAction.TryCheckIn,
+    is RoutinesAction.SetCheckInEnabled, is RoutinesAction.SetCheckInTime,
+    is RoutinesAction.SetCheckInAlarm, is RoutinesAction.ToggleCheckInDay -> true
+    else -> false
 }

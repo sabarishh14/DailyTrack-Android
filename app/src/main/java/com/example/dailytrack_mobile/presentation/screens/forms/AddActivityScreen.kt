@@ -321,6 +321,7 @@ fun AddActivityScreen(
                     value = note,
                     onValueChange = { note = it },
                     textStyle = TextStyle(
+                        fontFamily = MaterialTheme.typography.bodyMedium.fontFamily,
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     ),

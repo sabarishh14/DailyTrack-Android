@@ -32,6 +32,9 @@ data class SabdekhoState(
     val monthFilter: String = "all",
     val weekFilter: String = "all",
     val languageFilter: String = "all",
+    // From the Stats "By day" and "Ratings" bars: a weekday (0 = Monday) and a log's rating.
+    val weekdayFilter: String = "all",
+    val ratingFilter: String = "all",
     val showMoreFilters: Boolean = false,
     val filterYears: List<Int> = emptyList(),
     val filterLanguages: List<MediaFilterLanguageDto> = emptyList(),
@@ -82,7 +85,7 @@ data class SabdekhoState(
     val isEditDialogOpen: Boolean = false
 ) {
     val activeLibraryFilterCount: Int
-        get() = listOf(yearFilter, monthFilter, weekFilter, languageFilter).count { it != "all" }
+        get() = listOf(yearFilter, monthFilter, weekFilter, languageFilter, weekdayFilter, ratingFilter).count { it != "all" }
 
     val hasActiveLibraryFilters: Boolean
         get() = activeLibraryFilterCount > 0

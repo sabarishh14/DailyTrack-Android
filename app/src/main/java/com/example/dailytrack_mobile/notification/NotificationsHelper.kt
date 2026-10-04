@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.example.dailytrack_mobile.MainActivity
 import com.example.dailytrack_mobile.R
 import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
+import com.example.dailytrack_mobile.data.remote.dto.CardChangeDto
 import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
 
 class NotificationsHelper(private val context: Context) {
@@ -78,19 +79,32 @@ class NotificationsHelper(private val context: Context) {
         showBalanceAlert(title, lines.joinToString("\n"))
     }
 
+    /** A credit card went over the monthly budget the user set for it. */
+    fun showCardBudgetNotification(cards: List<CardChangeDto>) {
+        if (cards.isEmpty()) return
+        val title = if (cards.size == 1) "${cards.first().account} is over its monthly budget"
+        else "${cards.size} cards are over their monthly budget"
+        val lines = cards.map { c ->
+            val budget = c.monthlyBudget ?: 0.0
+            "${c.account}: ₹${formatRupees(c.after)} used · ₹${formatRupees(c.after - budget)} over ₹${formatRupees(budget)}"
+        }
+        showBalanceAlert(title, lines.joinToString("\n"), cardBudget = true)
+    }
+
     /**
-     * Posts a low-balance alert. The server's push for the same save arrives
-     * moments after the app's own alert; one id plus alert-once means the
-     * second only refreshes the first instead of buzzing again.
+     * Posts a low-balance alert, or with [cardBudget] a card-over-budget one.
+     * The server's push for the same save arrives moments after the app's own
+     * alert; one id per kind plus alert-once means the second only refreshes
+     * the first instead of buzzing again.
      */
-    fun showBalanceAlert(title: String, body: String) {
+    fun showBalanceAlert(title: String, body: String, cardBudget: Boolean = false) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationManager.createNotificationChannel(
                 NotificationChannel(
                     BALANCE_CHANNEL_ID,
                     "Balance alerts",
                     NotificationManager.IMPORTANCE_HIGH
-                ).apply { description = "When an account drops below its minimum balance" }
+                ).apply { description = "When an account drops below its minimum, or a card goes over its monthly budget" }
             )
         }
 
@@ -112,7 +126,7 @@ class NotificationsHelper(private val context: Context) {
             .setAutoCancel(true)
             .build()
 
-        notificationManager.notify(BALANCE_NOTIFICATION_ID, notification)
+        notificationManager.notify(if (cardBudget) CARD_BUDGET_NOTIFICATION_ID else BALANCE_NOTIFICATION_ID, notification)
     }
 
     companion object {
@@ -120,5 +134,6 @@ class NotificationsHelper(private val context: Context) {
         private const val NOTIFICATION_ID = 2001
         const val BALANCE_CHANNEL_ID = "dailytrack_balance_alerts"
         private const val BALANCE_NOTIFICATION_ID = 2002
+        private const val CARD_BUDGET_NOTIFICATION_ID = 2003
     }
 }

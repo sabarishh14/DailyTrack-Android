@@ -11,7 +11,11 @@ data class AccountDto(
     @Json(name = "real_balance") val realBalance: Double?,
     @Json(name = "balance_tracked") val balanceTracked: Boolean,
     // Floor the user wants to keep; null when unset or balances are hidden.
-    @Json(name = "min_balance") val minBalance: Double? = null
+    @Json(name = "min_balance") val minBalance: Double? = null,
+    // Credit cards only: spent on the card this calendar month (resets on the 1st)…
+    @Json(name = "used_this_month") val usedThisMonth: Double? = null,
+    // …and the most the user wants to spend on it in a month; null when unset.
+    @Json(name = "monthly_budget") val monthlyBudget: Double? = null
 )
 
 /**

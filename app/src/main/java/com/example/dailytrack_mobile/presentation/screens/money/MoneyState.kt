@@ -71,10 +71,16 @@ data class AccountInfo(
     val realBalance: Double?,
     val balanceTracked: Boolean,
     /** Floor set for this account; null when there is none. */
-    val minBalance: Double? = null
+    val minBalance: Double? = null,
+    /** Credit cards: spent on the card this month (it resets on the 1st). Null for other accounts. */
+    val usedThisMonth: Double? = null,
+    /** Credit cards: the monthly spending limit; null when there is none. */
+    val monthlyBudget: Double? = null
 ) {
     /** Returns the verified balance if available, otherwise the ledger balance */
     val displayBalance: Double get() = realBalance ?: balance
+
+    val isCreditCard: Boolean get() = com.example.dailytrack_mobile.data.repository.isCcAccount(account)
 }
 
 data class Transaction(

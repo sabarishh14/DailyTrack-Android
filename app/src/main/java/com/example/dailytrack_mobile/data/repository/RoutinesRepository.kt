@@ -60,6 +60,18 @@ class RoutinesRepository @Inject constructor(
     suspend fun load(): RoutinesSnapshot = mutex.withLock { currentLocked() }
 
     /**
+     * [owner]'s routines, shared with you: fetched fresh, never stored, so your own
+     * copy, alarms, check-ins and widget never see them.
+     */
+    suspend fun fetchShared(owner: String): Result<RoutinesSnapshot> {
+        if (!awaitAuth()) return Result.failure(Exception("Not signed in"))
+        return call { api.getSharedRoutines(owner) }.mapCatching { body ->
+            if (!body.success) throw Exception(body.message ?: "Couldn't load their routines")
+            RoutinesSnapshot(owner = owner, routines = body.routines, checkins = body.checkins, syncedAt = System.currentTimeMillis())
+        }
+    }
+
+    /**
      * Sends queued answers, then fetches everything. On failure the phone's copy
      * stays as it was, queued answers included.
      */

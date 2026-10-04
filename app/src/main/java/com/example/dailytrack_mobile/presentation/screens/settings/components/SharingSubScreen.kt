@@ -77,12 +77,15 @@ private fun avatarColor(email: String) = Color(AVATAR_COLORS[email.sumOf { it.co
 @Composable
 internal fun SharingSubScreen(
     onNavigateBack: () -> Unit,
+    /** After switching whose data is on screen: leave Settings for Home. */
+    onSwitched: () -> Unit = onNavigateBack,
     viewModel: SharingVM = hiltViewModel()
 ) {
     BackHandler { onNavigateBack() }
     val state by viewModel.state.collectAsState()
     val viewAs by viewModel.viewAs.collectAsState()
-    val withMe by viewModel.sharedWithMe.collectAsState()
+    val withMeFlow by viewModel.sharedWithMe.collectAsState()
+    val withMe = state.withMe ?: withMeFlow
     val dims = Dimens.current
     val snackbar = remember { SnackbarHostState() }
     var email by rememberSaveable { mutableStateOf("") }
@@ -119,6 +122,12 @@ internal fun SharingSubScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(bottom = dims.screenBottomPadding)
         ) {
+            if (state.loading && state.mine.isEmpty() && withMe.isEmpty()) item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            }
+
             // Share with someone
             if (viewAs == null) item {
                 SettingsCard {
@@ -195,7 +204,7 @@ internal fun SharingSubScreen(
                             if (viewAs == share.owner) {
                                 Text("Viewing", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             } else {
-                                FilledTonalButton(onClick = { viewModel.switchView(share.owner); onNavigateBack() }) { Text("View") }
+                                FilledTonalButton(onClick = { viewModel.switchView(share.owner); onSwitched() }) { Text("View") }
                             }
                         }
                     }

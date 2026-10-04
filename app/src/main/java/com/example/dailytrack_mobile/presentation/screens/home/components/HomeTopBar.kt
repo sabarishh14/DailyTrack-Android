@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.home.components
 
+import com.example.dailytrack_mobile.presentation.components.FitText
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -101,13 +102,19 @@ fun HomeTopBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // ── Left: Greeting Text (Hello User) ─────────────────────────────
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // Takes what the capsule leaves, so a long name shrinks rather than pushing it.
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             Text(
                 text = "$greetingText,",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
+            FitText(
                 text = "$userGreetingName 👋",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground

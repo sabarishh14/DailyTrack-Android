@@ -152,6 +152,13 @@ internal fun AppearanceSettingsSubScreen(
                             onThemeSelected = { onAction(SettingsAction.OnThemeChanged(it)) }
                         )
                     }
+
+                    SettingsCard {
+                        FontSelector(
+                            current = state.appFont,
+                            onFontSelected = { onAction(SettingsAction.OnFontChanged(it)) }
+                        )
+                    }
                 }
             }
         }

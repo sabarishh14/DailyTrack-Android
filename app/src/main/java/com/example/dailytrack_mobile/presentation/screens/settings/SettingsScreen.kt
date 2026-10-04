@@ -228,8 +228,8 @@ fun SettingsScreen(
                 id = "Appearance",
                 icon = Icons.Default.Palette,
                 title = "Appearance",
-                subtitle = "Theme, dark mode, colors",
-                keywords = listOf("theme", "dark", "light", "amoled", "oled", "true black", "color", "wallpaper", "appearance", "palette")
+                subtitle = "Theme, dark mode, colors, font",
+                keywords = listOf("theme", "dark", "light", "amoled", "oled", "true black", "color", "wallpaper", "appearance", "palette", "font", "typeface", "text")
             ),
             SettingsCategoryItem(
                 id = "PrivacySecurity",
@@ -400,7 +400,11 @@ fun SettingsScreen(
         }
         "Sharing" -> {
             com.example.dailytrack_mobile.presentation.screens.settings.components.SharingSubScreen(
-                onNavigateBack = { currentSubScreen = null }
+                onNavigateBack = { currentSubScreen = null },
+                onSwitched = {
+                    currentSubScreen = null
+                    onAction(SettingsAction.OnBackClicked)
+                }
             )
             return
         }

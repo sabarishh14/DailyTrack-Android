@@ -9,9 +9,13 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import com.example.dailytrack_mobile.presentation.util.ScreenSizeTier
+import com.example.dailytrack_mobile.presentation.util.screenSizeTierOf
 
 val LocalAppTheme = staticCompositionLocalOf { AppTheme.YELLOW }
 
@@ -26,6 +30,7 @@ fun DailyTrackTheme(
     },
     appTheme: AppTheme = AppTheme.YELLOW,
     withAmoled: Boolean = false,
+    appFont: AppFont = AppFont.MODERN,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = false, // Disabled by default so theme switcher works on API 31+
     content: @Composable () -> Unit
@@ -70,13 +75,17 @@ fun DailyTrackTheme(
         baseScheme
     }
 
+    // Small screens get lighter (narrower) headings; see SyneCompactFamily.
+    val compact = screenSizeTierOf(LocalConfiguration.current.screenWidthDp) == ScreenSizeTier.COMPACT
+    val typography = remember(appFont, compact) { typographyFor(appFont, compact) }
+
     CompositionLocalProvider(LocalAppTheme provides appTheme) {
         // Expressive theme: M3 components pick up the spring-based expressive
         // motion scheme (sheets, nav indicator, buttons, chips, switches...).
         MaterialExpressiveTheme(
             colorScheme = colorScheme,
             motionScheme = MotionScheme.expressive(),
-            typography = Typography,
+            typography = typography,
             content = content
         )
     }

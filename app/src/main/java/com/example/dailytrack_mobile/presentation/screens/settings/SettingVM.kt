@@ -89,6 +89,7 @@ class SettingsVM @Inject constructor(
             selectedTheme = themeManager.getInitialTheme(),
             themeMode = themeManager.getInitialThemeMode(),
             withAmoled = themeManager.getInitialAmoled(),
+            appFont = themeManager.getInitialFont(),
             isAppLockEnabled = appLockManager.isAppLockEnabledSync(),
             lockTimeout = appLockManager.getLockTimeoutSync(),
             letterboxdUsername = syncPreferencesManager?.getLetterboxdUsername().orEmpty()
@@ -126,6 +127,12 @@ class SettingsVM @Inject constructor(
         viewModelScope.launch {
             themeManager.amoledFlow.collect { isAmoled ->
                 _state.update { it.copy(withAmoled = isAmoled) }
+            }
+        }
+
+        viewModelScope.launch {
+            themeManager.fontFlow.collect { font ->
+                _state.update { it.copy(appFont = font) }
             }
         }
 
@@ -220,6 +227,11 @@ class SettingsVM @Inject constructor(
             is SettingsAction.OnAmoledToggled -> {
                 viewModelScope.launch {
                     themeManager.saveAmoled(action.enabled)
+                }
+            }
+            is SettingsAction.OnFontChanged -> {
+                viewModelScope.launch {
+                    themeManager.saveFont(action.font)
                 }
             }
             is SettingsAction.OnBackClicked -> {

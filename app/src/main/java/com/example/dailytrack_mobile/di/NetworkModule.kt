@@ -98,17 +98,18 @@ object NetworkModule {
         // returns to the login screen with an explanation.
         val sessionInterceptor = Interceptor { chain ->
             val request = chain.request()
+            // The token this request goes out with (the auth interceptor adds the same one).
+            val sentWith = authManager.getCachedToken()
             val response = chain.proceed(request)
             val path = request.url.encodedPath
-            // Runs outside the auth interceptor, so the header isn't visible here;
-            // onSessionRejected() ignores this if we weren't signed in.
             if (response.code == 401 && path.startsWith("/api/") && !path.contains("/api/auth/firebase-login")) {
                 val revoked = try {
                     response.peekBody(2048).string().contains("ACCESS_REVOKED")
                 } catch (_: Exception) { false }
                 authManager.onSessionRejected(
                     if (revoked) "Your access to DailyTrack has been removed. Contact the owner if this is a mistake."
-                    else "Your session has expired. Please sign in again."
+                    else "Your session has expired. Please sign in again.",
+                    sentWith
                 )
             }
             response

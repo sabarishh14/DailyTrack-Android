@@ -52,6 +52,12 @@ data class MediaSearchDataDto(
 )
 
 @JsonClass(generateAdapter = true)
+data class MovieTagsResponseDto(
+    @Json(name = "success") val success: Boolean = false,
+    @Json(name = "tags") val tags: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class MediaSearchResultDto(
     @Json(name = "id") val id: Int,
     @Json(name = "title") val title: String? = null,

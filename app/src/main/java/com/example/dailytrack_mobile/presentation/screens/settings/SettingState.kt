@@ -3,6 +3,7 @@ package com.example.dailytrack_mobile.presentation.screens.settings
 import com.example.dailytrack_mobile.BuildConfig
 import com.example.dailytrack_mobile.data.local.security.LockTimeout
 import com.example.dailytrack_mobile.data.local.security.LockType
+import com.example.dailytrack_mobile.presentation.theme.AppFont
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.ThemeMode
 
@@ -36,6 +37,7 @@ data class SettingsState(
     val selectedTheme: AppTheme = AppTheme.YELLOW,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val withAmoled: Boolean = false,
+    val appFont: AppFont = AppFont.MODERN,
     val appVersion: String = "v${BuildConfig.VERSION_NAME}",
     val developerName: String = "Sabarish SB",
     val isAppLockEnabled: Boolean = false,

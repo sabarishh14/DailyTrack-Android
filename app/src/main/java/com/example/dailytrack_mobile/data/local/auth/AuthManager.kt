@@ -170,8 +170,11 @@ class AuthManager @Inject constructor(
      * Called from the network layer when the server rejects our token. Safe to
      * call from any thread; only the first call for a session does anything.
      */
-    fun onSessionRejected(notice: String) {
-        if (inMemoryToken == null) return
+    fun onSessionRejected(notice: String, sentWith: String?) {
+        // Only the session that request belonged to ends: a 401 for a request sent
+        // signed out (or with a previous account's token) arriving after a fresh
+        // sign-in must not sign the new account out.
+        if (inMemoryToken == null || sentWith == null || sentWith != inMemoryToken) return
         inMemoryToken = null
         _sessionNotice.value = notice
         scope.launch {

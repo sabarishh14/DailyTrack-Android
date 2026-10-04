@@ -9,7 +9,9 @@ import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetDto
 import com.example.dailytrack_mobile.data.remote.dto.BudgetSuggestionDto
 import com.example.dailytrack_mobile.data.remote.dto.BulkEditTransactionItemDto
+import com.example.dailytrack_mobile.data.remote.dto.CardChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.CreateAccountRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.MovieLinkDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
@@ -24,6 +26,12 @@ import javax.inject.Singleton
 /** Credit cards aren't balance-tracked (mirrors the backend's is_cc_account). */
 fun isCcAccount(name: String?): Boolean = name?.trim()?.uppercase()?.startsWith("CC") == true
 
+/** What a save moved: tracked balances, and how much each credit card has been used this month. */
+data class SavedTransactions(
+    val balances: List<BalanceChangeDto>,
+    val cards: List<CardChangeDto> = emptyList()
+)
+
 /** One entry of a batch being added. [type] is the DB value ("Debit", "Credit", …). */
 data class NewTransaction(
     val type: String,
@@ -32,7 +40,9 @@ data class NewTransaction(
     val note: String?,
     val accountName: String,
     val date: String,
-    val excludeAnalytics: Boolean
+    val excludeAnalytics: Boolean,
+    val movie: MovieLinkDto? = null,
+    val movieTags: List<String> = emptyList()
 )
 
 @Singleton
@@ -215,9 +225,10 @@ class MoneyRepository @Inject constructor(
 
     /**
      * Saves a batch in one request, so either every entry lands or none do.
-     * Returns what each touched, tracked account holds afterwards.
+     * Returns what each touched, tracked account holds afterwards, and what
+     * each touched card has been used for this month.
      */
-    suspend fun addTransactions(entries: List<NewTransaction>): Result<List<BalanceChangeDto>> = runCatching {
+    suspend fun addTransactions(entries: List<NewTransaction>): Result<SavedTransactions> = runCatching {
         require(entries.isNotEmpty()) { "Nothing to save" }
         if (demoDataManager.isDemoModeEnabled()) {
             val touched = entries.map { it.accountName }.toSet()
@@ -233,13 +244,15 @@ class MoneyRepository @Inject constructor(
                     excludeAnalytics = e.excludeAnalytics
                 )
             }
-            demoDataManager.getAccounts()
-                .filter { it.account in before && it.balanceTracked && !isCcAccount(it.account) }
-                .map { after ->
-                    val b = before.getValue(after.account).balance ?: 0.0
-                    val a = after.balance ?: 0.0
-                    BalanceChangeDto(after.account, b, a, after.minBalance, after.minBalance != null && a < after.minBalance)
-                }
+            SavedTransactions(
+                demoDataManager.getAccounts()
+                    .filter { it.account in before && it.balanceTracked && !isCcAccount(it.account) }
+                    .map { after ->
+                        val b = before.getValue(after.account).balance ?: 0.0
+                        val a = after.balance ?: 0.0
+                        BalanceChangeDto(after.account, b, a, after.minBalance, after.minBalance != null && a < after.minBalance)
+                    }
+            )
         } else {
             val request = entries.map { e ->
                 AddTransactionRequestDto(
@@ -249,7 +262,9 @@ class MoneyRepository @Inject constructor(
                     heading = e.category,
                     description = e.note ?: "",
                     amount = e.amount,
-                    excludeAnalytics = e.excludeAnalytics
+                    excludeAnalytics = e.excludeAnalytics,
+                    movieData = e.movie,
+                    movieTags = e.movieTags.takeIf { e.movie != null }
                 )
             }
             val response = api.addTransactions(request)
@@ -259,9 +274,21 @@ class MoneyRepository @Inject constructor(
             entries.forEach { e -> recordLocal(e.type, e.category, e.note, e.date) }
             clearCache()
             val balances = response.balances.orEmpty()
+            val cards = response.cards.orEmpty()
             applyBalanceChanges(balances)
+            applyCardChanges(cards)
             demoDataManager.notifyDataUpdated()
-            balances
+            SavedTransactions(balances, cards)
+        }
+    }
+
+    /** Sets or clears ([budget] null) the most a credit card should be used for in a month. */
+    suspend fun setCardBudget(account: String, budget: Double?): Result<Unit> = runCatching {
+        check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
+        val response = api.updateAccount(mapOf("account" to account, "monthly_budget" to (budget ?: "")))
+        if (!response.success) throw Exception(response.message ?: "Couldn't save the budget")
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.map { if (it.account == account) it.copy(monthlyBudget = budget) else it }
         }
     }
 
@@ -345,6 +372,16 @@ class MoneyRepository @Inject constructor(
         synchronized(this) {
             cachedAccounts = cachedAccounts?.map { acc ->
                 byAccount[acc.account]?.let { acc.copy(balance = it.after) } ?: acc
+            }
+        }
+    }
+
+    private fun applyCardChanges(changes: List<CardChangeDto>) {
+        if (changes.isEmpty()) return
+        val byAccount = changes.associateBy { it.account }
+        synchronized(this) {
+            cachedAccounts = cachedAccounts?.map { acc ->
+                byAccount[acc.account]?.let { acc.copy(usedThisMonth = it.after) } ?: acc
             }
         }
     }

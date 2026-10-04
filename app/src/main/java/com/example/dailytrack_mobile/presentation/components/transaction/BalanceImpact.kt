@@ -21,13 +21,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
 import com.example.dailytrack_mobile.data.repository.isCcAccount
+import java.time.Instant
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.ZoneId
 
 // ─────────────────────────────────────────────────────────────────────────────
 // What an entry does to its account: "₹14,230 → ₹13,730", measured against the
 // minimum the user wants to keep there. Mirrors the web's BalanceImpact.
 // ─────────────────────────────────────────────────────────────────────────────
 
-data class BalanceProjection(val account: String, val before: Double, val after: Double, val min: Double?)
+/** What an entry does to its account: a balance, or a credit card's spending this month. */
+sealed interface AccountImpact
+
+data class BalanceProjection(val account: String, val before: Double, val after: Double, val min: Double?) : AccountImpact
+
+/** A card's used-this-month before and after the entry, against its monthly budget. */
+data class CardProjection(val account: String, val before: Double, val after: Double, val budget: Double?) : AccountImpact
 
 enum class BalanceLevel { OK, WARN, DANGER }
 
@@ -37,6 +47,42 @@ fun balanceLevel(after: Double, min: Double?): BalanceLevel = when {
     min != null && after < min * 1.5 -> BalanceLevel.WARN
     min == null && after < 0 -> BalanceLevel.DANGER
     else -> BalanceLevel.OK
+}
+
+/** Over its budget a card is DANGER, from 80% of it WARN. Without a budget nothing warns. */
+fun cardLevel(used: Double, budget: Double?): BalanceLevel = when {
+    budget == null -> BalanceLevel.OK
+    used > budget -> BalanceLevel.DANGER
+    used >= budget * 0.8 -> BalanceLevel.WARN
+    else -> BalanceLevel.OK
+}
+
+/**
+ * Like [projectBalances], for credit cards: what each entry adds to its card's
+ * spending this month (a refund takes it back down). Entries dated in another
+ * month don't touch this month's number, so they get no projection.
+ */
+fun projectCardSpend(
+    entries: List<TransactionEntryState>,
+    accounts: List<AccountDto>,
+    today: LocalDate = LocalDate.now()
+): Map<Long, CardProjection> {
+    val byName = accounts.associateBy { it.account }
+    val running = mutableMapOf<String, Double>()
+    val out = mutableMapOf<Long, CardProjection>()
+    for (entry in entries) {
+        val name = entry.account ?: continue
+        if (!isCcAccount(name)) continue
+        val used = byName[name]?.usedThisMonth ?: continue
+        val amount = entry.evaluatedAmount?.takeIf { it > 0 } ?: continue
+        val date = Instant.ofEpochMilli(entry.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        if (YearMonth.from(date) != YearMonth.from(today)) continue
+        val before = running[name] ?: used
+        val after = if (entry.type == EntryType.INCOME) maxOf(0.0, before - amount) else before + amount
+        running[name] = after
+        out[entry.id] = CardProjection(name, before, after, byName[name]?.monthlyBudget)
+    }
+    return out
 }
 
 /**
@@ -157,6 +203,79 @@ fun EntryBalancePreview(projection: BalanceProjection, modifier: Modifier = Modi
     }
 }
 
+/**
+ * The credit card version of [EntryBalancePreview]: this month's spending on
+ * the card and where the entry takes it, with a bar towards the budget. Says
+ * more only when the budget is close or crossed.
+ */
+@Composable
+fun CardSpendPreview(projection: CardProjection, modifier: Modifier = Modifier) {
+    val budget = projection.budget
+    val level = cardLevel(projection.after, budget)
+    val accountColor = bankColor(projection.account) ?: MaterialTheme.colorScheme.primary
+    val barColor by animateColorAsState(
+        if (level == BalanceLevel.OK) accountColor else balanceLevelColor(level), tween(250), label = "cardSpendColor"
+    )
+    val note = when {
+        budget == null || level == BalanceLevel.OK -> null
+        level == BalanceLevel.DANGER -> "⚠ ₹${formatRupees(projection.after - budget)} over your ₹${formatRupees(budget)} monthly budget"
+        else -> "₹${formatRupees(budget - projection.after)} left of your ₹${formatRupees(budget)} monthly budget"
+    }
+
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (level == BalanceLevel.DANGER) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+            else entryCardColor()
+        ),
+        border = entryCardBorder(),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .fillMaxHeight()
+                    .background(accountColor)
+            )
+            Column(
+                modifier = Modifier.padding(start = 12.dp, end = 14.dp, top = 9.dp, bottom = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${projection.account.uppercase()} · THIS MONTH",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.sp, fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (projection.after != projection.before) {
+                        Text(
+                            text = "₹${formatRupees(projection.before)}  →  ",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                    Text(
+                        text = "₹${formatRupees(projection.after)} used",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = if (level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else barColor
+                    )
+                }
+                // Filling towards the budget; once over, the tick marks where the budget was.
+                if (budget != null) FloorBar(before = budget, after = projection.after, min = budget, color = barColor)
+                note?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = barColor
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** How much of the pre-entry balance is left, with a tick where the floor sits. */
 @Composable
 private fun FloorBar(before: Double, after: Double, min: Double?, color: Color) {
@@ -188,11 +307,20 @@ private fun FloorBar(before: Double, after: Double, min: Double?, color: Color) 
     }
 }
 
-/** "KOTAK ₹13,730 left · IDBI ₹1,800 left (under ₹2,000)" for the save snackbar. */
-fun balanceSummaryLine(changes: List<com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto>): String? {
-    if (changes.isEmpty()) return null
-    return changes.joinToString("  ·  ") { c ->
+/**
+ * "KOTAK ₹13,730 left · CC-AXIS ₹12,840 used this month" for the save snackbar,
+ * with a ⚠ on anything under its minimum or over its budget.
+ */
+fun balanceSummaryLine(
+    changes: List<com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto>,
+    cards: List<com.example.dailytrack_mobile.data.remote.dto.CardChangeDto> = emptyList()
+): String? {
+    val parts = changes.map { c ->
         val base = "${c.account} ₹${formatRupees(c.after)} left"
         if (c.belowMin && c.minBalance != null) "$base ⚠ under ₹${formatRupees(c.minBalance)}" else base
+    } + cards.filter { it.after != it.before }.map { c ->
+        val base = "${c.account} ₹${formatRupees(c.after)} used this month"
+        if (c.overBudget && c.monthlyBudget != null) "$base ⚠ over ₹${formatRupees(c.monthlyBudget)}" else base
     }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 }

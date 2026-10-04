@@ -218,7 +218,8 @@ class MainActivity : FragmentActivity() {
             DailyTrackTheme(
                 themeMode = state.themeMode,
                 appTheme = state.selectedTheme,
-                withAmoled = state.withAmoled
+                withAmoled = state.withAmoled,
+                appFont = state.appFont
             ) {
                 ProvideAppDimensions {
                     CompositionLocalProvider(LocalAccess provides access) {

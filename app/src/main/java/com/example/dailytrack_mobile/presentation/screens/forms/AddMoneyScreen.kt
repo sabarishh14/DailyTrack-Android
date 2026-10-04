@@ -33,12 +33,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.dailytrack_mobile.data.local.auth.AccessModule
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
-import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
+import com.example.dailytrack_mobile.data.remote.dto.MovieLinkDto
 import com.example.dailytrack_mobile.data.repository.NewTransaction
+import com.example.dailytrack_mobile.presentation.access.LocalAccess
+import com.example.dailytrack_mobile.presentation.components.transaction.CinemaMovieCard
+import com.example.dailytrack_mobile.presentation.components.transaction.MovieSuggestionBar
+import com.example.dailytrack_mobile.presentation.components.transaction.toLinkedMovie
+import com.example.dailytrack_mobile.data.repository.SavedTransactions
+import com.example.dailytrack_mobile.presentation.components.transaction.AccountImpact
 import com.example.dailytrack_mobile.presentation.components.transaction.BalanceProjection
+import com.example.dailytrack_mobile.presentation.components.transaction.CardProjection
+import com.example.dailytrack_mobile.presentation.components.transaction.CardSpendPreview
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryBalancePreview
 import com.example.dailytrack_mobile.presentation.components.transaction.projectBalances
+import com.example.dailytrack_mobile.presentation.components.transaction.projectCardSpend
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryAmountCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryCategoryPills
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryDateAccountRow
@@ -65,8 +75,9 @@ import kotlinx.coroutines.flow.collectLatest
 //
 // One entry looks exactly like a single-transaction form. "Add another" folds
 // the current entry into a one-line card and opens a fresh one below, carrying
-// over the account, date and type — so a day's worth of spending is typed as a
-// stack of cards rather than one enormous page. Everything saves in one go.
+// over the account, date, type and category — so a day's worth of spending is
+// typed as a stack of cards rather than one enormous page. Everything saves in
+// one go.
 // ─────────────────────────────────────────────────────────────────────────────
 
 private val defaultExpenseCategories = listOf(
@@ -110,9 +121,13 @@ private fun TransactionEntryState.toDraft(today: String): TransactionDraft = Tra
 fun AddMoneyScreen(
     formsVM: FormsVM = hiltViewModel(),
     onDirtyStateChanged: (Boolean) -> Unit = {},
-    onSaveSuccess: (count: Int, balances: List<BalanceChangeDto>) -> Unit = { _, _ -> }
+    onSaveSuccess: (count: Int, saved: SavedTransactions) -> Unit = { _, _ -> }
 ) {
     val formState by formsVM.addMoneyState.collectAsState()
+    val cinemaResults by formsVM.cinemaResults.collectAsState()
+    val movieTags by formsVM.movieTags.collectAsState()
+    // Cinema entries also write to SabDekho, so only offer it to those who may.
+    val canLinkMovies = LocalAccess.current.canEdit(AccessModule.SABDEKHO)
     val focusManager = LocalFocusManager.current
     val dims = Dimens.current
     val scrollState = rememberScrollState()
@@ -336,8 +351,18 @@ fun AddMoneyScreen(
         )
     }.orEmpty()
 
-    // What each entry leaves in its account, stacking entries on the same one.
-    val projections = projectBalances(entries, formState.accountDetails)
+    // A Cinema entry's description looks the film up until one is picked.
+    val filmQuery = active?.takeIf { canLinkMovies && it.isCinema && it.movie == null }?.note?.trim().orEmpty()
+    LaunchedEffect(filmQuery) { formsVM.searchCinema(filmQuery) }
+    val isCinemaOpen = canLinkMovies && active?.isCinema == true
+    LaunchedEffect(isCinemaOpen) { if (isCinemaOpen) formsVM.loadMovieTags() }
+    val showFilms = showSuggestions && filmQuery.length >= 2 && cinemaResults.isNotEmpty()
+    val showDescriptions = showSuggestions && descriptionSuggestions.isNotEmpty() && !showFilms
+
+    // What each entry leaves in its account, or adds to its card's spending this
+    // month, stacking entries on the same one.
+    val projections: Map<Long, AccountImpact> =
+        projectBalances(entries, formState.accountDetails) + projectCardSpend(entries, formState.accountDetails)
 
     val toSave = entries.filterNot { it.isBlank }
     val firstIncomplete = toSave.firstOrNull { !it.isComplete }
@@ -365,7 +390,7 @@ fun AddMoneyScreen(
                 // Save is the last thing on the page: just a small margin under it
                 // (the gesture-bar inset is added by the scaffold).
                 .padding(start = dims.screenHorizontalPadding, end = dims.screenHorizontalPadding, top = 12.dp, bottom = 8.dp)
-                .padding(bottom = if (showSuggestions && descriptionSuggestions.isNotEmpty()) 84.dp else 0.dp),
+                .padding(bottom = if (showFilms) 100.dp else if (showDescriptions) 84.dp else 0.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             formState.errorMessage?.let { errorMsg ->
@@ -477,6 +502,8 @@ fun AddMoneyScreen(
                                 onAccountClick = { accountSearchDialogOpen = true },
                                 onMoreCategories = { categorySearchDialogOpen = true },
                                 onDescriptionFocusChanged = { isDescriptionFocused = it },
+                                showMovie = canLinkMovies,
+                                knownMovieTags = movieTags,
                                 onCollapse = { collapse() },
                                 onDuplicate = { duplicate(entry) },
                                 onRemove = { remove(entry) }
@@ -559,7 +586,10 @@ fun AddMoneyScreen(
                                 note = e.note.trim().takeIf { it.isNotBlank() },
                                 accountName = e.account ?: accountsList.firstOrNull() ?: "Cash",
                                 date = e.apiDate,
-                                excludeAnalytics = e.excludeAnalytics
+                                excludeAnalytics = e.excludeAnalytics,
+                                movie = e.movie?.takeIf { canLinkMovies && e.isCinema }
+                                    ?.let { MovieLinkDto(it.tmdbId, it.title, it.posterPath) },
+                                movieTags = e.movieTags
                             )
                         },
                         onSuccess = onSaveSuccess
@@ -599,7 +629,26 @@ fun AddMoneyScreen(
 
         // Docked directly above the soft keyboard while a description is typed.
         AnimatedVisibility(
-            visible = showSuggestions && descriptionSuggestions.isNotEmpty() && active != null,
+            visible = showFilms && active != null,
+            enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it },
+            exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            MovieSuggestionBar(
+                results = cinemaResults,
+                onPick = { result ->
+                    active?.let {
+                        it.note = result.displayTitle
+                        it.movie = result.toLinkedMovie()
+                    }
+                    focusManager.clearFocus()
+                },
+                onDone = { focusManager.clearFocus() }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showDescriptions && active != null,
             enter = fadeIn(tween(180)) + slideInVertically(tween(180)) { it },
             exit = fadeOut(tween(150)) + slideOutVertically(tween(150)) { it },
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -629,7 +678,7 @@ private fun EntryEditor(
     entry: TransactionEntryState,
     number: Int,
     total: Int,
-    balanceProjection: BalanceProjection?,
+    balanceProjection: AccountImpact?,
     categoryPills: List<String>,
     isCategoriesLoading: Boolean,
     amountFocusRequester: FocusRequester,
@@ -640,6 +689,8 @@ private fun EntryEditor(
     onAccountClick: () -> Unit,
     onMoreCategories: () -> Unit,
     onDescriptionFocusChanged: (Boolean) -> Unit,
+    showMovie: Boolean,
+    knownMovieTags: List<String>,
     onCollapse: () -> Unit,
     onDuplicate: () -> Unit,
     onRemove: () -> Unit
@@ -689,7 +740,11 @@ private fun EntryEditor(
             // Keeps showing the last projection while it animates away.
             var shown by remember { mutableStateOf(balanceProjection) }
             if (balanceProjection != null) shown = balanceProjection
-            shown?.let { EntryBalancePreview(it) }
+            when (val impact = shown) {
+                is BalanceProjection -> EntryBalancePreview(impact)
+                is CardProjection -> CardSpendPreview(impact)
+                null -> Unit
+            }
         }
 
         EntryCategoryPills(
@@ -706,9 +761,32 @@ private fun EntryEditor(
         ) {
             EntryDescriptionCard(
                 note = entry.note,
-                onNoteChange = { entry.note = it },
+                onNoteChange = {
+                    entry.note = it
+                    // Clearing the description lets the film be searched again.
+                    if (it.isBlank()) entry.movie = null
+                },
                 onFocusChanged = onDescriptionFocusChanged
             )
+            val movie = entry.movie
+            AnimatedVisibility(
+                visible = showMovie && entry.isCinema && movie != null,
+                enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+                exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
+            ) {
+                // Keeps showing the film while it animates away.
+                var shown by remember { mutableStateOf(movie) }
+                if (movie != null) shown = movie
+                shown?.let {
+                    CinemaMovieCard(
+                        movie = it,
+                        tags = entry.movieTags,
+                        knownTags = knownMovieTags,
+                        onUnlink = { entry.movie = null; entry.movieTags = emptyList() },
+                        onTagsChange = { tags -> entry.movieTags = tags }
+                    )
+                }
+            }
             EntryExcludeCard(
                 checked = entry.excludeAnalytics,
                 onCheckedChange = { entry.excludeAnalytics = it }

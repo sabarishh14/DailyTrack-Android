@@ -50,6 +50,8 @@ class SabdekhoRepository @Inject constructor(
         month: String = "all",
         week: String = "all",
         language: String = "all",
+        weekday: String = "all",
+        rating: String = "all",
         forceRefresh: Boolean = false
     ): Result<MediaLibraryResponseDto> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) {
@@ -57,13 +59,14 @@ class SabdekhoRepository @Inject constructor(
             // facets are a no-op offline — status/type filtering still works.
             demoDataManager.getMediaLibrary(limit = limit, offset = offset, type = type, status = status)
         } else {
-            val key = "$limit-$offset-$type-$status-$year-$month-$week-$language"
+            val key = "$limit-$offset-$type-$status-$year-$month-$week-$language-$weekday-$rating"
             if (!forceRefresh && cachedMediaLibrary.containsKey(key)) {
                 cachedMediaLibrary[key]!!
             } else {
                 api.getMediaLibrary(
                     limit = limit, offset = offset, type = type, status = status,
-                    year = year, month = month, week = week, language = language
+                    year = year, month = month, week = week, language = language,
+                    weekday = weekday, rating = rating
                 ).also {
                     cachedMediaLibrary[key] = it
                 }
@@ -81,6 +84,13 @@ class SabdekhoRepository @Inject constructor(
         } else {
             cachedMediaFilters?.takeIf { !forceRefresh } ?: api.getMediaFilters().also { cachedMediaFilters = it }
         }
+    }
+
+    /** Tags already used in the diary, minus the theatre ones the server adds itself. */
+    suspend fun movieTags(): Result<List<String>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) return@runCatching emptyList()
+        api.getMovieTags().tags.orEmpty()
+            .filterNot { it.startsWith("theatres-") || it == "overall-theatres" }
     }
 
     suspend fun searchMedia(query: String): Result<List<MediaSearchResultDto>> = runCatching {

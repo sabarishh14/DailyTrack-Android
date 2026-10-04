@@ -135,6 +135,9 @@ fun RoutinesScreen(
             state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+            state.readOnly && state.routines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Notice(state.error ?: "No routines yet")
+            }
             state.routines.isEmpty() -> EmptyRoutines(
                 error = state.error,
                 archived = state.archived.map { it.id to listOfNotNull(it.emoji, it.name).joinToString(" ") },
@@ -236,7 +239,7 @@ fun RoutinesScreen(
                 items(state.routines, key = { "routine-${it.routine.id}" }) { summary ->
                     RoutineSummaryRow(summary, state.today) { onAction(RoutinesAction.OpenRoutine(summary.routine.id)) }
                 }
-                item(key = "new") {
+                if (!state.readOnly) item(key = "new") {
                     OutlinedButton(
                         onClick = { onNewRoutine(null) },
                         modifier = Modifier
@@ -248,7 +251,7 @@ fun RoutinesScreen(
                         Text("New routine")
                     }
                 }
-                if (state.archived.isNotEmpty()) {
+                if (state.archived.isNotEmpty() && !state.readOnly) {
                     item(key = "archived") {
                         ArchivedList(state.archived.map { it.id to listOfNotNull(it.emoji, it.name).joinToString(" ") }, onEditRoutine)
                     }
@@ -277,7 +280,7 @@ fun RoutinesScreen(
             reminder = state.reminders[detail.routine.id],
             skipping = state.skipping,
             onAction = onAction,
-            onEdit = { onEditRoutine(detail.routine.id) }
+            onEdit = if (state.readOnly) null else ({ onEditRoutine(detail.routine.id) })
         )
     }
     // A routine's page shows its own skip sheet, on top of itself.

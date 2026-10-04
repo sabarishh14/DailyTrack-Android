@@ -106,6 +106,23 @@ class AccountsSettingsVM @Inject constructor(
         }
     }
 
+    /** Sets or, with null, removes a credit card's monthly budget. */
+    fun setCardBudget(card: String, budget: Double?) {
+        viewModelScope.launch {
+            repository.setCardBudget(card, budget)
+                .onSuccess {
+                    _state.update { s ->
+                        s.copy(
+                            cards = s.cards.map { if (it.account == card) it.copy(monthlyBudget = budget) else it },
+                            message = if (budget == null) "Budget removed for $card"
+                            else "You'll be alerted when $card goes over ₹${formatRupees(budget)} in a month"
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(message = e.message ?: "Couldn't save the budget") } }
+        }
+    }
+
     fun clearAddError() = _state.update { it.copy(addError = null) }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }

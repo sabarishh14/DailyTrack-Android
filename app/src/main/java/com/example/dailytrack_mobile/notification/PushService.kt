@@ -24,10 +24,15 @@ class PushService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val data = message.data
-        if (data["type"] == "low_balance") {
-            NotificationsHelper(this).showBalanceAlert(
+        when (data["type"]) {
+            "low_balance" -> NotificationsHelper(this).showBalanceAlert(
                 title = data["title"] ?: "Balance below minimum",
                 body = data["body"].orEmpty()
+            )
+            "card_budget" -> NotificationsHelper(this).showBalanceAlert(
+                title = data["title"] ?: "Card over its monthly budget",
+                body = data["body"].orEmpty(),
+                cardBudget = true
             )
         }
     }

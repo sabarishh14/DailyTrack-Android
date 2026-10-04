@@ -15,22 +15,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.RatingSteps
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.WeekdayNames
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.starsLabel
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.weekRangeLabel
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Locale
 
 /**
- * Year / Month / Week / Language filters for the Library, as a bottom sheet —
- * matches the pattern the Money tab's filter sheet already uses instead of
- * cramming four dropdowns into the page.
+ * Year / Month / Week / Day / Rating / Language filters for the Library, as a
+ * bottom sheet — matches the pattern the Money tab's filter sheet already uses
+ * instead of cramming the dropdowns into the page.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LibraryFilterBottomSheet(
     state: SabdekhoState,
-    onApply: (year: String, month: String, week: String, language: String) -> Unit,
+    onApply: (year: String, month: String, week: String, language: String, weekday: String, rating: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -40,8 +44,10 @@ fun LibraryFilterBottomSheet(
     var draftMonth by remember { mutableStateOf(state.monthFilter) }
     var draftWeek by remember { mutableStateOf(state.weekFilter) }
     var draftLanguage by remember { mutableStateOf(state.languageFilter) }
+    var draftWeekday by remember { mutableStateOf(state.weekdayFilter) }
+    var draftRating by remember { mutableStateOf(state.ratingFilter) }
 
-    val activeCount = listOf(draftYear, draftMonth, draftWeek, draftLanguage).count { it != "all" }
+    val activeCount = listOf(draftYear, draftMonth, draftWeek, draftLanguage, draftWeekday, draftRating).count { it != "all" }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -83,7 +89,10 @@ fun LibraryFilterBottomSheet(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(
-                        onClick = { draftYear = "all"; draftMonth = "all"; draftWeek = "all"; draftLanguage = "all" },
+                        onClick = {
+                            draftYear = "all"; draftMonth = "all"; draftWeek = "all"
+                            draftLanguage = "all"; draftWeekday = "all"; draftRating = "all"
+                        },
                         enabled = activeCount > 0
                     ) {
                         Text(
@@ -124,9 +133,25 @@ fun LibraryFilterBottomSheet(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 FilterChipSection(
                     title = "Week",
+                    // The picked week's dates, once a year pins them down.
+                    caption = draftWeek.toIntOrNull()?.let { weekRangeLabel(draftYear, it) },
                     options = listOf("all" to "All Weeks") + (1..52).map { it.toString() to "W$it" },
                     selected = draftWeek,
                     onSelect = { draftWeek = it }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                FilterChipSection(
+                    title = "Day",
+                    options = listOf("all" to "Any Day") + WeekdayNames.mapIndexed { i, day -> i.toString() to day.take(3) },
+                    selected = draftWeekday,
+                    onSelect = { draftWeekday = it }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                FilterChipSection(
+                    title = "Rating",
+                    options = listOf("all" to "Any Rating") + RatingSteps.map { it to starsLabel(it.toDouble()) },
+                    selected = draftRating,
+                    onSelect = { draftRating = it }
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                 FilterChipSection(
@@ -154,7 +179,7 @@ fun LibraryFilterBottomSheet(
                         Text("Cancel", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
                     }
                     Button(
-                        onClick = { onApply(draftYear, draftMonth, draftWeek, draftLanguage) },
+                        onClick = { onApply(draftYear, draftMonth, draftWeek, draftLanguage, draftWeekday, draftRating) },
                         modifier = Modifier.weight(1.5f).height(dims.buttonHeight),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
@@ -181,15 +206,25 @@ private fun FilterChipSection(
     title: String,
     options: List<Pair<String, String>>,
     selected: String,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    caption: String? = null
 ) {
     val dims = Dimens.current
     Column(verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (caption != null) {
+                Text(
+                    text = "  ·  $caption",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

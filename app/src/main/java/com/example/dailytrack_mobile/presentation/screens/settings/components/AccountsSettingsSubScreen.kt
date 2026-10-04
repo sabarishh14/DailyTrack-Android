@@ -75,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
+import com.example.dailytrack_mobile.presentation.components.CardBudgetDialog
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
 import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
@@ -97,6 +98,7 @@ fun AccountsSettingsSubScreen(
     val snackbar = remember { SnackbarHostState() }
     var adding by rememberSaveable { mutableStateOf(false) }
     var editingMin by remember { mutableStateOf<AccountDto?>(null) }
+    var editingBudget by remember { mutableStateOf<AccountDto?>(null) }
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -192,14 +194,14 @@ fun AccountsSettingsSubScreen(
                         } else {
                             state.cards.forEachIndexed { index, account ->
                                 if (index > 0) SettingsDivider()
-                                AccountRow(account = account, creditCard = true, onClick = null)
+                                AccountRow(account = account, creditCard = true, onClick = { editingBudget = account })
                             }
                         }
                     }
                 }
                 item {
                     Text(
-                        text = "Tap a savings account to edit its balance or minimum.",
+                        text = "Tap a savings account to edit its balance or minimum, or a card to set its monthly budget.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
@@ -227,6 +229,18 @@ fun AccountsSettingsSubScreen(
                 editingMin = null
             },
             onDismiss = { editingMin = null }
+        )
+    }
+    editingBudget?.let { card ->
+        CardBudgetDialog(
+            card = card.account,
+            usedThisMonth = card.usedThisMonth ?: 0.0,
+            budget = card.monthlyBudget,
+            onSave = { budget ->
+                viewModel.setCardBudget(card.account, budget)
+                editingBudget = null
+            },
+            onDismiss = { editingBudget = null }
         )
     }
 }
@@ -376,7 +390,8 @@ private fun AccountRow(account: AccountDto, creditCard: Boolean, onClick: (() ->
             )
             Text(
                 text = when {
-                    creditCard -> "Credit card"
+                    creditCard && account.monthlyBudget != null -> "Budget ₹${formatRupees(account.monthlyBudget)} a month"
+                    creditCard -> "No monthly budget set"
                     account.minBalance != null -> "Min ₹${formatRupees(account.minBalance)}"
                     else -> "No minimum set"
                 },
@@ -384,10 +399,12 @@ private fun AccountRow(account: AccountDto, creditCard: Boolean, onClick: (() ->
                 color = colors.onSurfaceVariant
             )
         }
-        if (!creditCard && account.balance != null) {
+        // A card shows what it's been used for this month, as money gone out.
+        val amount = if (creditCard) account.usedThisMonth?.let { -it } else account.balance
+        if (amount != null) {
             Spacer(Modifier.width(8.dp))
             Text(
-                text = "₹${formatRupees(account.balance)}",
+                text = if (amount < 0) "-₹${formatRupees(-amount)}" else "₹${formatRupees(amount)}",
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = colors.onSurface,
                 maxLines = 1

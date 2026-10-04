@@ -39,9 +39,11 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +57,9 @@ import com.example.dailytrack_mobile.data.remote.dto.*
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoAction
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.starsLabel
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.weekLabel
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.weekRangeLabel
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -209,14 +214,16 @@ private fun LazyListScope.movieStatsItems(
             )
         )
     }
-    val filterLibrary: (month: String, week: String, language: String, inYear: String) -> Unit =
-        { month, week, language, inYear ->
-            onAction(
-                SabdekhoAction.FilterLibraryFromStats(
-                    year = inYear, month = month, week = week, language = language, mediaType = "movie"
-                )
-            )
-        }
+    // Every chart bar opens the Library on exactly what it counted.
+    fun filterLibrary(
+        month: String = "all", week: String = "all", language: String = "all",
+        weekday: String = "all", rating: String = "all", inYear: String = year
+    ) = onAction(
+        SabdekhoAction.FilterLibraryFromStats(
+            year = inYear, month = month, week = week, language = language,
+            weekday = weekday, rating = rating, mediaType = "movie"
+        )
+    )
 
     if (stats.films_logged == 0) {
         item(key = "movie-empty") {
@@ -284,10 +291,11 @@ private fun LazyListScope.movieStatsItems(
             Column {
                 WeekActivity(
                     byWeek = stats.by_week,
+                    year = year,
                     accent = MaterialTheme.colorScheme.primary,
                     one = "film",
                     many = "films",
-                    onOpenWeek = { week -> filterLibrary("all", week.toString(), "all", year) }
+                    onOpenWeek = { week -> filterLibrary(week = week.toString()) }
                 )
                 Spacer(Modifier.height(14.dp))
                 PaceStrip(stats.films_logged, "films", stats.avg_per_month, stats.avg_per_week)
@@ -296,7 +304,9 @@ private fun LazyListScope.movieStatsItems(
     }
 
     if (stats.rating_distribution.values.any { it > 0 }) {
-        item(key = "movie-ratings") { RatingSection(stats.rating_distribution) }
+        item(key = "movie-ratings") {
+            RatingSection(stats.rating_distribution) { rating -> filterLibrary(rating = rating) }
+        }
     }
 
     // ── Theatre — one poster per film, with how many visits it took.
@@ -347,13 +357,15 @@ private fun LazyListScope.movieStatsItems(
     if (stats.by_month.isNotEmpty()) {
         item(key = "movie-months") {
             MonthSection(stats.by_month, MaterialTheme.colorScheme.primary) { month ->
-                filterLibrary(month.toString(), "all", "all", year)
+                filterLibrary(month = month.toString())
             }
         }
     }
 
     if (stats.by_day.size == 7) {
-        item(key = "movie-weekdays") { WeekdaySection(stats.by_day, MaterialTheme.colorScheme.primary) }
+        item(key = "movie-weekdays") {
+            WeekdaySection(stats.by_day, MaterialTheme.colorScheme.primary) { day -> filterLibrary(weekday = day.toString()) }
+        }
     }
 
     if (stats.films_by_language.isNotEmpty()) {
@@ -361,7 +373,7 @@ private fun LazyListScope.movieStatsItems(
             Column {
                 SectionHeader("Languages")
                 LanguageBars(stats.films_by_language, MaterialTheme.colorScheme.primary) { item ->
-                    filterLibrary("all", "all", item.code ?: "all", year)
+                    filterLibrary(language = item.code ?: "all")
                 }
             }
         }
@@ -370,7 +382,7 @@ private fun LazyListScope.movieStatsItems(
     if (selectedYear == "all" && stats.films_by_year.size > 1) {
         item(key = "movie-years") {
             YearsSection(stats.films_by_year, MaterialTheme.colorScheme.primary) { y ->
-                filterLibrary("all", "all", "all", y.toString())
+                filterLibrary(inYear = y.toString())
             }
         }
     }
@@ -448,14 +460,16 @@ private fun LazyListScope.tvStatsItems(
         )
     }
     val open: (TvStatsShowDto) -> Unit = { openShow(it.show_id, it.tmdb_id, it.name, it.poster_path, it.status) }
-    val filterLibrary: (month: String, week: String, language: String, inYear: String) -> Unit =
-        { month, week, language, inYear ->
-            onAction(
-                SabdekhoAction.FilterLibraryFromStats(
-                    year = inYear, month = month, week = week, language = language, mediaType = "tv"
-                )
-            )
-        }
+    // Every chart bar opens the Library on exactly what it counted.
+    fun filterLibrary(
+        month: String = "all", week: String = "all", language: String = "all",
+        weekday: String = "all", rating: String = "all", inYear: String = year
+    ) = onAction(
+        SabdekhoAction.FilterLibraryFromStats(
+            year = inYear, month = month, week = week, language = language,
+            weekday = weekday, rating = rating, mediaType = "tv"
+        )
+    )
 
     // Currently watching is a live snapshot, so only for this year / all time.
     val watching = if (isCurrentOrAll) tv.in_progress else emptyList()
@@ -543,10 +557,11 @@ private fun LazyListScope.tvStatsItems(
             Column {
                 WeekActivity(
                     byWeek = tv.by_week,
+                    year = year,
                     accent = MaterialTheme.colorScheme.tertiary,
                     one = "episode",
                     many = "episodes",
-                    onOpenWeek = { week -> filterLibrary("all", week.toString(), "all", year) }
+                    onOpenWeek = { week -> filterLibrary(week = week.toString()) }
                 )
                 Spacer(Modifier.height(14.dp))
                 PaceStrip(tv.episodes_watched, "episodes", tv.avg_per_month, tv.avg_per_week)
@@ -614,13 +629,15 @@ private fun LazyListScope.tvStatsItems(
     if (tv.by_month.isNotEmpty()) {
         item(key = "tv-months") {
             MonthSection(tv.by_month, MaterialTheme.colorScheme.tertiary) { month ->
-                filterLibrary(month.toString(), "all", "all", year)
+                filterLibrary(month = month.toString())
             }
         }
     }
 
     if (tv.by_day.size == 7) {
-        item(key = "tv-weekdays") { WeekdaySection(tv.by_day, MaterialTheme.colorScheme.tertiary) }
+        item(key = "tv-weekdays") {
+            WeekdaySection(tv.by_day, MaterialTheme.colorScheme.tertiary) { day -> filterLibrary(weekday = day.toString()) }
+        }
     }
 
     if (tv.shows_by_language.isNotEmpty()) {
@@ -628,7 +645,7 @@ private fun LazyListScope.tvStatsItems(
             Column {
                 SectionHeader("Languages")
                 LanguageBars(tv.shows_by_language, MaterialTheme.colorScheme.tertiary) { item ->
-                    filterLibrary("all", "all", item.code ?: "all", year)
+                    filterLibrary(language = item.code ?: "all")
                 }
             }
         }
@@ -637,13 +654,15 @@ private fun LazyListScope.tvStatsItems(
     if (selectedYear == "all" && tv.episodes_by_year.size > 1) {
         item(key = "tv-years") {
             YearsSection(tv.episodes_by_year, MaterialTheme.colorScheme.tertiary) { y ->
-                filterLibrary("all", "all", "all", y.toString())
+                filterLibrary(inYear = y.toString())
             }
         }
     }
 
     if (tv.rating_distribution.values.any { it > 0 }) {
-        item(key = "tv-ratings") { RatingSection(tv.rating_distribution) }
+        item(key = "tv-ratings") {
+            RatingSection(tv.rating_distribution) { rating -> filterLibrary(rating = rating) }
+        }
     }
 }
 
@@ -1147,7 +1166,7 @@ private fun PosterTile(item: PosterItem) {
         if (rating != null) {
             Spacer(Modifier.height(5.dp))
             Text(
-                text = starText(rating),
+                text = starsLabel(rating),
                 color = GoldenStarColor,
                 fontSize = 12.sp,
                 letterSpacing = 0.5.sp,
@@ -1371,18 +1390,22 @@ private fun ColumnChart(
 }
 
 /**
- * All 52 weeks as thin bars, Letterboxd style. Tapping a week names it in the
- * header, and tapping that opens the Library filtered to it.
+ * All 52 weeks as thin bars, Letterboxd style. The bars are too thin to aim
+ * at, so a tap first names the week and its dates in the header; tapping the
+ * same week again (or the header) opens the Library filtered to it.
  */
 @Composable
 private fun WeekActivity(
     byWeek: List<Int>,
+    year: String,
     accent: Color,
     one: String,
     many: String,
     onOpenWeek: (Int) -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
+    val openWeek by rememberUpdatedState(onOpenWeek)
     val weeks = byWeek.take(52)
     val max = weeks.maxOrNull()?.coerceAtLeast(1) ?: 1
     val peak = weeks.indices.maxByOrNull { weeks[it] }?.takeIf { weeks[it] > 0 }
@@ -1403,10 +1426,11 @@ private fun WeekActivity(
                         .padding(start = 8.dp, end = 4.dp, top = 2.dp, bottom = 2.dp)
                 ) {
                     Text(
-                        text = "Week ${week + 1} · ${plural(weeks[week], one, many)}",
+                        text = "${weekLabel(year, week + 1)} · ${plural(weeks[week], one, many)}",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = accent
+                        color = accent,
+                        maxLines = 1
                     )
                     if (canOpen) {
                         Icon(
@@ -1418,7 +1442,7 @@ private fun WeekActivity(
                     }
                 }
             } else if (peak != null) {
-                HeaderNote("Busiest: week ${peak + 1} · ${weeks[peak]}")
+                HeaderNote("Busiest: ${weekRangeLabel(year, peak + 1) ?: "week ${peak + 1}"} · ${plural(weeks[peak], one, many)}")
             }
         }
         Canvas(
@@ -1428,7 +1452,12 @@ private fun WeekActivity(
                 .pointerInput(weeks) {
                     detectTapGestures { offset ->
                         val index = (offset.x / (size.width.toFloat() / weeks.size)).toInt().coerceIn(0, weeks.lastIndex)
-                        selected = if (selected == index) null else index
+                        if (selected == index && weeks[index] > 0) {
+                            openWeek(index + 1)
+                        } else {
+                            selected = if (selected == index) null else index
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        }
                     }
                 }
         ) {
@@ -1440,7 +1469,9 @@ private fun WeekActivity(
                 val height = if (count > 0) (size.height * fractions[index]).coerceAtLeast(stub) else stub
                 val color = when {
                     count == 0 -> track
-                    selected == null || selected == index -> accent
+                    selected == index -> accent
+                    // Nothing picked yet: the busiest week leads, the rest sit a step back.
+                    selected == null -> if (index == peak) accent else accent.copy(alpha = 0.7f)
                     else -> accent.copy(alpha = 0.3f)
                 }
                 drawRoundRect(
@@ -1471,11 +1502,11 @@ private fun MonthSection(byMonth: List<Int>, accent: Color, onMonthClick: (Int) 
 }
 
 @Composable
-private fun WeekdaySection(byDay: List<Int>, accent: Color) {
+private fun WeekdaySection(byDay: List<Int>, accent: Color, onDayClick: (Int) -> Unit) {
     val peak = byDay.indices.maxByOrNull { byDay[it] }?.takeIf { byDay[it] > 0 }
     Column {
         SectionHeader("By day") { peak?.let { HeaderNote("Busiest: ${WeekdayLong[it]}") } }
-        ColumnChart(values = byDay, accent = accent, labels = WeekdayShort, barAreaHeight = 80.dp)
+        ColumnChart(values = byDay, accent = accent, labels = WeekdayShort, barAreaHeight = 80.dp, onBarClick = onDayClick)
     }
 }
 
@@ -1493,9 +1524,9 @@ private fun YearsSection(entries: List<TvYearCountDto>, accent: Color, onYearCli
     }
 }
 
-/** Letterboxd's histogram: half-star steps between one star and five. */
+/** Letterboxd's histogram: half-star steps between one star and five. Tapping a bar opens what got that rating. */
 @Composable
-private fun RatingSection(distribution: Map<String, Int>) {
+private fun RatingSection(distribution: Map<String, Int>, onRatingClick: (String) -> Unit) {
     val counts = remember(distribution) {
         RatingKeys.map { key -> distribution[key] ?: distribution[key.removeSuffix(".0")] ?: 0 }
     }
@@ -1512,7 +1543,13 @@ private fun RatingSection(distribution: Map<String, Int>) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(text = "★", color = GoldenStarColor, fontSize = 13.sp)
             Spacer(Modifier.width(8.dp))
-            ColumnChart(values = counts, accent = GoldenStarColor, modifier = Modifier.weight(1f), barAreaHeight = 88.dp)
+            ColumnChart(
+                values = counts,
+                accent = GoldenStarColor,
+                modifier = Modifier.weight(1f),
+                barAreaHeight = 88.dp,
+                onBarClick = { onRatingClick(RatingKeys[it]) }
+            )
             Spacer(Modifier.width(8.dp))
             Text(text = "★★★★★", color = GoldenStarColor, fontSize = 9.sp)
         }
@@ -1600,12 +1637,6 @@ private fun posterUrl(path: String?, size: String): String? = when {
     path.isNullOrBlank() -> null
     path.startsWith("http") -> path
     else -> "https://image.tmdb.org/t/p/$size$path"
-}
-
-/** "★★★★½" — rounded to the nearest half star. */
-private fun starText(rating: Double): String {
-    val halves = (rating * 2).roundToInt().coerceIn(0, 10)
-    return "★".repeat(halves / 2) + if (halves % 2 == 1) "½" else ""
 }
 
 private fun formatNumber(value: Double, decimals: Int): String =

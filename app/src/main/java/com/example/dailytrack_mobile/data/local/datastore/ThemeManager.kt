@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.dailytrack_mobile.presentation.theme.AppFont
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
@@ -19,10 +20,12 @@ class ThemeManager(private val context: Context) {
         private const val KEY_THEME = "app_theme"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_AMOLED = "with_amoled"
+        private const val KEY_FONT = "app_font"
 
         val THEME_KEY = stringPreferencesKey(KEY_THEME)
         val THEME_MODE_KEY = stringPreferencesKey(KEY_THEME_MODE)
         val AMOLED_KEY = booleanPreferencesKey(KEY_AMOLED)
+        val FONT_KEY = stringPreferencesKey(KEY_FONT)
     }
 
     private val syncPrefs by lazy {
@@ -51,6 +54,12 @@ class ThemeManager(private val context: Context) {
         return syncPrefs.getBoolean(KEY_AMOLED, false)
     }
 
+    fun getInitialFont(): AppFont = resolveFont(syncPrefs.getString(KEY_FONT, null))
+
+    /** Unknown or unset: the new look. */
+    private fun resolveFont(name: String?): AppFont =
+        AppFont.entries.firstOrNull { it.name == name } ?: AppFont.MODERN
+
     /**
      * Resolves a persisted theme name to an [AppTheme], remapping themes that
      * have since been retired so an existing pick lands on its closest
@@ -78,6 +87,10 @@ class ThemeManager(private val context: Context) {
         syncPrefs.edit().putBoolean(KEY_AMOLED, enabled).apply()
     }
 
+    private fun cacheFont(name: String) {
+        syncPrefs.edit().putString(KEY_FONT, name).apply()
+    }
+
     // Get the theme from local storage (Defaults to YELLOW)
     val themeFlow: Flow<String> = context.dataStore.data.map { preferences ->
         val theme = preferences[THEME_KEY] ?: "YELLOW"
@@ -97,6 +110,20 @@ class ThemeManager(private val context: Context) {
         val amoled = preferences[AMOLED_KEY] ?: false
         cacheAmoled(amoled)
         amoled
+    }
+
+    // Get the font from local storage (Defaults to MODERN)
+    val fontFlow: Flow<AppFont> = context.dataStore.data.map { preferences ->
+        val name = preferences[FONT_KEY] ?: AppFont.MODERN.name
+        cacheFont(name)
+        resolveFont(name)
+    }
+
+    suspend fun saveFont(font: AppFont) {
+        cacheFont(font.name)
+        context.dataStore.edit { preferences ->
+            preferences[FONT_KEY] = font.name
+        }
     }
 
     // Save the new theme to local storage

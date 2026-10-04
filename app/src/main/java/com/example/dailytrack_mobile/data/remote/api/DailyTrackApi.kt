@@ -170,7 +170,9 @@ interface DailyTrackApi {
         @Query("year") year: String = "all",
         @Query("month") month: String = "all",
         @Query("week") week: String = "all",
-        @Query("language") language: String = "all"
+        @Query("language") language: String = "all",
+        @Query("weekday") weekday: String = "all",
+        @Query("rating") rating: String = "all"
     ): MediaLibraryResponseDto
 
     @GET("/api/media/filters")
@@ -208,6 +210,9 @@ interface DailyTrackApi {
         @Query("type") type: String = "all",
         @Query("show_id") showId: Int? = null
     ): com.example.dailytrack_mobile.data.remote.dto.MediaDiaryResponseDto
+
+    @GET("/api/movies/tags")
+    suspend fun getMovieTags(): com.example.dailytrack_mobile.data.remote.dto.MovieTagsResponseDto
 
     @GET("/api/movies/stats")
     suspend fun getMovieStats(
@@ -360,6 +365,10 @@ interface DailyTrackApi {
 
     @GET("/api/routines")
     suspend fun getRoutines(): Response<RoutinesResponseDto>
+
+    /** Someone's routines shared with you, read-only (routines calls are otherwise always your own). */
+    @GET("/api/routines")
+    suspend fun getSharedRoutines(@retrofit2.http.Header("X-View-As") owner: String): Response<RoutinesResponseDto>
 
     @POST("/api/routines")
     suspend fun createRoutine(@Body body: RoutineRequestDto): Response<RoutineResponseDto>

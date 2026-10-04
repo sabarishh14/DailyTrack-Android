@@ -73,7 +73,8 @@ internal fun RoutineDetailPage(
     reminder: LocalTime?,
     skipping: DayItem?,
     onAction: (RoutinesAction) -> Unit,
-    onEdit: () -> Unit
+    /** Null for someone else's routine: no editing. */
+    onEdit: (() -> Unit)?
 ) {
     val dims = Dimens.current
     val routine = detail.routine
@@ -107,7 +108,7 @@ internal fun RoutineDetailPage(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            FilledTonalButton(onClick = onEdit, contentPadding = PaddingValues(horizontal = 14.dp)) {
+            if (onEdit != null) FilledTonalButton(onClick = onEdit, contentPadding = PaddingValues(horizontal = 14.dp)) {
                 Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Edit")

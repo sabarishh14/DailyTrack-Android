@@ -48,6 +48,8 @@ data class RoutineDetail(
 data class RoutinesState(
     /** Only true on the very first load, before anything was ever fetched. */
     val isLoading: Boolean = true,
+    /** Someone's routines shared with you: shown, never changed. */
+    val readOnly: Boolean = false,
     val isRefreshing: Boolean = false,
     val error: String? = null,
     val today: LocalDate = LocalDate.now(),

@@ -76,7 +76,10 @@ class SabdekhoVM @Inject constructor(
             }
             is SabdekhoAction.LoadShows -> {
                 val s = _state.value
-                loadShows(action.status, action.type, s.yearFilter, s.monthFilter, s.weekFilter, s.languageFilter)
+                loadShows(
+                    action.status, action.type, s.yearFilter, s.monthFilter, s.weekFilter, s.languageFilter,
+                    s.weekdayFilter, s.ratingFilter
+                )
             }
             is SabdekhoAction.SearchQueryChanged -> {
                 _state.update { it.copy(searchQuery = action.query) }
@@ -126,6 +129,8 @@ class SabdekhoVM @Inject constructor(
                         monthFilter = action.month,
                         weekFilter = action.week,
                         languageFilter = action.language,
+                        weekdayFilter = action.weekday,
+                        ratingFilter = action.rating,
                         showMoreFilters = false
                     )
                 }
@@ -133,11 +138,28 @@ class SabdekhoVM @Inject constructor(
             }
             is SabdekhoAction.ClearLibraryFilters -> {
                 _state.update {
-                    it.copy(yearFilter = "all", monthFilter = "all", weekFilter = "all", languageFilter = "all")
+                    it.copy(
+                        yearFilter = "all", monthFilter = "all", weekFilter = "all",
+                        languageFilter = "all", weekdayFilter = "all", ratingFilter = "all"
+                    )
+                }
+                reloadShows()
+            }
+            is SabdekhoAction.RemoveLibraryFilter -> {
+                _state.update {
+                    when (action.facet) {
+                        LibraryFacet.YEAR -> it.copy(yearFilter = "all")
+                        LibraryFacet.MONTH -> it.copy(monthFilter = "all")
+                        LibraryFacet.WEEK -> it.copy(weekFilter = "all")
+                        LibraryFacet.WEEKDAY -> it.copy(weekdayFilter = "all")
+                        LibraryFacet.RATING -> it.copy(ratingFilter = "all")
+                        LibraryFacet.LANGUAGE -> it.copy(languageFilter = "all")
+                    }
                 }
                 reloadShows()
             }
             is SabdekhoAction.FilterLibraryFromStats -> {
+                // The slice shows as chips above the grid; the filter sheet stays shut.
                 _state.update {
                     it.copy(
                         currentTab = SabdekhoTab.LIBRARY,
@@ -145,11 +167,16 @@ class SabdekhoVM @Inject constructor(
                         monthFilter = action.month,
                         weekFilter = action.week,
                         languageFilter = action.language,
+                        weekdayFilter = action.weekday,
+                        ratingFilter = action.rating,
                         mediaTypeFilter = action.mediaType ?: it.mediaTypeFilter,
                         activeFilter = "all", // the tapped slice may hold any status, not just "Watching"
-                        showMoreFilters = true
+                        searchQuery = "", // a leftover search would hide part of the slice
+                        showMoreFilters = false
                     )
                 }
+                performOnlineSearch("")
+                // Language chips show the language's name, which comes with the filter options.
                 if (!_state.value.isFilterOptionsLoaded) loadFilterOptions()
                 reloadShows()
             }
@@ -340,6 +367,8 @@ class SabdekhoVM @Inject constructor(
         month: String = "all",
         week: String = "all",
         language: String = "all",
+        weekday: String = "all",
+        rating: String = "all",
         forceRefresh: Boolean = false
     ) {
         viewModelScope.launch {
@@ -352,6 +381,7 @@ class SabdekhoVM @Inject constructor(
             repository.getMediaLibrary(
                 limit = 100, offset = 0, type = type, status = status,
                 year = year, month = month, week = week, language = language,
+                weekday = weekday, rating = rating,
                 forceRefresh = forceRefresh
             )
                 .onSuccess { response ->
@@ -386,6 +416,8 @@ class SabdekhoVM @Inject constructor(
             month = s.monthFilter,
             week = s.weekFilter,
             language = s.languageFilter,
+            weekday = s.weekdayFilter,
+            rating = s.ratingFilter,
             forceRefresh = forceRefresh
         )
     }

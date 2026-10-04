@@ -16,16 +16,20 @@ sealed class SabdekhoAction {
     data class ChangeMediaType(val mediaType: String) : SabdekhoAction()
     object Refresh : SabdekhoAction()
 
-    // Library "More Filters" bottom sheet — year/month/week/language, each "all" clears that facet.
+    // Library "More Filters" bottom sheet — year/month/week/day/rating/language, each "all" clears that facet.
     object ToggleMoreFilters : SabdekhoAction()
     object DismissMoreFilters : SabdekhoAction()
     data class ApplyLibraryFilters(
         val year: String,
         val month: String,
         val week: String,
-        val language: String
+        val language: String,
+        val weekday: String,
+        val rating: String
     ) : SabdekhoAction()
     object ClearLibraryFilters : SabdekhoAction()
+    /** One active-filter chip's ✕. */
+    data class RemoveLibraryFilter(val facet: LibraryFacet) : SabdekhoAction()
 
     /** A Stats chart bar was tapped: jump to Library with exactly this slice applied. */
     data class FilterLibraryFromStats(
@@ -33,6 +37,8 @@ sealed class SabdekhoAction {
         val month: String = "all",
         val week: String = "all",
         val language: String = "all",
+        val weekday: String = "all",
+        val rating: String = "all",
         val mediaType: String? = null
     ) : SabdekhoAction()
 

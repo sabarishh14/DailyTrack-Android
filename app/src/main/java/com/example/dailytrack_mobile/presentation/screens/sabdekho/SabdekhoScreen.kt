@@ -283,11 +283,20 @@ private fun LibraryTabContent(
             }
         }
 
+        if (state.hasActiveLibraryFilters) {
+            Spacer(modifier = Modifier.height(dims.itemSpacingMedium))
+            ActiveLibraryFilters(
+                state = state,
+                onRemove = { onAction(SabdekhoAction.RemoveLibraryFilter(it)) },
+                onClearAll = { onAction(SabdekhoAction.ClearLibraryFilters) }
+            )
+        }
+
         if (state.showMoreFilters) {
             LibraryFilterBottomSheet(
                 state = state,
-                onApply = { year, month, week, language ->
-                    onAction(SabdekhoAction.ApplyLibraryFilters(year, month, week, language))
+                onApply = { year, month, week, language, weekday, rating ->
+                    onAction(SabdekhoAction.ApplyLibraryFilters(year, month, week, language, weekday, rating))
                 },
                 onDismiss = { onAction(SabdekhoAction.DismissMoreFilters) }
             )

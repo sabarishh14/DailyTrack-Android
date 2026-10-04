@@ -56,15 +56,37 @@ data class AddTransactionRequestDto(
     @Json(name = "heading") val heading: String,
     @Json(name = "description") val description: String? = "",
     @Json(name = "amount") val amount: Double,
-    @Json(name = "exclude_analytics") val excludeAnalytics: Boolean = false
+    @Json(name = "exclude_analytics") val excludeAnalytics: Boolean = false,
+    // Cinema only: the film seen, logged to SabDekho with these tags.
+    @Json(name = "movie_data") val movieData: MovieLinkDto? = null,
+    @Json(name = "movie_tags") val movieTags: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class MovieLinkDto(
+    @Json(name = "tmdb_id") val tmdbId: Int,
+    @Json(name = "title") val title: String,
+    @Json(name = "poster_path") val posterPath: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class ApiResponseDto(
     @Json(name = "success") val success: Boolean,
     @Json(name = "message") val message: String? = null,
-    // Only on adds: what each touched, tracked account holds now.
-    @Json(name = "balances") val balances: List<BalanceChangeDto>? = null
+    // Only on adds: what each touched, tracked account holds now…
+    @Json(name = "balances") val balances: List<BalanceChangeDto>? = null,
+    // …and how much each touched credit card has been used this month.
+    @Json(name = "cards") val cards: List<CardChangeDto>? = null
+)
+
+/** A credit card's used-this-month before and after a save, against its monthly budget. */
+@JsonClass(generateAdapter = true)
+data class CardChangeDto(
+    @Json(name = "account") val account: String,
+    @Json(name = "before") val before: Double,
+    @Json(name = "after") val after: Double,
+    @Json(name = "monthly_budget") val monthlyBudget: Double? = null,
+    @Json(name = "over_budget") val overBudget: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)

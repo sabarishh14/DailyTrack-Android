@@ -7,5 +7,7 @@ sealed class HomeAction {
     data class DateSelected(val month: Month, val year: Int) : HomeAction()
     /** [min] null removes the account's floor. */
     data class SetMinBalance(val account: String, val min: Double?) : HomeAction()
+    /** [budget] null removes the credit card's monthly budget. */
+    data class SetCardBudget(val account: String, val budget: Double?) : HomeAction()
     data object ClearNotice : HomeAction()
 }

@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -52,8 +53,10 @@ import androidx.fragment.app.FragmentActivity
 import com.example.dailytrack_mobile.data.local.security.AppLockManager
 import com.example.dailytrack_mobile.data.local.security.LockType
 import com.example.dailytrack_mobile.presentation.screens.lock.components.PinVerifyDialog
+import com.example.dailytrack_mobile.presentation.theme.AppFont
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.DtOgThemeColors
+import com.example.dailytrack_mobile.presentation.theme.SyneFamily
 import com.example.dailytrack_mobile.presentation.theme.GreenThemeColors
 import com.example.dailytrack_mobile.presentation.theme.JuneOledThemeColors
 import com.example.dailytrack_mobile.presentation.theme.PurpleThemeColors
@@ -178,6 +181,132 @@ internal fun ThemeModeSelector(
                         Text(
                             text = title,
                             style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = contentColor
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Font Selector – Modern / Classic, each shown in its own typeface
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+internal fun FontSelector(
+    current: AppFont,
+    onFontSelected: (AppFont) -> Unit
+) {
+    val dims = Dimens.current
+    val options = listOf(
+        Triple(AppFont.MODERN, "Modern", SyneFamily),
+        Triple(AppFont.CLASSIC, "Classic", FontFamily.Default)
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(20.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 16.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(dims.buttonCornerRadius),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.TextFields,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(18.dp))
+            Column {
+                Text(
+                    text = "Font",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = when (current) {
+                        AppFont.MODERN -> "Matches the web"
+                        AppFont.CLASSIC -> "Your phone's font"
+                    },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(dims.buttonCornerRadius),
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                options.forEach { (font, title, family) ->
+                    val isSelected = current == font
+                    val bgColor by animateColorAsState(
+                        targetValue = if (isSelected)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            Color.Transparent,
+                        animationSpec = tween(250),
+                        label = "fontBg"
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (isSelected)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(250),
+                        label = "fontContent"
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(dims.buttonCornerRadius - 2.dp))
+                            .background(bgColor)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onFontSelected(font) }
+                            .padding(vertical = dims.itemSpacingMedium + 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Aa",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontFamily = family,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 26.sp,
+                                lineHeight = 32.sp,
+                                letterSpacing = 0.sp
+                            ),
+                            color = contentColor
+                        )
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = family),
                             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                             color = contentColor
                         )

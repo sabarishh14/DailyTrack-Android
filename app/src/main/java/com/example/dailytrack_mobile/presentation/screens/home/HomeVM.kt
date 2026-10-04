@@ -117,7 +117,9 @@ class HomeVM @Inject constructor(
                             balance = dto.balance ?: 0.0,
                             realBalance = dto.realBalance,
                             balanceTracked = dto.balanceTracked,
-                            minBalance = dto.minBalance
+                            minBalance = dto.minBalance,
+                            usedThisMonth = dto.usedThisMonth,
+                            monthlyBudget = dto.monthlyBudget
                         )
                     }
                 
@@ -177,7 +179,24 @@ class HomeVM @Inject constructor(
                 loadAccountsAndTransactions()
             }
             is HomeAction.SetMinBalance -> setMinBalance(action.account, action.min)
+            is HomeAction.SetCardBudget -> setCardBudget(action.account, action.budget)
             HomeAction.ClearNotice -> _state.update { it.copy(notice = null) }
+        }
+    }
+
+    private fun setCardBudget(account: String, budget: Double?) {
+        viewModelScope.launch {
+            repository.setCardBudget(account, budget)
+                .onSuccess {
+                    _state.update { s ->
+                        s.copy(
+                            accounts = s.accounts.map { if (it.account == account) it.copy(monthlyBudget = budget) else it },
+                            notice = if (budget == null) "Budget removed for $account"
+                            else "You'll be alerted when $account goes over ₹${"%,.0f".format(budget)} in a month"
+                        )
+                    }
+                }
+                .onFailure { e -> _state.update { it.copy(notice = e.message ?: "Couldn't save the budget") } }
         }
     }
 

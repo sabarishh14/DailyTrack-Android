@@ -161,6 +161,9 @@ class AuthRepository @Inject constructor(
                         isAdmin = body.isAdmin ?: false,
                         access = body.access?.toAccessInfo()
                     )
+                    // The screens outlive sign-out and still hold the last session's
+                    // data: reload them now that the new token is in place.
+                    demoDataManager.notifyDataUpdated()
                     Result.success(true)
                 } else {
                     Result.failure(Exception(body?.message ?: "Login failed. You may not be an authorized user."))
@@ -185,6 +188,9 @@ class AuthRepository @Inject constructor(
     suspend fun logout() {
         // While still signed in: this phone stops getting their low-balance alerts.
         moneyRepository.unregisterPushToken()
+        // The caches hold whoever's data was on screen; if that was someone's shared
+        // data, it mustn't come back as yours when you sign in again.
+        if (authManager.getViewAs() != null) personalData.forgetCachedData()
         try {
             FirebaseAuth.getInstance().signOut()
         } catch (_: Exception) { }
@@ -197,11 +203,7 @@ fun AccessDto.toAccessInfo(): AccessInfo = AccessInfo(
     role = role,
     isOwner = isOwner,
     isAdmin = isAdmin,
-    // The phone's routines (alarms, check-ins, widget) are always your own, so
-    // Routines hides while someone else's data is on screen.
-    modules = AccessModule.entries.associateWith {
-        if (it == AccessModule.GYM && !viewing.isNullOrBlank()) AccessLevel.NONE else AccessLevel.from(modules[it.key])
-    },
+    modules = AccessModule.entries.associateWith { AccessLevel.from(modules[it.key]) },
     categories = money.categories,
     accounts = money.accounts,
     moneyRestricted = money.restricted,

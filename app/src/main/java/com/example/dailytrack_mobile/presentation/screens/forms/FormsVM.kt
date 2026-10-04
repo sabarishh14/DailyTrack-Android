@@ -6,12 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraft
 import com.example.dailytrack_mobile.data.local.datastore.TransactionDraftStore
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
-import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.repository.ActivitiesRepository
 import com.example.dailytrack_mobile.data.repository.InvestmentsRepository
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.NewTransaction
+import com.example.dailytrack_mobile.data.repository.SavedTransactions
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
 import com.example.dailytrack_mobile.notification.NotificationsHelper
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryHistory
@@ -182,6 +182,39 @@ class FormsVM @Inject constructor(
         _addMovieState.update { it.copy(isSearching = false, searchResults = emptyList()) }
     }
 
+    // ── Cinema entries: pick the film, tag the visit ─────────────────────────
+
+    private val _cinemaResults = MutableStateFlow<List<MediaSearchResultDto>>(emptyList())
+    val cinemaResults: StateFlow<List<MediaSearchResultDto>> = _cinemaResults.asStateFlow()
+
+    private val _movieTags = MutableStateFlow<List<String>>(emptyList())
+    val movieTags: StateFlow<List<String>> = _movieTags.asStateFlow()
+
+    private var cinemaJob: Job? = null
+
+    /** Films only; anything under two letters clears the list. */
+    fun searchCinema(query: String) {
+        cinemaJob?.cancel()
+        val trimmed = query.trim()
+        if (trimmed.length < 2) {
+            _cinemaResults.value = emptyList()
+            return
+        }
+        cinemaJob = viewModelScope.launch {
+            delay(350)
+            _cinemaResults.value = sabdekhoRepository.searchMedia(trimmed).getOrNull().orEmpty()
+                .filter { it.isMovie }
+                .take(8)
+        }
+    }
+
+    fun loadMovieTags() {
+        if (_movieTags.value.isNotEmpty()) return
+        viewModelScope.launch {
+            sabdekhoRepository.movieTags().onSuccess { _movieTags.value = it }
+        }
+    }
+
     // ── Transaction draft ────────────────────────────────────────────────────
 
     /** Entries left behind by a previous visit, in order; empty if there are none. */
@@ -199,13 +232,13 @@ class FormsVM @Inject constructor(
     /** Saves every entry in one request; on failure nothing is saved and the entries stay put. */
     fun saveTransactions(
         entries: List<NewTransaction>,
-        onSuccess: (count: Int, balances: List<BalanceChangeDto>) -> Unit
+        onSuccess: (count: Int, saved: SavedTransactions) -> Unit
     ) {
         if (entries.isEmpty() || _addMoneyState.value.isSaving) return
         viewModelScope.launch {
             _addMoneyState.update { it.copy(isSaving = true, errorMessage = null) }
             moneyRepository.addTransactions(entries)
-                .onSuccess { balances ->
+                .onSuccess { saved ->
                     // The entries landed, so the draft has served its purpose.
                     transactionDraftStore.clear()
                     _addMoneyState.update {
@@ -215,11 +248,15 @@ class FormsVM @Inject constructor(
                             accountDetails = moneyRepository.getCachedAccountDetails().ifEmpty { it.accountDetails }
                         )
                     }
-                    val belowMin = balances.filter { it.belowMin }
+                    val belowMin = saved.balances.filter { it.belowMin }
                     if (belowMin.isNotEmpty()) {
                         runCatching { NotificationsHelper(context).showLowBalanceNotification(belowMin) }
                     }
-                    onSuccess(entries.size, balances)
+                    val overBudget = saved.cards.filter { it.overBudget }
+                    if (overBudget.isNotEmpty()) {
+                        runCatching { NotificationsHelper(context).showCardBudgetNotification(overBudget) }
+                    }
+                    onSuccess(entries.size, saved)
                 }
                 .onFailure { error ->
                     _addMoneyState.update {

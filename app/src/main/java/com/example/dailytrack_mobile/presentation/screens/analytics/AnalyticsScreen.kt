@@ -1,6 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.analytics
 
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
+import com.example.dailytrack_mobile.presentation.components.FitText
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -243,7 +244,7 @@ fun AnalyticsScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
+                    FitText(
                         text = formatCurrency(spentThisPeriod),
                         style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold, fontSize = 32.sp),
                         color = MaterialTheme.colorScheme.onSurface
