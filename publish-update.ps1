@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoOwner = "sabarishh14"
-$RepoName = "DailyTrack-Mobile"
+$RepoName = "DailyTrack-Android"
 $RootPath = $PSScriptRoot
 
 Write-Host "================================================" -ForegroundColor Cyan

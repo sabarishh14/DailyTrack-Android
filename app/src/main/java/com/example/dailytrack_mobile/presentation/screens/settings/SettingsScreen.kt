@@ -138,6 +138,7 @@ private data class SettingsCategoryItem(
 private val CategoryGroups = listOf(
     "Admin" to listOf("AccessControl"),
     "Money" to listOf("Accounts"),
+    "Friends" to listOf("Sharing"),
     "Preferences" to listOf("General", "Appearance", "Reminders"),
     "Security & data" to listOf("PrivacySecurity", "Sync"),
     "App" to listOf("Updates", "About")

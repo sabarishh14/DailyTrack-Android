@@ -61,9 +61,9 @@ class AppUpdateManager @Inject constructor(
         .followSslRedirects(true)
         .build()
 
-    // Public GitHub Releases URL for DailyTrack-Mobile
+    // Public GitHub Releases URL for DailyTrack-Android
     private val repoOwner = "sabarishh14"
-    private val repoName = "DailyTrack-Mobile"
+    private val repoName = "DailyTrack-Android"
     private val releasesLatestUrl = "https://api.github.com/repos/$repoOwner/$repoName/releases/latest"
 
     /**
