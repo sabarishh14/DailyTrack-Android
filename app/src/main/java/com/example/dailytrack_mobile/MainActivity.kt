@@ -9,8 +9,11 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
@@ -245,6 +248,27 @@ class MainActivity : FragmentActivity() {
                                 }
                             )
                         } else {
+                            // After a crash, once: offer its details to copy and send.
+                            var crashReport by remember { mutableStateOf(CrashLog.read(this@MainActivity)) }
+                            crashReport?.let { report ->
+                                val dismiss = {
+                                    CrashLog.clear(this@MainActivity)
+                                    crashReport = null
+                                }
+                                AlertDialog(
+                                    onDismissRequest = dismiss,
+                                    title = { Text("DailyTrack closed unexpectedly") },
+                                    text = { Text("Copy the details to send them, so it can be fixed.") },
+                                    confirmButton = {
+                                        TextButton(onClick = {
+                                            getSystemService(android.content.ClipboardManager::class.java)
+                                                ?.setPrimaryClip(android.content.ClipData.newPlainText("DailyTrack crash", report))
+                                            dismiss()
+                                        }) { Text("Copy details") }
+                                    },
+                                    dismissButton = { TextButton(onClick = dismiss) { Text("Dismiss") } }
+                                )
+                            }
                             if (currentScreen == "Main") {
                                 MainScreen(
                                     onNavigateToSettings = { currentScreen = "Settings" },

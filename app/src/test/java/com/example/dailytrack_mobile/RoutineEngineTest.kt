@@ -322,20 +322,23 @@ class RoutineEngineTest {
     // ── Days before a routine was added ─────────────────────────────────────
 
     @Test
-    fun `blank days before a routine was added don't count as missed`() {
-        // Started Monday, but only added on Thursday (day 3).
+    fun `blank days from the start date count however late it was added`() {
+        // Started Monday, but only added on Thursday (day 3): Mon–Wed are days to fill in.
         val sugar = daily(1).copy(createdOn = day(3))
         val blank = engine(listOf(sugar))
-        // Mon–Wed are neutral; Thursday, unanswered and past, is a miss.
-        assertEquals(fraction(0.0, 1.0), blank.consistency(day(4)).fraction!!, 1e-9)
-        assertEquals(0, blank.dayStats(mon).total)
+        assertEquals(0.0, blank.consistency(day(4)).fraction!!, 1e-9)
+        assertEquals(1, blank.dayStats(mon).total)
+        assertEquals(1, blank.dayStats(mon).unanswered)
 
-        // Filled in afterwards, those days count like any other.
-        val filled = engine(listOf(sugar), at(sugar, mon, DONE), at(sugar, day(1), DONE), at(sugar, day(3), DONE))
-        assertEquals(fraction(3.0, 3.0), filled.consistency(day(4)).fraction!!, 1e-9)
-        // Tuesday was left blank but is neutral, so the run carries through it.
-        assertEquals(3, filled.streak(sugar, day(4)).current)
-        assertEquals(3, filled.perfectDays(day(4)).current)
+        // A gap left in those days still counts against it.
+        val gap = engine(listOf(sugar), at(sugar, mon, DONE), at(sugar, day(1), DONE), at(sugar, day(3), DONE))
+        assertEquals(0.75, gap.consistency(day(4)).fraction!!, 1e-9)
+
+        // Filled in, they count like any other.
+        val filled = engine(listOf(sugar), *(0L..3L).map { at(sugar, day(it), DONE) }.toTypedArray())
+        assertEquals(1.0, filled.consistency(day(4)).fraction!!, 1e-9)
+        assertEquals(4, filled.streak(sugar, day(4)).current)
+        assertEquals(4, filled.perfectDays(day(4)).current)
     }
 
     @Test

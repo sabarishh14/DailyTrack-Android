@@ -232,7 +232,9 @@ fun RoutineEditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ScheduleOptions.forEach { (schedule, label) ->
+                // Chores are on hold for new routines (a richer "repeats" is coming);
+                // one that's already a chore keeps its option so it stays editable.
+                ScheduleOptions.filter { (schedule, _) -> schedule != RoutineSchedule.INTERVAL || form.schedule == RoutineSchedule.INTERVAL }.forEach { (schedule, label) ->
                     Pill(label, selected = form.schedule == schedule) {
                         viewModel.update { it.copy(schedule = schedule) }
                     }
@@ -283,7 +285,7 @@ fun RoutineEditorScreen(
                     Spacer(Modifier.height(12.dp))
                     DateRow("Next due", form.startDate) { showDatePicker = true }
                     Spacer(Modifier.height(8.dp))
-                    Hint("Shows up when it's due and stays until it's done. The next one is counted from the day you do it.")
+                    Hint("Repeats every so often. Shows up when it's due and stays until it's done; the next one is counted from the day you do it.")
                 }
             }
         }
@@ -523,7 +525,7 @@ private val ScheduleOptions = listOf(
     RoutineSchedule.DAYS to "Some days",
     RoutineSchedule.WEEKLY to "Times a week",
     RoutineSchedule.MONTHLY to "Times a month",
-    RoutineSchedule.INTERVAL to "Every few…"
+    RoutineSchedule.INTERVAL to "Chore"
 )
 
 private val UnitOptions = listOf(

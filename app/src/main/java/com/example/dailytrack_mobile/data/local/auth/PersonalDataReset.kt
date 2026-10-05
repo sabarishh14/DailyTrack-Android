@@ -15,6 +15,8 @@ import com.example.dailytrack_mobile.notification.routines.RoutineAlarmService
 import com.example.dailytrack_mobile.notification.routines.RoutineCheckInScheduler
 import com.example.dailytrack_mobile.widget.RoutinesWidget
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.time.DayOfWeek
+import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +24,8 @@ import javax.inject.Singleton
  * Each person's data stays theirs on a shared phone. When someone other than the
  * last person signs in, everything the last one left behind goes first: cached
  * money, films and investments, unsaved drafts, reminders and their alarms. The
- * same person signing back in keeps all of it.
+ * same person signing back in keeps all of it — and someone signing back in
+ * after another person gets their own reminders and nightly check-in back.
  */
 @Singleton
 class PersonalDataReset @Inject constructor(
@@ -53,7 +56,7 @@ class PersonalDataReset @Inject constructor(
             // data from when everyone saw the owner's. Their own drafts and
             // reminders were always theirs, so those stay.
             last == null -> forgetCaches()
-            else -> forgetLastPerson()
+            else -> forgetLastPerson(last, person)
         }
         prefs.edit().putString(KEY_LAST_PERSON, person).apply()
     }
@@ -68,20 +71,58 @@ class PersonalDataReset @Inject constructor(
         activitiesRepository.clearCache()
     }
 
-    private suspend fun forgetLastPerson() {
+    private suspend fun forgetLastPerson(last: String, next: String) {
         forgetCaches()
         drafts.clear()
         syncPreferences.setLetterboxdUsername("")
         runCatching { InvestPreferencesManager(context).setAllCategoriesVisibility(true) }
 
-        // Their reminders and nightly check-in were about their routines.
+        // Their reminders and nightly check-in were about their routines: put
+        // away (not lost — they come back when they sign in here again), and the
+        // incoming person's own brought back.
+        keepRoutineSettings(last)
         reminders.all().keys.forEach { scheduler.cancelReminder(it) }
         reminders.clearAll()
         scheduler.cancel()
         checkInSettings.update { RoutineCheckInSettings.Settings() }
         RoutineAlarmService.stop(context)
         NotificationManagerCompat.from(context).cancelAll()
+        restoreRoutineSettings(next)
         RoutinesWidget.refreshAll(context)
+    }
+
+    private fun kept(person: String, what: String) = "kept:$person:$what"
+
+    private suspend fun keepRoutineSettings(person: String) {
+        val checkIn = checkInSettings.current()
+        prefs.edit()
+            .putString(
+                kept(person, "checkin"),
+                listOf(checkIn.enabled, checkIn.time, checkIn.days.joinToString(",") { it.name }, checkIn.alarm).joinToString("|")
+            )
+            .putStringSet(kept(person, "reminders"), reminders.all().map { (id, time) -> "$id@$time" }.toSet())
+            .putStringSet(kept(person, "alarms"), reminders.alarmIds().map { it.toString() }.toSet())
+            .commit()
+    }
+
+    private suspend fun restoreRoutineSettings(person: String) {
+        prefs.getString(kept(person, "checkin"), null)?.split("|")?.takeIf { it.size == 4 }?.let { parts ->
+            val restored = RoutineCheckInSettings.Settings(
+                enabled = parts[0].toBoolean(),
+                time = runCatching { LocalTime.parse(parts[1]) }.getOrElse { RoutineCheckInSettings.Settings().time },
+                days = parts[2].split(",").mapNotNull { runCatching { DayOfWeek.valueOf(it) }.getOrNull() }.toSet(),
+                alarm = parts[3].toBoolean()
+            )
+            checkInSettings.update { restored }
+            scheduler.schedule(restored)
+        }
+        val alarms = prefs.getStringSet(kept(person, "alarms"), null).orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+        prefs.getStringSet(kept(person, "reminders"), null).orEmpty().forEach { entry ->
+            val id = entry.substringBefore('@').toLongOrNull() ?: return@forEach
+            val time = runCatching { LocalTime.parse(entry.substringAfter('@')) }.getOrNull() ?: return@forEach
+            reminders.set(id, time, alarm = id in alarms)
+            scheduler.scheduleReminder(id, time, alarm = id in alarms)
+        }
     }
 
     private companion object {

@@ -158,7 +158,9 @@ internal fun SharingSubScreen(
 
             if (viewAs == null && state.mine.isNotEmpty()) {
                 item { Spacer(Modifier.height(4.dp)); SettingsSectionLabel("They can view") }
-                items(state.mine, key = { it.viewer }) { share ->
+                // Keys are prefixed: a friend who shares back is in both lists,
+                // and a repeated key crashes the list.
+                items(state.mine, key = { "mine:${it.viewer}" }) { share ->
                     SettingsCard {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -181,7 +183,7 @@ internal fun SharingSubScreen(
 
             if (withMe.isNotEmpty()) {
                 item { Spacer(Modifier.height(4.dp)); SettingsSectionLabel("Shared with you") }
-                items(withMe, key = { it.owner }) { share ->
+                items(withMe, key = { "withMe:${it.owner}" }) { share ->
                     SettingsCard {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),

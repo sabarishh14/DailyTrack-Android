@@ -136,7 +136,9 @@ fun HomeScreen(
     viewModel: HomeVM = hiltViewModel(),
     moneyViewModel: MoneyVM = hiltViewModel(),
     onNavigateToBudgets: () -> Unit = {},
-    onNavigateToRoutines: () -> Unit = {}
+    onNavigateToRoutines: () -> Unit = {},
+    onNavigateToInvestments: () -> Unit = {},
+    onNavigateToSabdekho: () -> Unit = {}
 ) {
     val homeState by viewModel.state.collectAsState()
     // Budgets live on the Money view model; grabbing the same shared instance
@@ -224,18 +226,55 @@ fun HomeScreen(
             // Home is a stack of mostly-collapsed cards; tighter gaps keep all of them on one screen.
             verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
         ) {
-            if (!canMoney && !canInvest) item {
-                NothingSharedCard(
-                    hasOtherPages = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.GYM) ||
-                        access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
+            // Without money, Home's own sections have little to say. So every page
+            // there is becomes a big door instead, and the doors share the screen
+            // evenly: one, two or three, it always looks full and the same.
+            val sparse = !canMoney
+            if (sparse) {
+                val canSabdekho = access.canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
+                val doors = listOfNotNull(
+                    if (canInvest) HomeDoor.INVESTMENTS else null,
+                    if (canRoutines) HomeDoor.ROUTINES else null,
+                    if (canSabdekho) HomeDoor.SABDEKHO else null
                 )
+                if (doors.isEmpty()) item { NothingSharedCard() }
+                val share = if (doors.size == 1) 0.6f else 0.86f / doors.size
+                doors.forEach { door ->
+                    item(key = door.name) {
+                        val modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp).fillParentMaxHeight(share)
+                        when (door) {
+                            HomeDoor.INVESTMENTS -> PageDoor(
+                                emoji = "📈",
+                                title = "Investments",
+                                subtitle = investmentsLine(
+                                    isLoading = homeState.isLoading,
+                                    empty = homeState.noInvestments,
+                                    invested = homeState.investmentTotalInvested,
+                                    current = homeState.investmentTotalCurrent
+                                ),
+                                accent = MaterialTheme.colorScheme.secondary,
+                                onClick = onNavigateToInvestments,
+                                modifier = modifier
+                            )
+                            HomeDoor.ROUTINES -> RoutinesDoor(onClick = onNavigateToRoutines, modifier = modifier)
+                            HomeDoor.SABDEKHO -> PageDoor(
+                                emoji = "🎬",
+                                title = "SabDekho",
+                                subtitle = "Films, shows & the diary",
+                                accent = MaterialTheme.colorScheme.tertiary,
+                                onClick = onNavigateToSabdekho,
+                                modifier = modifier
+                            )
+                        }
+                    }
+                }
             }
             if (firstRun) item {
                 com.example.dailytrack_mobile.presentation.screens.settings.components.FirstAccountCard(
                     onAdded = { viewModel.onAction(HomeAction.Refresh(forceRefresh = true)) }
                 )
             }
-            if (showBalances && !firstRun) item {
+            if (showBalances && !firstRun && !sparse) item {
                 NetWorthSection(
                     totalBankBalance = apiBankBalance,
                     totalNetWorth = totalNetWorth,
@@ -246,7 +285,7 @@ fun HomeScreen(
                     totalInvestCount = homeState.totalInvestCategoriesCount
                 )
             }
-            if (showBalances && !firstRun) item {
+            if (showBalances && !firstRun && !sparse) item {
                 BankAccountsSection(
                     accounts = apiAccounts,
                     totalBankBalance = apiBankBalance,
@@ -255,7 +294,7 @@ fun HomeScreen(
                     onSetCardBudget = if (access.fullMoneyAccess) setCardBudget else null
                 )
             }
-            if (canRoutines) item {
+            if (canRoutines && !sparse) item {
                 com.example.dailytrack_mobile.presentation.screens.routines.RoutinesHomeCard(onClick = onNavigateToRoutines)
             }
             if (canMoney && !firstRun) item {
@@ -264,7 +303,7 @@ fun HomeScreen(
                     onClick = onNavigateToBudgets
                 )
             }
-            if (canInvest && !homeState.noInvestments) item {
+            if (canInvest && !homeState.noInvestments && !sparse) item {
                 InvestmentPortfolioSection(
                     totalInvested = homeState.investmentTotalInvested,
                     totalCurrent  = homeState.investmentTotalCurrent,
@@ -1454,9 +1493,123 @@ private fun SectionLabel(
     }
 }
 
-/** Home for someone with no money/investment access. */
+private enum class HomeDoor { INVESTMENTS, ROUTINES, SABDEKHO }
+
+/** "₹12.34L · +8.2%": what it's worth now, and how it's done overall. */
+private fun investmentsLine(isLoading: Boolean, empty: Boolean, invested: Double, current: Double): String = when {
+    isLoading && current == 0.0 -> "Loading…"
+    empty || current == 0.0 -> "Nothing invested yet"
+    invested <= 0.0 -> formatCurrency(current)
+    else -> {
+        val pct = (current - invested) / invested * 100
+        "${formatCurrency(current)} · ${if (pct >= 0) "+" else "−"}${"%.1f".format(Math.abs(pct))}%"
+    }
+}
+
+/**
+ * A page's door on a sparse Home: its colour washing up from the bottom, a big
+ * emoji, the name in the heading font, a line about it. Fills whatever height
+ * Home gives it.
+ */
 @Composable
-private fun NothingSharedCard(hasOtherPages: Boolean) {
+private fun PageDoor(
+    emoji: String,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val dims = Dimens.current
+    val colors = MaterialTheme.colorScheme
+    Card(
+        onClick = onClick,
+        shape = RoundedCornerShape(dims.cardCornerRadius + 4.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh),
+        modifier = modifier
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f to accent.copy(alpha = 0.22f)
+                    )
+                )
+                .padding(dims.cardInnerPadding)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(accent.copy(alpha = 0.16f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = emoji, style = MaterialTheme.typography.headlineSmall)
+            }
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        color = colors.onSurface
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(accent, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Open $title",
+                        tint = colors.surface
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Routines' door, with today's progress on it. */
+@Composable
+private fun RoutinesDoor(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: com.example.dailytrack_mobile.presentation.screens.routines.RoutinesVM = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsState()
+    val stats = state.todayStats
+    val streak = state.perfectDays?.current ?: 0
+    val streakPart = if (streak >= 2) " · 🔥 $streak" else ""
+    PageDoor(
+        emoji = "🌱",
+        title = "Routines",
+        subtitle = when {
+            state.isLoading -> "Loading…"
+            state.routines.isEmpty() -> "Habits & challenges"
+            stats == null || stats.total == 0 -> "Nothing due today$streakPart"
+            stats.done == stats.total -> "All done today 🎉$streakPart"
+            else -> "${stats.done} of ${stats.total} done today$streakPart"
+        },
+        accent = MaterialTheme.colorScheme.primary,
+        onClick = onClick,
+        modifier = modifier
+    )
+}
+
+/** Home for someone with nothing shared with them at all. */
+@Composable
+private fun NothingSharedCard(hasOtherPages: Boolean = false) {
     val dims = Dimens.current
     Card(
         shape = RoundedCornerShape(dims.cardCornerRadius),

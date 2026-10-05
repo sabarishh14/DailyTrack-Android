@@ -543,7 +543,7 @@ private fun ColumnScope.CheckIn(
 private fun DayRing(stats: DayStats) {
     Box(modifier = Modifier.size(56.dp), contentAlignment = Alignment.Center) {
         val track = Color.White.copy(alpha = 0.12f)
-        Canvas(modifier = Modifier.fillMaxSize()) { drawMixRing(stats.mix(stats.date), track, strokeWidth = 5.dp.toPx()) }
+        Canvas(modifier = Modifier.fillMaxSize()) { drawMixRing(stats.mix(), track, strokeWidth = 5.dp.toPx()) }
         Text(
             text = "${stats.done}/${stats.total}",
             style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Black),

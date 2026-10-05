@@ -280,7 +280,7 @@ class RoutinesVM @Inject constructor(
                 upcoming = page.upcoming,
                 routines = page.summaries,
                 archived = page.archived,
-                yesterdayOpen = page.yesterdayOpen,
+                unfilledDays = page.unfilledDays,
                 pendingSync = snapshot.pending.size,
                 openDayItems = if (current.openDay == openDay && page.openDayItems != null) page.openDayItems else current.openDayItems,
                 openDayStats = if (current.openDay == openDay && page.openDayStats != null) page.openDayStats else current.openDayStats,
@@ -309,7 +309,7 @@ class RoutinesVM @Inject constructor(
         val upcoming: List<UpcomingItem>,
         val summaries: List<RoutineSummary>,
         val archived: List<Routine>,
-        val yesterdayOpen: Int,
+        val unfilledDays: List<LocalDate>,
         val openDayItems: List<DayItem>?,
         val openDayStats: DayStats?
     )
@@ -341,9 +341,11 @@ class RoutinesVM @Inject constructor(
             upcoming = upcoming,
             summaries = summaries,
             archived = snapshot.routines.filter { it.archived }.mapNotNull { it.toRoutine() },
-            // Only blanks that would count as missed; days before a routine was added don't.
-            yesterdayOpen = engine.dayItems(today.minusDays(1))
-                .count { it.required && it.status == null && it.routine.countsIfUnanswered(it.date) },
+            // The days the 30-day score is counting as missed only because nothing
+            // was answered. Days before a routine was added don't count.
+            unfilledDays = (1L..FILL_IN_WINDOW_DAYS).map { today.minusDays(it) }.filter { day ->
+                engine.dayItems(day).any { it.required && it.status == null && it.routine.countsIfUnanswered(it.date) }
+            },
             openDayItems = openDay?.let { engine.dayItems(it) },
             openDayStats = openDay?.let { engine.dayStats(it) }
         )
@@ -360,6 +362,8 @@ class RoutinesVM @Inject constructor(
 
     private companion object {
         const val REFRESH_AFTER_MS = 60_000L
+        /** As far back as the consistency score looks. */
+        const val FILL_IN_WINDOW_DAYS = 30L
     }
 }
 

@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.example.dailytrack_mobile.domain.routines.DayStats
-import java.time.LocalDate
 
 // Charts (the week's bars, the History calendar, today's ring) use colours anyone
 // reads at a glance. The answer buttons keep their emoji.
@@ -29,7 +28,11 @@ internal val DayDoneColor = Color(0xFF34C759)
 internal val DaySkippedColor = Color(0xFFFFC300)
 internal val DayMissedColor = Color(0xFFFF453A)
 
-/** A day's mix for drawing. Blanks are misses once the day is over, and still open today. */
+/**
+ * A day's mix for drawing. Blanks stay blank — an empty stretch of the ring —
+ * on any day, so a day never filled in looks it, not like a day of misses. (The
+ * score still counts a past blank as missed until it's answered.)
+ */
 internal data class DayMix(val done: Int, val skipped: Int, val missed: Int, val open: Int) {
     val all: Int get() = done + skipped + missed + open
 
@@ -37,15 +40,14 @@ internal data class DayMix(val done: Int, val skipped: Int, val missed: Int, val
     val perfect: Boolean get() = done > 0 && missed == 0 && open == 0
 }
 
-internal fun DayStats.mix(today: LocalDate): DayMix {
-    val over = date < today
-    return DayMix(
-        done = done,
-        skipped = skipped,
-        missed = missed + if (over) unanswered else 0,
-        open = if (over) 0 else unanswered
-    )
-}
+internal fun DayStats.mix(): DayMix = DayMix(
+    done = done,
+    skipped = skipped,
+    missed = missed,
+    // Every blank, even one too early to count against the score: the day
+    // isn't complete, so it never looks it.
+    open = blank
+)
 
 /** A thin ring split into done, skipped and missed, over a track for what's still open. */
 internal fun DrawScope.drawMixRing(mix: DayMix, track: Color, strokeWidth: Float) {

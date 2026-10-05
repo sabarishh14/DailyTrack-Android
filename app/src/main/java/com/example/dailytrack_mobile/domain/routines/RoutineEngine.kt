@@ -35,6 +35,8 @@ data class DayItem(
  * How a day went: [done] out of [total], where total is everything that counted
  * ([done] + [missed] + [unanswered]). [skipped] ones are excused and not in the
  * total. [unanswered] are still open today, and count as missed once it's over.
+ * [blank] is every required one with no answer, counted or not (a day from
+ * before the routine was added): what the charts draw as not filled in.
  */
 data class DayStats(
     val date: LocalDate,
@@ -42,7 +44,8 @@ data class DayStats(
     val total: Int,
     val missed: Int = 0,
     val skipped: Int = 0,
-    val unanswered: Int = 0
+    val unanswered: Int = 0,
+    val blank: Int = unanswered
 ) {
     val fraction: Float? get() = if (total > 0) done.toFloat() / total else null
 }
@@ -348,7 +351,8 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
             total = total,
             missed = items.count { it.required && it.status == CheckInStatus.MISSED },
             skipped = items.count { it.required && it.status == CheckInStatus.SKIPPED },
-            unanswered = items.count { it.required && it.status == null && counts(it) }
+            unanswered = items.count { it.required && it.status == null && counts(it) },
+            blank = items.count { it.required && it.status == null }
         )
     }
 
@@ -438,7 +442,7 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
             today > cycle.deadline -> cycle.deadline to false
             else -> null
         }
-        return judged?.takeIf { (date, onTime) -> onTime || routine.countsIfUnanswered(date) }
+        return judged?.takeIf { (date, onTime) -> onTime || routine.addedBy(date) }
     }
 
     /** A due item that counts for its day: answered (skips excused), or blank but held against it. */

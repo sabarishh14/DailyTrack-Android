@@ -108,6 +108,21 @@ class HomeVM @Inject constructor(
             val transactionsResult = repository.getTransactions(limit = 1000, month = monthStr, forceRefresh = forceRefresh)
             val investmentsResult = investmentsRepository.getFullPortfolio(forceRefresh = forceRefresh)
 
+            // Investments stand on their own: someone shown them without money
+            // (sharing) still gets their totals.
+            // A failure clears them: whoever was on screen before must not linger.
+            val portfolio = investmentsResult.getOrNull()
+            val latestSnapshot = portfolio?.snapshots?.firstOrNull()
+            cachedLatestSnapshot = latestSnapshot
+            val (totalInvested, totalCurrent) = calculateFilteredInvestments(latestSnapshot, _state.value.hiddenInvestCategories)
+            _state.update {
+                it.copy(
+                    investmentTotalInvested = totalInvested,
+                    investmentTotalCurrent = totalCurrent,
+                    noInvestments = portfolio != null && portfolio.snapshots.isEmpty()
+                )
+            }
+
             if (accountsResult.isSuccess && transactionsResult.isSuccess) {
                 val accounts = accountsResult.getOrThrow()
                     .filter { it.balanceTracked }
@@ -138,11 +153,6 @@ class HomeVM @Inject constructor(
                     }
                 }
                 
-                val portfolioData = investmentsResult.getOrNull()
-                val latestSnapshot = portfolioData?.snapshots?.firstOrNull()
-                cachedLatestSnapshot = latestSnapshot
-                val (totalInvested, totalCurrent) = calculateFilteredInvestments(latestSnapshot, _state.value.hiddenInvestCategories)
-                
                 _state.update {
                     it.copy(
                         isLoading = false,
@@ -150,10 +160,7 @@ class HomeVM @Inject constructor(
                         accounts = accounts,
                         incomeByCategory = income,
                         expenseByCategory = expense,
-                        investmentTotalInvested = totalInvested,
-                        investmentTotalCurrent = totalCurrent,
-                        noAccounts = accountsResult.getOrThrow().isEmpty(),
-                        noInvestments = portfolioData != null && portfolioData.snapshots.isEmpty()
+                        noAccounts = accountsResult.getOrThrow().isEmpty()
                     )
                 }
             } else {

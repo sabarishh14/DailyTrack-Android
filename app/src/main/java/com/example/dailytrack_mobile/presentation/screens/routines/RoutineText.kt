@@ -27,6 +27,11 @@ internal object RoutineText {
     private val longDate = DateTimeFormatter.ofPattern("EEEE, d MMM", Locale.ENGLISH)
     private val dayMonth = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
     private val clock = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
+    private val shortDate = DateTimeFormatter.ofPattern("EEE d", Locale.ENGLISH)
+
+    /** "Yesterday", or "Sat 27". */
+    fun shortDate(date: LocalDate, today: LocalDate): String =
+        if (date == today.minusDays(1)) "Yesterday" else date.format(shortDate)
 
     const val WEEKDAYS = 0b0011111
     const val WEEKENDS = 0b1100000

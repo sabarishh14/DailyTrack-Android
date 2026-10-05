@@ -84,7 +84,10 @@ internal fun DaySheet(
     streaks: Map<Long, Streak>,
     onStatus: (DayItem, CheckInStatus?) -> Unit,
     onSkip: (DayItem) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** Another day still blank, to go on to once this one's filled. */
+    next: LocalDate? = null,
+    onNext: (LocalDate) -> Unit = {}
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -105,9 +108,10 @@ internal fun DaySheet(
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
+            val blankNote = stats?.takeIf { date < today && it.blank > 0 }?.let { " · ${it.blank} not filled in" }.orEmpty()
             val summary = stats?.takeIf { it.total > 0 }?.let {
-                "${it.done} of ${it.total} done · ${RoutineText.percent(it.fraction)}"
-            } ?: "Nothing counted this day"
+                "${it.done} of ${it.total} done · ${RoutineText.percent(it.fraction)}$blankNote"
+            } ?: (if (blankNote.isNotEmpty()) blankNote.removePrefix(" · ").replaceFirstChar { it.uppercase() } else "Nothing counted this day")
             Text(
                 text = summary,
                 style = MaterialTheme.typography.bodyMedium,
@@ -135,6 +139,14 @@ internal fun DaySheet(
                         )
                     }
                 }
+            }
+            // Once this day has nothing left open, on to the next blank one.
+            if (next != null && items.none { it.required && it.status == null }) {
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.Button(
+                    onClick = { onNext(next) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Next: ${RoutineText.shortDate(next, today)} →") }
             }
         }
     }

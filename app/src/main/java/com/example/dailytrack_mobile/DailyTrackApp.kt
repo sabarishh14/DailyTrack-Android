@@ -28,6 +28,7 @@ class DailyTrackApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         // Before any screen reads a cache: a phone signed in from before each
         // person's data was kept apart gets cleaned once (local work, no network).
         runBlocking {

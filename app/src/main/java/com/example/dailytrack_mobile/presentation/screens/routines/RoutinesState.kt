@@ -71,7 +71,8 @@ data class RoutinesState(
     val upcoming: List<UpcomingItem> = emptyList(),
     val routines: List<RoutineSummary> = emptyList(),
     val archived: List<Routine> = emptyList(),
-    val yesterdayOpen: Int = 0,
+    /** Past days (last 30) with something never answered, most recent first. */
+    val unfilledDays: List<LocalDate> = emptyList(),
     val pendingSync: Int = 0,
     val checkIn: RoutineCheckInSettings.Settings = RoutineCheckInSettings.Settings(),
     val openDay: LocalDate? = null,

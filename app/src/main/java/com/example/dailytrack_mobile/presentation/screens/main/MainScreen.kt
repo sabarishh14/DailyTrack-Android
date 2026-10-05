@@ -27,6 +27,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -246,6 +247,8 @@ fun MainScreen(
     }
 
     // If a permission change hides what's on screen, fall back to Home.
+    // (A tab added or removed before the current one: the pager's page keys keep
+    // the same screen in view at its new position.)
     LaunchedEffect(access) {
         if (!routeAllowed(currentRoute, access)) {
             currentRoute = Routes.Home.route
@@ -416,15 +419,51 @@ fun MainScreen(
         )
     }
 
+    // Whose data: yours, or someone's who shared with you. In both top bars.
+    val viewSwitcher: @Composable (Modifier, Dp) -> Unit = { buttonModifier, iconSize ->
+        if (sharedWithMe.isNotEmpty() || viewAs != null) Box {
+            FilledIconButton(colors = topBarIconButtonColors(), onClick = { showViewMenu = true }, modifier = buttonModifier) {
+                Icon(
+                    imageVector = Icons.Default.People,
+                    contentDescription = "Switch whose data",
+                    tint = if (viewAs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(iconSize)
+                )
+            }
+            DropdownMenu(expanded = showViewMenu, onDismissRequest = { showViewMenu = false }) {
+                (listOf<String?>(null) + sharedWithMe.map { it.owner }).forEach { owner ->
+                    DropdownMenuItem(
+                        text = { Text(owner ?: "Mine", maxLines = 1) },
+                        leadingIcon = { Text(if (owner == null) "🙂" else "👀") },
+                        trailingIcon = if (viewAs == owner) ({ Icon(Icons.Default.Check, contentDescription = null) }) else null,
+                        onClick = {
+                            showViewMenu = false
+                            if (viewAs != owner) sharingViewModel.switchView(owner)
+                        }
+                    )
+                }
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
             if (currentRoute == Routes.Home.route) {
-                HomeTopBar(
-                    onNavigateToSettings = onNavigateToSettings,
-                    onNavigateToAnalytics = {
-                        navigateSafely(Routes.Analytics.route)
+                Column {
+                    HomeTopBar(
+                        onNavigateToSettings = onNavigateToSettings,
+                        onNavigateToAnalytics = {
+                            navigateSafely(Routes.Analytics.route)
+                        },
+                        viewSwitcher = { viewSwitcher(Modifier.size(36.dp), 20.dp) }
+                    )
+                    viewAs?.let { owner ->
+                        com.example.dailytrack_mobile.presentation.screens.settings.components.ViewingBar(
+                            owner = owner,
+                            onBack = { sharingViewModel.switchView(null) }
+                        )
                     }
-                )
+                }
             } else if (currentRoute != Routes.Analytics.route && currentRoute != Routes.Budgets.route) {
                 Column {
                     TopAppBar(
@@ -464,30 +503,7 @@ fun MainScreen(
                             }
                         },
                         actions = {
-                            // Whose data: yours, or someone's who shared with you.
-                            if (sharedWithMe.isNotEmpty() || viewAs != null) Box {
-                                FilledIconButton(colors = topBarIconButtonColors(), onClick = { showViewMenu = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.People,
-                                        contentDescription = "Switch whose data",
-                                        tint = if (viewAs != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(dims.iconSizeMedium)
-                                    )
-                                }
-                                DropdownMenu(expanded = showViewMenu, onDismissRequest = { showViewMenu = false }) {
-                                    (listOf<String?>(null) + sharedWithMe.map { it.owner }).forEach { owner ->
-                                        DropdownMenuItem(
-                                            text = { Text(owner ?: "Mine", maxLines = 1) },
-                                            leadingIcon = { Text(if (owner == null) "🙂" else "👀") },
-                                            trailingIcon = if (viewAs == owner) ({ Icon(Icons.Default.Check, contentDescription = null) }) else null,
-                                            onClick = {
-                                                showViewMenu = false
-                                                if (viewAs != owner) sharingViewModel.switchView(owner)
-                                            }
-                                        )
-                                    }
-                                }
-                            }
+                            viewSwitcher(Modifier, dims.iconSizeMedium)
                             FilledIconButton(colors = topBarIconButtonColors(), onClick = onNavigateToSettings) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
@@ -540,12 +556,18 @@ fun MainScreen(
                         state = pagerState,
                         userScrollEnabled = !moneyState.isSelectionMode,
                         beyondViewportPageCount = 1,
+                        // By page, not position: when a share change adds or removes a
+                        // tab, each screen keeps its own state instead of inheriting
+                        // whatever used to sit at its index.
+                        key = { index -> pageAt(index) },
                         modifier = Modifier.fillMaxSize()
                     ) { index ->
                         when (pageAt(index)) {
                             PAGE_HOME -> HomeScreen(
                                 onNavigateToBudgets = { navigateSafely(Routes.Budgets.route) },
-                                onNavigateToRoutines = { navigateSafely(Routes.Routines.route) }
+                                onNavigateToRoutines = { navigateSafely(Routes.Routines.route) },
+                                onNavigateToInvestments = { navigateSafely(Routes.Investments.route) },
+                                onNavigateToSabdekho = { navigateSafely(Routes.Sabdekho.route) }
                             )
                             PAGE_CASH_FLOW -> MoneyCashFlowTab(
                                 state = moneyState,

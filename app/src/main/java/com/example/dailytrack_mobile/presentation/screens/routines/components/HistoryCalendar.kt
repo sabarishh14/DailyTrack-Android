@@ -132,7 +132,7 @@ private fun DayCell(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val mix = stats?.mix(today)
+    val mix = stats?.mix()
     val isToday = date == today
     val track = colors.surfaceContainerHighest
     Box(

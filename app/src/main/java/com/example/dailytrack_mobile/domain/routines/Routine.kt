@@ -81,10 +81,14 @@ data class Routine(
     val isChallenge: Boolean get() = endDate != null
 
     /**
-     * Whether leaving [date] blank counts as a miss. Days before the routine was
-     * added don't: nobody could have answered them. Filled in, they count.
+     * Whether leaving [date] blank counts as a miss: from the start date on, it
+     * does. That's when the routine began, whenever it was added here, so its
+     * blank days are days to fill in.
      */
-    fun countsIfUnanswered(date: LocalDate): Boolean = date >= (createdOn ?: startDate)
+    fun countsIfUnanswered(date: LocalDate): Boolean = date >= startDate
+
+    /** [date] is on or after the day it was added here. A chore already overdue when added isn't late. */
+    fun addedBy(date: LocalDate): Boolean = date >= (createdOn ?: startDate)
 
     fun activeOn(date: LocalDate): Boolean =
         !archived && date >= startDate && (endDate == null || date <= endDate)

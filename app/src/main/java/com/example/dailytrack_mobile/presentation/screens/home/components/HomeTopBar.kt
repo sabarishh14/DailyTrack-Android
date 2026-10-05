@@ -51,6 +51,8 @@ fun HomeTopBar(
     onNavigateToSettings: () -> Unit,
     onNavigateToAnalytics: () -> Unit,
     userName: String? = null,
+    /** Switch whose data is on screen; draws nothing when nothing's shared. */
+    viewSwitcher: @Composable () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val dims = Dimens.current
@@ -136,6 +138,7 @@ fun HomeTopBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
+                viewSwitcher()
                 if (com.example.dailytrack_mobile.presentation.access.LocalAccess.current
                         .canView(com.example.dailytrack_mobile.data.local.auth.AccessModule.MONEY)
                 ) FilledIconButton(colors = topBarIconButtonColors(), 

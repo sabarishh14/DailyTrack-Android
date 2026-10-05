@@ -156,6 +156,14 @@ fun RoutinesScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // First thing on the page: days never answered, until they are.
+                if (state.unfilledDays.isNotEmpty() && !state.readOnly) {
+                    item(key = "fill-in") {
+                        FillInBanner(days = state.unfilledDays, today = state.today) {
+                            onAction(RoutinesAction.OpenDay(state.unfilledDays.first()))
+                        }
+                    }
+                }
                 item(key = "hero") {
                     RoutinesHero(
                         today = state.todayStats,
@@ -170,13 +178,6 @@ fun RoutinesScreen(
                 }
                 state.error?.let { error ->
                     item(key = "error") { Notice("Showing what's saved on this phone. $error") }
-                }
-                if (state.yesterdayOpen > 0) {
-                    item(key = "yesterday") {
-                        YesterdayBanner(count = state.yesterdayOpen) {
-                            onAction(RoutinesAction.OpenDay(state.today.minusDays(1)))
-                        }
-                    }
                 }
 
                 item(key = "today-title") { RoutineSection("Today", RoutineText.weekdayDate(state.today)) }
@@ -267,6 +268,9 @@ fun RoutinesScreen(
             items = state.openDayItems,
             stats = state.openDayStats,
             streaks = state.streaks,
+            // Filling in: step straight on to the next day still blank.
+            next = if (state.readOnly) null else state.unfilledDays.firstOrNull { it != day },
+            onNext = { onAction(RoutinesAction.OpenDay(it)) },
             onStatus = { item, status -> onAction(RoutinesAction.SetStatus(item.routine.id, item.date, status)) },
             onSkip = { onAction(RoutinesAction.AskSkipReason(it)) },
             onDismiss = { onAction(RoutinesAction.CloseDay) }
@@ -471,7 +475,7 @@ private fun TodayStrip(stats: DayStats?, left: Int) {
         Box(modifier = Modifier.size(30.dp), contentAlignment = Alignment.Center) {
             if (stats != null && hasDue) {
                 val track = onHero.copy(alpha = 0.14f)
-                val mix = stats.mix(stats.date)
+                val mix = stats.mix()
                 Canvas(modifier = Modifier.fillMaxSize()) { drawMixRing(mix, track, strokeWidth = 4.dp.toPx()) }
             } else {
                 Text("☀️", fontSize = 16.sp)
@@ -515,8 +519,12 @@ private fun checkInDays(days: Set<DayOfWeek>): String =
 
 // ── Sections ─────────────────────────────────────────────────────────────────
 
+/**
+ * Days never answered, newest first: "3 days to fill in · Yesterday, Sat 27,
+ * Thu 25". Tapping opens the newest; its sheet steps on to the next.
+ */
 @Composable
-private fun YesterdayBanner(count: Int, onClick: () -> Unit) {
+private fun FillInBanner(days: List<LocalDate>, today: LocalDate, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -531,14 +539,19 @@ private fun YesterdayBanner(count: Int, onClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Yesterday has ${if (count == 1) "1 unanswered" else "$count unanswered"}",
+                text = if (days.size == 1) "${RoutineText.shortDate(days[0], today)} isn't filled in"
+                else "${days.size} days to fill in",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.onSecondaryContainer
             )
             Text(
-                text = "Fill them in, or they count as missed",
+                text = if (days.size == 1) "Counts as missed until you do"
+                else days.take(3).joinToString(", ") { RoutineText.shortDate(it, today) } +
+                    if (days.size > 3) " +${days.size - 3}" else "",
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.onSecondaryContainer.copy(alpha = 0.8f)
+                color = colors.onSecondaryContainer.copy(alpha = 0.8f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
         Text(
@@ -683,7 +696,7 @@ private fun DayBar(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val mix = stats?.mix(today)
+    val mix = stats?.mix()
     val fraction = stats?.fraction
     // Grows up from the bottom when the week comes into view.
     val grow = remember { Animatable(0f) }
@@ -862,7 +875,7 @@ private fun EmptyRoutines(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "Habits, challenges and chores. Tick them off through the day, or answer a quick check-in every night.",
+            text = "Habits to build, things to quit, and challenges. Tick them off through the day, or answer a quick check-in every night.",
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
             textAlign = TextAlign.Center

@@ -24,9 +24,7 @@ internal val RoutineTemplates = listOf(
     RoutineTemplate("💧", "Drink 3L water"),
     RoutineTemplate("🧘", "Meditate 10 minutes"),
     RoutineTemplate("🚶", "Walk 8,000 steps"),
-    RoutineTemplate("📵", "No phone in bed", kind = RoutineKind.AVOID),
-    RoutineTemplate("🛏️", "Change bedsheets", schedule = RoutineSchedule.INTERVAL, every = 1, unit = IntervalUnit.WEEK),
-    RoutineTemplate("🌬️", "Clean AC filter", schedule = RoutineSchedule.INTERVAL, every = 3, unit = IntervalUnit.MONTH)
+    RoutineTemplate("📵", "No phone in bed", kind = RoutineKind.AVOID)
 )
 
 /** What the routine editor opens for. */
