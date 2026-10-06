@@ -37,49 +37,39 @@ class InvestmentsRepository @Inject constructor(
         cachedMutualFundsByDate.clear()
     }
 
-    suspend fun getFullPortfolio(forceRefresh: Boolean = false): Result<FullPortfolioData> = coroutineScope {
-        try {
-            if (demoDataManager.isDemoModeEnabled()) {
-                return@coroutineScope Result.success(demoDataManager.getFullPortfolio())
-            }
-
-            if (!forceRefresh && cachedPortfolio != null) {
-                return@coroutineScope Result.success(cachedPortfolio!!)
-            }
-
-            // 1. Fetch snapshots to get historical data and the latest date
-            val snapshots = api.getInvestments()
-            
-            // Extract the latest date (assuming the list is ordered descending as in the backend)
-            val latestDate = snapshots.firstOrNull()?.date?.substringBefore("T")
-            
-            // 2. Fetch parallel requests for holdings
-            val equityDeferred = async { api.getEquityHoldings() }
-            val mfDeferred = async { 
-                if (latestDate != null) {
-                    api.getMutualFundHoldings(latestDate)
-                } else {
-                    emptyList()
-                }
-            }
-            val manualAssetsDeferred = async { api.getManualAssets() }
-            
-            val equityHoldings = equityDeferred.await()
-            val mutualFundHoldings = mfDeferred.await()
-            val manualAssets = manualAssetsDeferred.await()
-            
-            val fullData = FullPortfolioData(
-                snapshots = snapshots,
-                equityHoldings = equityHoldings,
-                mutualFundHoldings = mutualFundHoldings,
-                manualAssets = manualAssets
-            )
-            cachedPortfolio = fullData
-            Result.success(fullData)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Result.failure(e)
+    suspend fun getFullPortfolio(forceRefresh: Boolean = false): Result<FullPortfolioData> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            return@runCatching demoDataManager.getFullPortfolio()
         }
+
+        if (!forceRefresh && cachedPortfolio != null) {
+            return@runCatching cachedPortfolio!!
+        }
+
+        // 1. Fetch snapshots to get historical data and the latest date
+        val snapshots = api.getInvestments()
+
+        // Extract the latest date (assuming the list is ordered descending as in the backend)
+        val latestDate = snapshots.firstOrNull()?.date?.substringBefore("T")
+
+        // 2. The holdings, in parallel. Each part catches its own failure: one
+        // that throws inside async cancels the whole scope and escapes any
+        // try/catch here, crashing whichever screen asked (a 403 after a share
+        // changed did exactly that). A failure now just fails this Result.
+        coroutineScope {
+            val equityDeferred = async { runCatching { api.getEquityHoldings() } }
+            val mfDeferred = async {
+                runCatching { if (latestDate != null) api.getMutualFundHoldings(latestDate) else emptyList() }
+            }
+            val manualAssetsDeferred = async { runCatching { api.getManualAssets() } }
+
+            FullPortfolioData(
+                snapshots = snapshots,
+                equityHoldings = equityDeferred.await().getOrThrow(),
+                mutualFundHoldings = mfDeferred.await().getOrThrow(),
+                manualAssets = manualAssetsDeferred.await().getOrThrow()
+            )
+        }.also { cachedPortfolio = it }
     }
 
     /**
