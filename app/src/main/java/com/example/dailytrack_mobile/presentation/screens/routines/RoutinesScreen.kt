@@ -580,7 +580,7 @@ private fun Notice(text: String) {
 private fun UpcomingRow(item: UpcomingItem, today: LocalDate, onDoneEarly: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val routine = item.routine
-    val isChore = routine.schedule == RoutineSchedule.INTERVAL
+    val isChore = routine.schedule == RoutineSchedule.INTERVAL || routine.schedule == RoutineSchedule.REPEAT
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -601,7 +601,7 @@ private fun UpcomingRow(item: UpcomingItem, today: LocalDate, onDoneEarly: () ->
             )
             Text(
                 text = if (isChore) {
-                    "Due ${RoutineText.dueIn(item.date, today, sentenceStart = false)} · ${RoutineText.schedule(routine).lowercase()}"
+                    "Due ${RoutineText.dueIn(item.date, today, sentenceStart = false)} · ${RoutineText.schedule(routine).replaceFirstChar { it.lowercase() }}"
                 } else {
                     "Starts ${RoutineText.dueIn(item.date, today, sentenceStart = false)}"
                 },

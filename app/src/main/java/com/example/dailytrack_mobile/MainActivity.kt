@@ -50,11 +50,19 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var authRepository: AuthRepository
 
+    @Inject
+    lateinit var letterboxdAutoSync: com.example.dailytrack_mobile.data.repository.LetterboxdAutoSync
+
     private val settingsVM: SettingsVM by viewModels()
     private val loginVM: LoginViewModel by viewModels()
 
     private var pendingDeepLinkRoute by mutableStateOf<String?>(null)
     private var lastInteractionTime = System.currentTimeMillis()
+
+    override fun onStart() {
+        super.onStart()
+        letterboxdAutoSync.onAppOpened()
+    }
 
     override fun onUserInteraction() {
         super.onUserInteraction()

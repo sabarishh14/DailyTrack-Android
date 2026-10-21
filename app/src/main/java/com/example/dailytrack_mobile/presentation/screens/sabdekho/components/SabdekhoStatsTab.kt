@@ -1582,7 +1582,8 @@ private fun LanguageBars(languages: List<LanguageCountDto>, accent: Color, onCli
                     color = if (canOpen) colors.onSurface else colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.width(92.dp)
+                    // A share of the row, not a fixed width, so large text sizes still fit a name.
+                    modifier = Modifier.fillMaxWidth(0.3f).padding(end = 8.dp)
                 )
                 Box(
                     modifier = Modifier
@@ -1599,13 +1600,16 @@ private fun LanguageBars(languages: List<LanguageCountDto>, accent: Color, onCli
                             .background(if (canOpen) accent else accent.copy(alpha = 0.4f))
                     )
                 }
+                // Never wraps: the top language has the biggest count, and the bar gives way instead.
                 Text(
                     text = "${item.count}",
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = colors.onSurface,
                     textAlign = TextAlign.End,
-                    modifier = Modifier.width(40.dp)
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 10.dp).widthIn(min = 32.dp)
                 )
             }
         }

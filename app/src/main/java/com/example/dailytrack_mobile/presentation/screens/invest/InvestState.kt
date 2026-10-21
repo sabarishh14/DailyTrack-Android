@@ -25,11 +25,23 @@ data class InvestmentHolding(
     val name: String,
     val invested: Double,
     val current: Double,
-    val category: InvestCategory
+    val category: InvestCategory,
+    // Stocks and funds only: units held, their average cost and today's LTP / NAV.
+    val quantity: Double? = null,
+    val averagePrice: Double? = null,
+    val unitPrice: Double? = null
 ) {
     val pnl: Double get() = current - invested
     val pnlPercent: Double get() = if (invested == 0.0) 0.0 else (pnl / invested) * 100.0
     val isGain: Boolean get() = pnl >= 0
+
+    /** Which history it has (the server's EQUITY or MF); null for manual assets, which have none. */
+    val historyType: HoldingsType?
+        get() = if (quantity == null) null else when (category) {
+            InvestCategory.STOCKS -> HoldingsType.EQUITY
+            InvestCategory.MUTUAL_FUNDS -> HoldingsType.MUTUAL_FUNDS
+            else -> null
+        }
 }
 
 enum class InvestCategory(val label: String, val color: Color) {
@@ -71,6 +83,46 @@ data class ChartPoint(
 ) {
     val pnl: Float get() = current - invested
     val pnlPercent: Float get() = if (invested == 0f) 0f else (pnl / invested) * 100f
+}
+
+/** "past 3M", "YTD", "overall": what a gain over the range is called. */
+internal val ChartTimeRange.periodLabel: String
+    get() = when (this) {
+        ChartTimeRange.ALL -> "overall"
+        ChartTimeRange.YTD -> "YTD"
+        else -> "past $label"
+    }
+
+/** The first day a range shows; null for ALL. */
+internal fun ChartTimeRange.cutoff(today: java.time.LocalDate = java.time.LocalDate.now()): java.time.LocalDate? = when (this) {
+    ChartTimeRange.ONE_MONTH -> today.minusMonths(1)
+    ChartTimeRange.THREE_MONTHS -> today.minusMonths(3)
+    ChartTimeRange.SIX_MONTHS -> today.minusMonths(6)
+    ChartTimeRange.ONE_YEAR -> today.minusYears(1)
+    ChartTimeRange.YTD -> java.time.LocalDate.of(today.year, 1, 1)
+    ChartTimeRange.ALL -> null
+}
+
+/**
+ * (gain, %) over a range, counted like the portfolio header: the change in value
+ * less the money put in, as a share of the starting value. For ALL, or with too
+ * few points, it's the total return of [invested] → [current] instead.
+ */
+internal fun periodReturn(
+    points: List<ChartPoint>,
+    range: ChartTimeRange,
+    invested: Double,
+    current: Double
+): Pair<Double, Double> {
+    val start = points.firstOrNull()
+    val end = points.lastOrNull()
+    if (range == ChartTimeRange.ALL || points.size < 2 || start == null || end == null) {
+        val pnl = current - invested
+        return pnl to if (invested == 0.0) 0.0 else pnl / invested * 100.0
+    }
+    val pnl = (end.current - start.current).toDouble() - (end.invested - start.invested).toDouble()
+    val base = start.current.toDouble()
+    return pnl to if (base > 0.0) pnl / base * 100.0 else 0.0
 }
 
 // -----------------------------------------------------------------------------
@@ -170,7 +222,16 @@ data class InvestState(
     val compareDate: String? = null,
     val isCompareLoading: Boolean = false,
     val compareHoldings: List<HoldingSnapshotRow> = emptyList(),
-    val isComparePickerOpen: Boolean = false
+    val isComparePickerOpen: Boolean = false,
+
+    // One stock's or fund's page
+    val detailHolding: InvestmentHolding? = null,
+    val detailRange: ChartTimeRange = ChartTimeRange.THREE_MONTHS,
+    val isDetailLoading: Boolean = false,
+    val detailError: String? = null,
+    /** Its whole history, oldest first; [detailPoints] is the part in [detailRange]. */
+    val detailHistory: List<ChartPoint> = emptyList(),
+    val detailPoints: List<ChartPoint> = emptyList()
 ) {
     // ── Visibility helpers ──────────────────────────────────────────────
     val visibleCategoriesCount: Int get() = InvestCategory.entries.size - hiddenCategories.size
@@ -262,12 +323,7 @@ data class InvestState(
 
     val isPeriodGain: Boolean get() = periodPnl >= 0.0
 
-    val periodLabel: String
-        get() = when (selectedTimeRange) {
-            ChartTimeRange.ALL -> "overall"
-            ChartTimeRange.YTD -> "YTD"
-            else -> "past ${selectedTimeRange.label}"
-        }
+    val periodLabel: String get() = selectedTimeRange.periodLabel
 
     // -- Holdings snapshot ------------------------------------------------
 

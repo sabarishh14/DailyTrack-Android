@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.dailytrack_mobile.domain.search.smartSearch
 
 /**
  * Search / select / create-new dialog for transaction accounts.
@@ -55,7 +56,7 @@ fun AccountSearchDialog(
 ) {
     val query = searchQuery.trim()
     val filteredAccounts = remember(query, accountList) {
-        if (query.isBlank()) accountList else accountList.filter { it.contains(query, ignoreCase = true) }
+        accountList.smartSearch(query)
     }
     val isExactMatch = accountList.any { it.equals(query, ignoreCase = true) }
 

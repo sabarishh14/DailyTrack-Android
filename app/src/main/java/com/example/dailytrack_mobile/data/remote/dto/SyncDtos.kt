@@ -25,7 +25,9 @@ data class SheetsSyncResponseDto(
 
 @JsonClass(generateAdapter = true)
 data class LetterboxdSyncRequestDto(
-    @Json(name = "username") val username: String
+    @Json(name = "username") val username: String,
+    /** Only the latest few entries: the quick look taken on opening the app. */
+    @Json(name = "fast") val fast: Boolean? = null
 )
 
 /**

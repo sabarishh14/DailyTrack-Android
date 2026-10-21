@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.dailytrack_mobile.domain.search.smartSearch
 
 /**
  * Search / select / create-new dialog for transaction categories.
@@ -53,11 +54,7 @@ fun CategorySearchDialog(
 ) {
     val query = searchQuery.trim()
     val filteredCategories = remember(query, categoryList) {
-        if (query.isBlank()) {
-            categoryList
-        } else {
-            categoryList.filter { it.contains(query, ignoreCase = true) }
-        }
+        categoryList.smartSearch(query)
     }
     val isExactMatch = categoryList.any { it.equals(query, ignoreCase = true) }
 

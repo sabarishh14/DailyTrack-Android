@@ -339,6 +339,7 @@ class FormsVM @Inject constructor(
         intervalValue: Int? = null,
         intervalUnit: String? = null,
         nextRunDate: String? = null,
+        installment: Double? = null,
         onSuccess: () -> Unit
     ) {
         viewModelScope.launch {
@@ -355,7 +356,8 @@ class FormsVM @Inject constructor(
                 amountToAdd = amountToAdd,
                 intervalValue = intervalValue,
                 intervalUnit = intervalUnit,
-                nextRunDate = nextRunDate
+                nextRunDate = nextRunDate,
+                installment = installment
             )
             result.onSuccess {
                 _addAssetState.update { it.copy(isSaving = false) }

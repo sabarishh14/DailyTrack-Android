@@ -85,6 +85,9 @@ data class CardChangeDto(
     @Json(name = "account") val account: String,
     @Json(name = "before") val before: Double,
     @Json(name = "after") val after: Double,
+    // The part the budget counts (older servers don't send it).
+    @Json(name = "budget_before") val budgetBefore: Double? = null,
+    @Json(name = "budget_after") val budgetAfter: Double? = null,
     @Json(name = "monthly_budget") val monthlyBudget: Double? = null,
     @Json(name = "over_budget") val overBudget: Boolean = false
 )

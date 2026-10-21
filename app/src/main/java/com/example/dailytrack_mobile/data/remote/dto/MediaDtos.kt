@@ -159,7 +159,10 @@ data class MediaDiaryLogDto(
     @Json(name = "type") val type: String? = "movie",
     @Json(name = "season_number") val seasonNumber: Int? = null,
     @Json(name = "episode_number") val episodeNumber: Int? = null,
-    @Json(name = "created_at") val createdAt: String? = null
+    @Json(name = "created_at") val createdAt: String? = null,
+    // Filled on the phone when same-day episode logs merge into one diary row.
+    @Json(ignore = true) val logIds: List<Int> = emptyList(),
+    @Json(ignore = true) val episodes: List<Int> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)

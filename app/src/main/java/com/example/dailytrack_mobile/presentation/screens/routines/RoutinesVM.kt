@@ -213,7 +213,7 @@ class RoutinesVM @Inject constructor(
             },
             selected = detailDay?.takeIf { it <= today }?.let { engine.itemOn(routine, it) },
             skips = answers.filter { it.status == CheckInStatus.SKIPPED }.take(30),
-            nextDue = engine.nextDue(routine),
+            nextDue = engine.nextDue(routine, today),
             lastDone = engine.lastDone(routine),
             progress = engine.itemOn(routine, today)?.progress
         )
@@ -324,7 +324,9 @@ class RoutinesVM @Inject constructor(
                 routine = routine,
                 streak = streaks.getValue(routine.id),
                 consistency = engine.routineConsistency(routine, today),
-                nextDue = nextDue[routine.id]?.takeIf { routine.schedule == RoutineSchedule.INTERVAL }
+                nextDue = nextDue[routine.id]?.takeIf {
+                    routine.schedule == RoutineSchedule.INTERVAL || routine.schedule == RoutineSchedule.REPEAT
+                }
             )
         }
         return Page(

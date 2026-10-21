@@ -205,7 +205,7 @@ fun MoneyDialogsAndSheets(
     // Budget Editor Bottom Sheet
     if (state.isBudgetSheetVisible) {
         BudgetManagerSheet(
-            categories = state.mostUsedCategories,
+            categories = state.budgetCategories,
             currentBudgets = state.budgets,
             suggestions = state.budgetSuggestions,
             isSaving = state.isSavingBudgets,

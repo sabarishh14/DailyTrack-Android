@@ -234,7 +234,7 @@ fun AccountsSettingsSubScreen(
     editingBudget?.let { card ->
         CardBudgetDialog(
             card = card.account,
-            usedThisMonth = card.usedThisMonth ?: 0.0,
+            usedThisMonth = card.budgetUsedThisMonth ?: card.usedThisMonth ?: 0.0,
             budget = card.monthlyBudget,
             onSave = { budget ->
                 viewModel.setCardBudget(card.account, budget)

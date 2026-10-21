@@ -54,8 +54,29 @@ internal object RoutineText {
             IntervalUnit.DAY -> "day"
             IntervalUnit.WEEK -> "week"
             IntervalUnit.MONTH -> "month"
+            IntervalUnit.YEAR -> "year"
         }
         return if (every == 1) "Every $word" else "Every $every ${word}s"
+    }
+
+    private fun ordinal(n: Int): String =
+        "$n" + if (n % 100 in 11..13) "th" else when (n % 10) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
+
+    /** "Every Monday", "Every 2 months on the 5th", "Every year on 2 Jan", as the server words it. */
+    fun repeat(every: Int, unit: IntervalUnit, first: LocalDate): String = when (unit) {
+        IntervalUnit.WEEK -> {
+            val name = first.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+            if (every == 1) "Every $name" else "Every $every weeks on $name"
+        }
+        IntervalUnit.MONTH -> {
+            val on = "on the ${ordinal(first.dayOfMonth)}"
+            if (every == 1) "Monthly $on" else "Every $every months $on"
+        }
+        IntervalUnit.YEAR -> {
+            val on = "on ${first.format(dayMonth)}"
+            if (every == 1) "Every year $on" else "Every $every years $on"
+        }
+        IntervalUnit.DAY -> if (every == 1) "Every day" else "Every $every days"
     }
 
     /** "Every day", "Mon, Wed, Fri", "4× a week", "Every 3 months". */
@@ -65,6 +86,7 @@ internal object RoutineText {
         RoutineSchedule.WEEKLY -> "${routine.target ?: 1}× a week"
         RoutineSchedule.MONTHLY -> "${routine.target ?: 1}× a month"
         RoutineSchedule.INTERVAL -> interval(routine.every ?: 1, routine.unit ?: IntervalUnit.DAY)
+        RoutineSchedule.REPEAT -> repeat(routine.every ?: 1, routine.unit ?: IntervalUnit.DAY, routine.startDate)
     }
 
     /** The line under a routine in "Your routines". */
@@ -96,7 +118,7 @@ internal object RoutineText {
                     "${progress.done} of ${progress.needed} this $period"
                 }
             }
-            RoutineSchedule.INTERVAL -> item.dueDate?.let { due ->
+            RoutineSchedule.INTERVAL, RoutineSchedule.REPEAT -> item.dueDate?.let { due ->
                 val late = ChronoUnit.DAYS.between(due, item.date)
                 parts += when {
                     item.status == CheckInStatus.DONE && late <= 0 -> "Done early"

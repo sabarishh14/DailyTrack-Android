@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.domain.search.smartSearch
 import com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -298,8 +299,7 @@ private fun ItemFilterSearchDialog(
     }
 
     val filteredItems = remember(searchQuery, items) {
-        val q = searchQuery.trim()
-        if (q.isBlank()) items else items.filter { it.contains(q, ignoreCase = true) }
+        items.smartSearch(searchQuery)
     }
 
     AlertDialog(

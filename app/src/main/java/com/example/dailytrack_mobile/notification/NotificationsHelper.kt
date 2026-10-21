@@ -86,7 +86,8 @@ class NotificationsHelper(private val context: Context) {
         else "${cards.size} cards are over their monthly budget"
         val lines = cards.map { c ->
             val budget = c.monthlyBudget ?: 0.0
-            "${c.account}: ₹${formatRupees(c.after)} used · ₹${formatRupees(c.after - budget)} over ₹${formatRupees(budget)}"
+            val spent = c.budgetAfter ?: c.after   // the budget counts what the spending analyser does
+            "${c.account}: ₹${formatRupees(spent)} spent · ₹${formatRupees(spent - budget)} over ₹${formatRupees(budget)}"
         }
         showBalanceAlert(title, lines.joinToString("\n"), cardBudget = true)
     }

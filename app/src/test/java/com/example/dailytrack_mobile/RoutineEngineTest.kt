@@ -9,7 +9,9 @@ import com.example.dailytrack_mobile.domain.routines.IntervalUnit
 import com.example.dailytrack_mobile.domain.routines.Routine
 import com.example.dailytrack_mobile.domain.routines.RoutineEngine
 import com.example.dailytrack_mobile.domain.routines.RoutineSchedule
+import com.example.dailytrack_mobile.domain.routines.Score
 import com.example.dailytrack_mobile.domain.routines.StreakUnit
+import com.example.dailytrack_mobile.domain.routines.UpcomingItem
 import com.example.dailytrack_mobile.domain.routines.bit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,6 +35,9 @@ class RoutineEngineTest {
 
     private fun chore(id: Long, firstDue: LocalDate, every: Int = 7, unit: IntervalUnit = IntervalUnit.DAY) =
         Routine(id = id, name = "C$id", schedule = RoutineSchedule.INTERVAL, every = every, unit = unit, startDate = firstDue)
+
+    private fun repeat(id: Long, first: LocalDate, every: Int = 1, unit: IntervalUnit = IntervalUnit.WEEK, createdOn: LocalDate? = null) =
+        Routine(id = id, name = "P$id", schedule = RoutineSchedule.REPEAT, every = every, unit = unit, startDate = first, createdOn = createdOn)
 
     private fun at(routine: Routine, date: LocalDate, status: CheckInStatus) = CheckIn(routine.id, date, status)
 
@@ -407,5 +412,73 @@ class RoutineEngineTest {
         val mondays = Routine(id = 1, name = "Weekly review", schedule = RoutineSchedule.DAYS, days = DayOfWeek.MONDAY.bit(), startDate = mon)
         val e = engine(listOf(mondays), at(mondays, mon, DONE), at(mondays, day(7), DONE))
         assertEquals(2, e.perfectDays(day(10)).current)
+    }
+
+    // ── Repeats (mirrors RepeatTest in tests/test_routines_engine.py) ──────
+
+    @Test
+    fun `every monday is due from monday until done`() {
+        val r = repeat(1, mon)
+        val e = engine(listOf(r), at(r, day(2), DONE))     // done on the Wednesday: late
+        assertEquals(listOf(listOf(mon), listOf(mon), listOf(mon), emptyList()), (0L..3L).map { d -> e.dayItems(day(d)).map { it.dueDate } })
+        assertEquals(listOf(day(7)), e.dayItems(day(7)).map { it.dueDate })
+        assertEquals(day(7), e.nextDue(r, day(3)))
+        assertEquals(listOf(UpcomingItem(r, day(7))), e.upcoming(day(3)))
+        assertEquals(Score(0.0, 1.0), e.score(mon, day(3), day(3)))
+    }
+
+    @Test
+    fun `a repeat not done before the next is missed and the next takes over`() {
+        val r = repeat(1, mon)
+        val e = engine(listOf(r), at(r, day(7), DONE))
+        assertEquals(listOf(mon), e.dayItems(day(6)).map { it.dueDate })
+        assertEquals(listOf(day(7)), e.dayItems(day(7)).map { it.dueDate })
+        assertEquals(Score(1.0, 2.0), e.score(mon, day(9), day(9)))
+        assertEquals(1 to StreakUnit.TIME, e.streak(r, day(9)).let { it.current to it.unit })
+    }
+
+    @Test
+    fun `a skip on a repeat's day moves it a day`() {
+        val r = repeat(1, mon)
+        assertEquals(Score(1.0, 1.0), engine(listOf(r), at(r, mon, SKIPPED), at(r, day(1), DONE)).score(mon, day(2), day(2)))
+    }
+
+    @Test
+    fun `monthly on the 31st keeps to each month's end`() {
+        val r = repeat(1, LocalDate.of(2026, 1, 31), unit = IntervalUnit.MONTH)
+        assertEquals(
+            listOf(LocalDate.of(2026, 1, 31), LocalDate.of(2026, 2, 28), LocalDate.of(2026, 3, 31), LocalDate.of(2026, 4, 30)),
+            (0..3).map { r.occurrence(it) }
+        )
+        assertEquals(listOf(1, 2), listOf(30, 31).map { r.occurrenceIndex(LocalDate.of(2026, 3, it)) })
+        assertEquals(-1, r.occurrenceIndex(LocalDate.of(2026, 1, 30)))
+    }
+
+    @Test
+    fun `every 2nd month and every year`() {
+        val r = repeat(1, LocalDate.of(2026, 1, 5), every = 2, unit = IntervalUnit.MONTH)
+        assertEquals(LocalDate.of(2026, 1, 5), engine(listOf(r)).nextDue(r, LocalDate.of(2026, 2, 10)))
+        val done = engine(listOf(r), at(r, LocalDate.of(2026, 1, 5), DONE))
+        assertEquals(LocalDate.of(2026, 3, 5), done.nextDue(r, LocalDate.of(2026, 2, 10)))
+        assertTrue(done.dayItems(LocalDate.of(2026, 2, 10)).isEmpty())
+        val y = repeat(2, LocalDate.of(2027, 1, 2), unit = IntervalUnit.YEAR)
+        assertEquals(listOf(UpcomingItem(y, LocalDate.of(2027, 1, 2))), engine(listOf(y)).upcoming(LocalDate.of(2026, 10, 16)))
+        assertEquals(LocalDate.of(2028, 1, 2), y.occurrence(1))
+    }
+
+    @Test
+    fun `doing the next repeat early counts for it`() {
+        val r = repeat(1, mon)
+        val e = engine(listOf(r), at(r, mon, DONE), at(r, day(6), DONE))
+        assertEquals(listOf(false), e.dayItems(day(6)).map { it.required })
+        assertTrue(e.dayItems(day(7)).isEmpty())
+        assertEquals(day(14), e.nextDue(r, day(7)))
+        assertEquals(Score(2.0, 2.0), e.score(mon, day(7), day(7)))
+    }
+
+    @Test
+    fun `repeats before it was added aren't failures`() {
+        val r = repeat(1, mon, createdOn = day(14))
+        assertEquals(Score(0.0, 0.0), engine(listOf(r)).score(mon, day(14), day(14)))
     }
 }

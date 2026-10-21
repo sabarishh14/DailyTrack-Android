@@ -1,8 +1,16 @@
 package com.example.dailytrack_mobile.presentation.screens.money
 
 import androidx.compose.ui.graphics.Color
+import com.example.dailytrack_mobile.domain.money.AccountSpend
+import com.example.dailytrack_mobile.domain.money.AccountStats
+import com.example.dailytrack_mobile.domain.money.AccountStatsCalculator
+import com.example.dailytrack_mobile.domain.search.SmartSearch
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
 import java.time.Month
+import java.time.YearMonth
+import java.time.ZoneId
 import java.time.format.TextStyle
 import java.util.Date
 import java.util.Locale
@@ -74,9 +82,14 @@ data class AccountInfo(
     val minBalance: Double? = null,
     /** Credit cards: spent on the card this month (it resets on the 1st). Null for other accounts. */
     val usedThisMonth: Double? = null,
+    /** Credit cards: the part of [usedThisMonth] the budget counts, leaving out what the spending analyser does. */
+    val budgetUsedThisMonth: Double? = null,
     /** Credit cards: the monthly spending limit; null when there is none. */
     val monthlyBudget: Double? = null
 ) {
+    /** What a card's budget is measured against. */
+    val budgetUsed: Double get() = budgetUsedThisMonth ?: usedThisMonth ?: 0.0
+
     /** Returns the verified balance if available, otherwise the ledger balance */
     val displayBalance: Double get() = realBalance ?: balance
 
@@ -116,6 +129,12 @@ data class Transaction(
                 rawType.equals("Investments", ignoreCase = true) ||
                 category.equals("Investment", ignoreCase = true) ||
                 category.equals("Investments", ignoreCase = true)
+}
+
+/** What a search looks through: its text, account, category, note and amount ("250", not "250.0"). */
+internal fun Transaction.searchText(): String {
+    val amount = kotlin.math.abs(amount).let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }
+    return listOfNotNull(title, description, bank, category, note, amount).joinToString(" ")
 }
 
 data class SpendingCategory(
@@ -417,6 +436,19 @@ data class MoneyState(
             return baseList.sortedByDescending { freqMap[it] ?: 0 }
         }
 
+    /**
+     * Categories that can take a budget: not ones left out of the spending
+     * analyser, where every transaction is (as the server decides, which also
+     * leaves their budgets out of the list).
+     */
+    val budgetCategories: List<String>
+        get() {
+            val excluded = transactions.groupBy { it.category }
+                .filterValues { txs -> txs.all { it.isExcluded } }
+                .keys
+            return mostUsedCategories.filter { it !in excluded }
+        }
+
     val allAvailableAccounts: List<String>
         get() {
             val raw = if (accounts.isNotEmpty()) accounts.map { it.account }
@@ -484,8 +516,10 @@ data class MoneyState(
             return today.lengthOfMonth() - today.dayOfMonth
         }
 
-    val filteredTransactions: List<Transaction>
-        get() {
+    // Read several times a frame, so worked out once per state.
+    val filteredTransactions: List<Transaction> by lazy { filterTransactions() }
+
+    private fun filterTransactions(): List<Transaction> {
             val filters = analysisFilterState
             val isExpensesOnly = filters.selectedTypes == setOf(TransactionType.DEBIT)
             var list = transactions.filter { tx ->
@@ -528,14 +562,8 @@ data class MoneyState(
             }
 
             if (searchQuery.isNotBlank()) {
-                val q = searchQuery.lowercase().trim()
-                list = list.filter {
-                    it.title.lowercase().contains(q) ||
-                    (it.description?.lowercase()?.contains(q) == true) ||
-                    it.bank.lowercase().contains(q) ||
-                    it.category.lowercase().contains(q) ||
-                    (it.note?.lowercase()?.contains(q) == true)
-                }
+                // Its words in any order, in any field (SmartSearch); still newest first.
+                list = SmartSearch.filter(list, searchQuery) { it.searchText() }
             }
             return list
         }
@@ -544,10 +572,23 @@ data class MoneyState(
         get() = listOf("All") + spendingCategories.map { it.name }
 
     /**
-     * Analysis Tab filtered transactions based on [analysisFilterState].
+     * Analysis Tab filtered transactions based on [analysisFilterState]. Read by
+     * several charts a frame, so worked out once per state.
      */
-    val filteredAnalysisTransactions: List<Transaction>
-        get() {
+    val filteredAnalysisTransactions: List<Transaction> by lazy { filterAnalysisTransactions() }
+
+    /** The analyser grouped by account: each one's average a month and its latest month. */
+    val accountStats: AccountStats by lazy {
+        val zone = ZoneId.systemDefault()
+        fun spends(list: List<Transaction>) = list.map { tx ->
+            AccountSpend(tx.bank, YearMonth.from(Instant.ofEpochMilli(tx.timestampMillis).atZone(zone)), kotlin.math.abs(tx.amount))
+        }
+        // The donut follows the filters; each account's usual comes from the months before.
+        AccountStatsCalculator.of(spends(filteredAnalysisTransactions), spends(filterAnalysisTransactions(withDates = false)), LocalDate.now())
+    }
+
+    /** [withDates] false: every filter but the date range (the accounts' history). */
+    private fun filterAnalysisTransactions(withDates: Boolean = true): List<Transaction> {
             val filters = analysisFilterState
             val isExpensesOnly = filters.selectedTypes == setOf(TransactionType.DEBIT)
             return transactions.filter { tx ->
@@ -579,7 +620,7 @@ data class MoneyState(
 
 
                 // Date Range
-                filters.customDateRange?.let { range ->
+                if (withDates) filters.customDateRange?.let { range ->
                     val start = range.first
                     val end = range.second
                     if (start != null && tx.timestampMillis < start) return@filter false

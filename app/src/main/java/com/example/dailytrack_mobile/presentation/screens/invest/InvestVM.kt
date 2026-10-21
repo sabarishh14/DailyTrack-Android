@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -144,7 +145,71 @@ class InvestVM @Inject constructor(
             is InvestAction.SetComparePickerOpen -> {
                 _state.update { it.copy(isComparePickerOpen = action.isOpen) }
             }
+
+            is InvestAction.OpenHoldingDetail -> {
+                val type = action.holding.historyType ?: return
+                _state.update {
+                    it.copy(
+                        detailHolding = action.holding,
+                        // Opens on the range the portfolio chart was showing.
+                        detailRange = it.selectedTimeRange,
+                        detailHistory = emptyList(),
+                        detailPoints = emptyList(),
+                        detailError = null,
+                        isDetailLoading = true
+                    )
+                }
+                loadHoldingHistory(action.holding.name, type)
+            }
+
+            is InvestAction.CloseHoldingDetail -> {
+                detailJob?.cancel()
+                _state.update { it.copy(detailHolding = null, isDetailLoading = false) }
+            }
+
+            is InvestAction.SelectDetailRange -> _state.update {
+                it.copy(detailRange = action.range, detailPoints = inRange(it.detailHistory, action.range))
+            }
         }
+    }
+
+    // -- One holding's history -------------------------------------------------
+
+    private var detailJob: Job? = null
+
+    private fun loadHoldingHistory(symbol: String, type: HoldingsType) {
+        detailJob?.cancel()
+        detailJob = viewModelScope.launch {
+            val result = repository.getHoldingHistory(symbol, if (type == HoldingsType.EQUITY) "EQUITY" else "MF")
+            _state.update { state ->
+                // A cancelled or overtaken request must not land on another holding's page.
+                if (state.detailHolding?.name != symbol || !isActive) return@update state
+                result.fold(
+                    onSuccess = { rows ->
+                        // Days it wasn't held carry no value, and would dip the line to zero.
+                        val history = rows.mapNotNull { row ->
+                            val current = row.current ?: return@mapNotNull null
+                            if (current <= 0.0) null
+                            else ChartPoint(row.date.substringBefore("T"), (row.invested ?: 0.0).toFloat(), current.toFloat())
+                        }.distinctBy { it.date }.sortedBy { it.date }
+                        state.copy(
+                            isDetailLoading = false,
+                            detailHistory = history,
+                            detailPoints = inRange(history, state.detailRange)
+                        )
+                    },
+                    onFailure = { error ->
+                        state.copy(isDetailLoading = false, detailError = error.message ?: "Couldn't load its history")
+                    }
+                )
+            }
+        }
+    }
+
+    /** Points on or after the range's first day (ISO dates sort as strings). */
+    private fun inRange(points: List<ChartPoint>, range: ChartTimeRange): List<ChartPoint> {
+        val from = range.cutoff()?.toString() ?: return points
+        return points.filter { it.date >= from }
     }
 
     // -- Holdings snapshots ---------------------------------------------------
@@ -263,7 +328,10 @@ class InvestVM @Inject constructor(
                                 name = eq.symbol,
                                 invested = eq.investedValue,
                                 current = eq.currentValue,
-                                category = InvestCategory.STOCKS
+                                category = InvestCategory.STOCKS,
+                                quantity = eq.quantity,
+                                averagePrice = eq.averagePrice,
+                                unitPrice = eq.ltp
                             )
                         )
                     }
@@ -275,7 +343,10 @@ class InvestVM @Inject constructor(
                                 name = mf.symbol,
                                 invested = mf.investedValue,
                                 current = mf.currentValue,
-                                category = InvestCategory.MUTUAL_FUNDS
+                                category = InvestCategory.MUTUAL_FUNDS,
+                                quantity = mf.quantity,
+                                averagePrice = mf.averagePrice,
+                                unitPrice = mf.nav
                             )
                         )
                     }
@@ -325,16 +396,7 @@ class InvestVM @Inject constructor(
         if (snapshots.isEmpty()) return emptyList()
         
         val formatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
-        val now = java.time.LocalDate.now()
-        
-        val cutoffDate = when (range) {
-            ChartTimeRange.ONE_MONTH -> now.minusMonths(1)
-            ChartTimeRange.THREE_MONTHS -> now.minusMonths(3)
-            ChartTimeRange.SIX_MONTHS -> now.minusMonths(6)
-            ChartTimeRange.ONE_YEAR -> now.minusYears(1)
-            ChartTimeRange.YTD -> java.time.LocalDate.of(now.year, 1, 1)
-            ChartTimeRange.ALL -> null
-        }
+        val cutoffDate = range.cutoff()
 
         return snapshots
             .reversed()

@@ -41,6 +41,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.episodeLabel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -85,6 +86,8 @@ fun EditDiaryLogSheet(
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy") }
     val isMovie = log.type.equals("movie", ignoreCase = true)
+    // A merged diary row: edits apply to every episode in it, so its episode numbers stay as they are.
+    val mergedEpisodes = log.episodes.takeIf { it.size > 1 }
 
     val quickTags = listOf("Theatre", "IMAX", "Netflix", "Prime Video", "Apple TV+", "Hotstar", "4K UHD")
 
@@ -296,7 +299,9 @@ fun EditDiaryLogSheet(
                                     color = MaterialTheme.colorScheme.secondaryContainer,
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
-                                    val epText = buildString {
+                                    val epText = if (mergedEpisodes != null && dispSeason != null) {
+                                        episodeLabel(dispSeason, mergedEpisodes)
+                                    } else buildString {
                                         if (dispSeason != null) append("S$dispSeason")
                                         if (dispEpisode != null) append(" E$dispEpisode")
                                     }
@@ -405,7 +410,7 @@ fun EditDiaryLogSheet(
                             textStyle = MaterialTheme.typography.bodyMedium
                         )
 
-                        OutlinedTextField(
+                        if (mergedEpisodes == null) OutlinedTextField(
                             value = episodeNumber,
                             onValueChange = { input ->
                                 if (input.all { it.isDigit() } && input.length <= 4) {
@@ -634,7 +639,7 @@ fun EditDiaryLogSheet(
                         tags.takeIf { it.isNotBlank() },
                         selectedDate.toString(),
                         seasonNumber.toIntOrNull(),
-                        episodeNumber.toIntOrNull()
+                        if (mergedEpisodes != null) null else episodeNumber.toIntOrNull()
                     )
                 },
                 modifier = Modifier

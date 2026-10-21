@@ -36,6 +36,9 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+import kotlin.math.pow
+import kotlin.math.roundToLong
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Asset Category Definition (Matches Web Application Invest Manual Assets)
@@ -49,6 +52,7 @@ enum class AssetCategory(
     val isMath: Boolean // true for FD (auto-compounding by interest rate), false for ledger/market assets
 ) {
     FD("FD", "Fixed Deposit", "🏦", "e.g. HDFC Fixed Deposit", isMath = true),
+    RD("RD", "Recurring Deposit", "🔁", "e.g. SBI Recurring Deposit", isMath = true),
     EPF("EPF", "EPF", "🛡️", "e.g. EPFO Account", isMath = false),
     PPF("PPF", "PPF", "🔒", "e.g. SBI PPF Account", isMath = false),
     NPS("NPS", "NPS", "🏛️", "e.g. Tier-1 NPS Account", isMath = false),
@@ -61,6 +65,27 @@ enum class AssetCategory(
         fun fromId(id: String): AssetCategory = entries.find { it.id == id } ?: FD
     }
 }
+
+/**
+ * (deposited, worth) of a recurring deposit on [on]: one instalment a month from
+ * [start], the last a month before maturity, each compounding quarterly from its
+ * own day. The server works it out the same way (invest.recurring_deposit).
+ */
+private fun rdPosition(installment: Double, rate: Double, start: LocalDate, maturity: LocalDate?, on: LocalDate): Pair<Double, Double> {
+    val end = if (maturity != null && maturity < on) maturity else on
+    var deposited = 0.0
+    var worth = 0.0
+    for (k in 0 until 1200) {
+        val due = start.plusMonths(k.toLong())   // a short month takes its last day
+        if (due > end || (maturity != null && !due.isBefore(maturity))) break
+        val years = ChronoUnit.DAYS.between(due, end) / 365.25
+        deposited += installment
+        worth += installment * (1 + rate / 400).pow(4 * years)
+    }
+    return deposited to worth
+}
+
+private fun rupees(amount: Double): String = "₹%,d".format(amount.roundToLong())
 
 private enum class ActiveDatePicker {
     NONE,
@@ -83,6 +108,7 @@ fun AddAssetScreen(
     var assetName by remember { mutableStateOf("") }
     var investedAmount by remember { mutableStateOf("") }
     var currentValue by remember { mutableStateOf("") }
+    var installment by remember { mutableStateOf("") }   // RD: the monthly deposit
     var interestRate by remember { mutableStateOf("") }
 
     var startDate by remember { mutableStateOf<LocalDate?>(LocalDate.now()) }
@@ -112,7 +138,7 @@ fun AddAssetScreen(
             isRecurring = false
             amountToAdd = ""
         }
-        if (selectedCategory != AssetCategory.FD) {
+        if (selectedCategory != AssetCategory.FD && selectedCategory != AssetCategory.RD) {
             maturityDate = null
         }
     }
@@ -126,7 +152,8 @@ fun AddAssetScreen(
         startDate,
         maturityDate,
         isRecurring,
-        amountToAdd
+        amountToAdd,
+        installment
     ) {
         assetName.isNotBlank() ||
                 investedAmount.isNotBlank() ||
@@ -135,7 +162,8 @@ fun AddAssetScreen(
                 startDate != null ||
                 maturityDate != null ||
                 isRecurring ||
-                amountToAdd.isNotBlank()
+                amountToAdd.isNotBlank() ||
+                installment.isNotBlank()
     }
 
     LaunchedEffect(isDirty) {
@@ -384,7 +412,45 @@ fun AddAssetScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // ── Invested Amount & Current Value ──────────────────────────
+        // ── Invested Amount & Current Value (an RD: its monthly instalment) ──
+        if (selectedCategory == AssetCategory.RD) {
+            Column(verticalArrangement = Arrangement.spacedBy(dims.itemSpacingSmall)) {
+                SectionLabel("Monthly instalment (₹)")
+                OutlinedTextField(
+                    value = installment,
+                    onValueChange = { newValue ->
+                        if (newValue.all { it.isDigit() || it == '.' }) installment = newValue
+                    },
+                    placeholder = { Text("e.g. 5000", style = MaterialTheme.typography.bodyMedium) },
+                    prefix = { Text("₹ ", style = MaterialTheme.typography.bodyMedium) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    shape = RoundedCornerShape(dims.buttonCornerRadius),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                val amount = installment.toDoubleOrNull()
+                val first = startDate
+                if (amount != null && amount > 0 && first != null) {
+                    val rate = interestRate.toDoubleOrNull() ?: 0.0
+                    val (deposited, worth) = rdPosition(amount, rate, first, maturityDate, LocalDate.now())
+                    val atMaturity = maturityDate?.let { rdPosition(amount, rate, first, it, it).second }
+                    Text(
+                        text = buildString {
+                            append("Deposited ${rupees(deposited)} · Worth ${rupees(worth)}")
+                            atMaturity?.let { append(" · At maturity ${rupees(it)}") }
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Text(
+                        text = "Adds itself every month; interest is worked out on each instalment.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
@@ -445,6 +511,7 @@ fun AddAssetScreen(
                 )
             }
         }
+        }
 
         // ── Interest Rate Row (compounding for math assets) ───────────
         if (isMath) {
@@ -463,7 +530,8 @@ fun AddAssetScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
-                    text = "Math assets auto-compound daily using the interest rate.",
+                    text = if (selectedCategory == AssetCategory.RD) "Each instalment earns it from its own date, compounded quarterly."
+                        else "Math assets auto-compound daily using the interest rate.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -471,14 +539,14 @@ fun AddAssetScreen(
         }
 
         // ── Dates Section (Start Date & Maturity Date for FD, Investment Date for others) ──
-        if (selectedCategory == AssetCategory.FD) {
+        if (selectedCategory == AssetCategory.FD || selectedCategory == AssetCategory.RD) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium)
             ) {
                 // Start Date
                 Column(modifier = Modifier.weight(1f)) {
-                    SectionLabel("Start Date")
+                    SectionLabel(if (selectedCategory == AssetCategory.RD) "First instalment" else "Start Date")
                     Spacer(modifier = Modifier.height(dims.itemSpacingSmall))
                     Surface(
                         shape = RoundedCornerShape(dims.buttonCornerRadius),
@@ -513,7 +581,7 @@ fun AddAssetScreen(
 
                 // Maturity Date
                 Column(modifier = Modifier.weight(1f)) {
-                    SectionLabel("Maturity Date")
+                    SectionLabel(if (selectedCategory == AssetCategory.RD) "Maturity" else "Maturity Date")
                     Spacer(modifier = Modifier.height(dims.itemSpacingSmall))
                     Surface(
                         shape = RoundedCornerShape(dims.buttonCornerRadius),
@@ -740,8 +808,10 @@ fun AddAssetScreen(
         Spacer(modifier = Modifier.weight(1f))
 
         // ── Save Button ──────────────────────────────────────────────
+        val isRd = selectedCategory == AssetCategory.RD
         val isFormValid = assetName.isNotBlank() &&
-                (investedAmount.isNotBlank() || currentValue.isNotBlank()) &&
+                (if (isRd) (installment.toDoubleOrNull() ?: 0.0) > 0 && startDate != null
+                 else investedAmount.isNotBlank() || currentValue.isNotBlank()) &&
                 (!isRecurring || amountToAdd.isNotBlank())
 
         Button(
@@ -773,6 +843,8 @@ fun AddAssetScreen(
                     intervalValue = intVal,
                     intervalUnit = intervalUnit,
                     nextRunDate = if (isRecurring) nRunDate else null,
+                    // An RD's values are worked out on the server from its instalment.
+                    installment = if (isRd) installment.toDoubleOrNull() else null,
                     onSuccess = onSaveSuccess
                 )
             },

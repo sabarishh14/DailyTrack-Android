@@ -542,7 +542,7 @@ private fun BankAccountsSection(
     editingBudgetFor?.let { card ->
         CardBudgetDialog(
             card = card.account,
-            usedThisMonth = card.usedThisMonth ?: 0.0,
+            usedThisMonth = card.budgetUsed,
             budget = card.monthlyBudget,
             onSave = { budget ->
                 onSetCardBudget?.invoke(card.account, budget)
@@ -882,7 +882,7 @@ private fun shownAmount(account: AccountInfo): Double =
 
 /** How near an account is to its minimum, or a card to its budget; null when neither is set. */
 private fun accountLevel(account: AccountInfo): BalanceLevel? =
-    if (account.isCreditCard) account.monthlyBudget?.let { cardLevel(account.usedThisMonth ?: 0.0, it) }
+    if (account.isCreditCard) account.monthlyBudget?.let { cardLevel(account.budgetUsed, it) }
     else account.minBalance?.let { balanceLevel(account.balance, it) }
 
 @Composable
@@ -892,7 +892,7 @@ private fun AccountCaption(account: AccountInfo, level: BalanceLevel?) =
 /** "Used this month", or against a budget: "of ₹20,000 budget" with a bar, "⚠ ₹1,200 over ₹20,000 budget". */
 @Composable
 private fun CardBudgetCaption(card: AccountInfo, level: BalanceLevel?) {
-    val used = card.usedThisMonth ?: 0.0
+    val used = card.budgetUsed
     val budget = card.monthlyBudget
     val color = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
     else balanceLevelColor(level)

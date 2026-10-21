@@ -37,6 +37,14 @@ data class EquityHoldingDto(
     @Json(name = "current_value") val currentValue: Double
 )
 
+/** One day of a single stock's or fund's position (GET /api/investments/history). */
+@JsonClass(generateAdapter = true)
+data class HoldingHistoryPointDto(
+    val date: String,
+    @Json(name = "Current") val current: Double? = null,
+    @Json(name = "Invested") val invested: Double? = null
+)
+
 @JsonClass(generateAdapter = true)
 data class MutualFundHoldingDto(
     val symbol: String,
@@ -73,6 +81,8 @@ data class AddManualAssetRequestDto(
     @Json(name = "amount_to_add") val amountToAdd: Double? = null,
     @Json(name = "interval_value") val intervalValue: Int? = null,
     @Json(name = "interval_unit") val intervalUnit: String? = null,
-    @Json(name = "next_run_date") val nextRunDate: String? = null
+    @Json(name = "next_run_date") val nextRunDate: String? = null,
+    // RD only: the monthly deposit; the server works out the values from it.
+    @Json(name = "installment") val installment: Double? = null
 )
 

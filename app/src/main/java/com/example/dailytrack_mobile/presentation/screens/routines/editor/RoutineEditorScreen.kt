@@ -103,6 +103,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
+import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 
 /** New or existing routine: name, type, how often, and whether it's a challenge. */
@@ -232,11 +233,15 @@ fun RoutineEditorScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Chores are on hold for new routines (a richer "repeats" is coming);
-                // one that's already a chore keeps its option so it stays editable.
-                ScheduleOptions.filter { (schedule, _) -> schedule != RoutineSchedule.INTERVAL || form.schedule == RoutineSchedule.INTERVAL }.forEach { (schedule, label) ->
+                // Chores (counted from when they're done) are kept only for ones that already are.
+                ScheduleOptions.filter { (schedule, _) -> schedule != RoutineSchedule.INTERVAL || state.initial.schedule == RoutineSchedule.INTERVAL }.forEach { (schedule, label) ->
                     Pill(label, selected = form.schedule == schedule) {
-                        viewModel.update { it.copy(schedule = schedule) }
+                        viewModel.update {
+                            it.copy(
+                                schedule = schedule,
+                                unit = if (schedule == RoutineSchedule.INTERVAL && it.unit == IntervalUnit.YEAR) IntervalUnit.MONTH else it.unit
+                            )
+                        }
                     }
                 }
             }
@@ -286,6 +291,41 @@ fun RoutineEditorScreen(
                     DateRow("Next due", form.startDate) { showDatePicker = true }
                     Spacer(Modifier.height(8.dp))
                     Hint("Repeats every so often. Shows up when it's due and stays until it's done; the next one is counted from the day you do it.")
+                }
+                RoutineSchedule.REPEAT -> {
+                    Stepper(form.every, 1..365, "") { value -> viewModel.update { it.copy(every = value) } }
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RepeatUnitOptions.forEach { (unit, label) ->
+                            Pill(if (form.every == 1) label.removeSuffix("s") else label, selected = form.unit == unit) {
+                                viewModel.update { it.copy(unit = unit) }
+                            }
+                        }
+                    }
+                    if (form.unit == IntervalUnit.WEEK) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            DayOfWeek.entries.forEach { day ->
+                                DayPill(
+                                    label = RoutineText.narrowDay(day),
+                                    selected = form.startDate.dayOfWeek == day,
+                                    onClick = {
+                                        viewModel.update { it.copy(startDate = LocalDate.now().with(TemporalAdjusters.nextOrSame(day))) }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    DateRow("First one", form.startDate) { showDatePicker = true }
+                    Spacer(Modifier.height(8.dp))
+                    Hint("${RoutineText.repeat(form.every, form.unit, form.startDate)}. Due on the day, stays till done. Missed if the next one comes first.")
                 }
             }
         }
@@ -345,7 +385,7 @@ fun RoutineEditorScreen(
             }
         }
 
-        if (form.schedule != RoutineSchedule.INTERVAL) {
+        if (!form.countsEvery) {
             Section("Starts") {
                 DateRow("First day", form.startDate) { showDatePicker = true }
                 if (state.editingId == null) {
@@ -525,6 +565,7 @@ private val ScheduleOptions = listOf(
     RoutineSchedule.DAYS to "Some days",
     RoutineSchedule.WEEKLY to "Times a week",
     RoutineSchedule.MONTHLY to "Times a month",
+    RoutineSchedule.REPEAT to "Repeats",
     RoutineSchedule.INTERVAL to "Chore"
 )
 
@@ -533,6 +574,8 @@ private val UnitOptions = listOf(
     IntervalUnit.WEEK to "weeks",
     IntervalUnit.MONTH to "months"
 )
+
+private val RepeatUnitOptions = UnitOptions + (IntervalUnit.YEAR to "years")
 
 private val ChallengeLengths = listOf(7, 14, 21, 30, 60, 90)
 

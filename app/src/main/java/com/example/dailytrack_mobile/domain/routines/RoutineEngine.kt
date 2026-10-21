@@ -76,6 +76,10 @@ data class UpcomingItem(val routine: Routine, val date: LocalDate)
  *  - Chores (every N days/weeks/months): due from the due date until done, and
  *    on time if done by then. A Skip on the deadline moves it a day. The next
  *    one falls due N after it was done.
+ *  - Repeats (every N days/weeks/months/years on the calendar: every Monday,
+ *    every 2nd month on the 5th, every year on 2 Jan): each date is due until
+ *    done, on time if done by then, like a chore. Not done by the next date,
+ *    it's missed and the next one takes over, so they never pile up.
  *  - Days before a routine was added count only once filled in: a blank one
  *    isn't a miss, and a week or chore deadline that passed before then isn't
  *    a failure.
@@ -92,6 +96,7 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
         .mapValues { (_, list) -> list.associateBy { it.date } }
 
     private val cycleCache = HashMap<Long, List<Cycle>>()
+    private val repeatDoneCache = HashMap<Long, Map<Int, LocalDate>>()
 
     fun checkIn(routineId: Long, date: LocalDate): CheckIn? = byRoutine[routineId]?.get(date)
 
@@ -116,6 +121,9 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
             routine.schedule == RoutineSchedule.INTERVAL -> cycles(routine).lastOrNull()
                 ?.takeIf { it.completed == null && it.due > today }
                 ?.let { UpcomingItem(routine, it.due) }
+            routine.schedule == RoutineSchedule.REPEAT -> nextDue(routine, today)
+                ?.takeIf { it > today }
+                ?.let { UpcomingItem(routine, it) }
             routine.startDate > today -> UpcomingItem(routine, routine.startDate)
             else -> null
         }
@@ -177,7 +185,7 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
                         period = periodOf(routine, period.endInclusive.plusDays(1))
                     }
                 }
-                RoutineSchedule.INTERVAL -> for (cycle in cycles(routine)) {
+                RoutineSchedule.INTERVAL, RoutineSchedule.REPEAT -> for (cycle in judgedCycles(routine, last)) {
                     val judged = judge(routine, cycle, today) ?: continue
                     if (judged.first in from..last) {
                         chances++
@@ -226,8 +234,8 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
                 }
                 Streak(run, best, if (routine.schedule == RoutineSchedule.WEEKLY) StreakUnit.WEEK else StreakUnit.MONTH)
             }
-            RoutineSchedule.INTERVAL -> {
-                for (cycle in cycles(routine)) {
+            RoutineSchedule.INTERVAL, RoutineSchedule.REPEAT -> {
+                for (cycle in judgedCycles(routine, last)) {
                     val judged = judge(routine, cycle, today) ?: continue
                     if (judged.second) hit() else run = 0
                 }
@@ -276,10 +284,23 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
     fun lastDone(routine: Routine): LocalDate? =
         byRoutine[routine.id].orEmpty().values.filter { it.status == CheckInStatus.DONE }.maxOfOrNull { it.date }
 
-    /** A chore's open due date (past, if it's overdue); null for other routines or once finished. */
-    fun nextDue(routine: Routine): LocalDate? =
-        if (routine.schedule == RoutineSchedule.INTERVAL) cycles(routine).lastOrNull()?.takeIf { it.completed == null }?.due
-        else null
+    /**
+     * A chore's or repeat's open due date (past, if it's overdue), else a repeat's
+     * next one; null for other routines or once finished. Repeats need [today].
+     */
+    fun nextDue(routine: Routine, today: LocalDate? = null): LocalDate? = when (routine.schedule) {
+        RoutineSchedule.INTERVAL -> cycles(routine).lastOrNull()?.takeIf { it.completed == null }?.due
+        RoutineSchedule.REPEAT -> today?.let {
+            val done = repeatDone(routine)
+            var k = routine.occurrenceIndex(it)
+            if (k < 0 || k in done) {
+                k++
+                while (k in done) k++   // done early
+            }
+            routine.occurrence(k).takeIf { due -> routine.endDate == null || due <= routine.endDate }
+        }
+        else -> null
+    }
 
     /**
      * Due days before [today] with no answer at all, oldest first: what "mark
@@ -318,6 +339,24 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
                     )
                 } else null
             RoutineSchedule.INTERVAL -> choreItem(routine, date, checkIn)
+            RoutineSchedule.REPEAT -> repeatItem(routine, date, checkIn)
+        }
+    }
+
+    /**
+     * A repeat is on the list from its date until the day it's done, while it's
+     * the latest one, and on the day the next one is done early.
+     */
+    private fun repeatItem(routine: Routine, date: LocalDate, checkIn: CheckIn?): DayItem? {
+        val done = repeatDone(routine)
+        val k = if (routine.activeOn(date)) routine.occurrenceIndex(date) else -1
+        val completed = done[k]
+        return when {
+            k >= 0 && (completed == null || completed >= date) ->
+                DayItem(routine, date, checkIn?.status, checkIn?.note, required = true, dueDate = routine.occurrence(k))
+            done[k + 1] == date ->
+                DayItem(routine, date, checkIn?.status, checkIn?.note, required = false, dueDate = routine.occurrence(k + 1))
+            else -> null
         }
     }
 
@@ -418,6 +457,47 @@ class RoutineEngine(routines: List<Routine>, checkIns: List<CheckIn>) {
             due = routine.afterInterval(completed)
         }
         cycles
+    }
+
+    /** A chore's cycles, or a repeat's up to [last] (its end, if sooner). */
+    private fun judgedCycles(routine: Routine, last: LocalDate): List<Cycle> {
+        if (routine.schedule != RoutineSchedule.REPEAT) return cycles(routine)
+        val stop = minOf(last, routine.endDate ?: last)
+        return (0..routine.occurrenceIndex(stop)).map { repeatCycle(routine, it) }
+    }
+
+    /**
+     * A repeat's [k]-th time: due on its date, its deadline no later than the
+     * day before the next one's (or the routine's end).
+     */
+    private fun repeatCycle(routine: Routine, k: Int): Cycle {
+        val due = routine.occurrence(k)
+        var closes = routine.occurrence(k + 1).minusDays(1)
+        if (routine.endDate != null) closes = minOf(closes, routine.endDate)
+        return Cycle(due, minOf(deadlineFor(routine, due), closes), repeatDone(routine)[k])
+    }
+
+    /**
+     * Which of a repeat's dates each Done completes: the one it falls under, or,
+     * when that one's already done, the next one, early.
+     */
+    private fun repeatDone(routine: Routine): Map<Int, LocalDate> = repeatDoneCache.getOrPut(routine.id) {
+        val done = HashMap<Int, LocalDate>()
+        val end = routine.endDate
+        byRoutine[routine.id].orEmpty().values
+            .filter { it.status == CheckInStatus.DONE }
+            .map { it.date }
+            .sorted()
+            .forEach { date ->
+                if (end != null && date > end) return@forEach
+                val k = routine.occurrenceIndex(date)
+                if (k >= 0 && k !in done) {
+                    done[k] = date
+                } else if (k + 1 !in done && (end == null || routine.occurrence(k + 1) <= end)) {
+                    done[k + 1] = date
+                }
+            }
+        done
     }
 
     /** The due date, pushed a day for each Skip answered on the deadline itself. */

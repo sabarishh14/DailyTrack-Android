@@ -48,14 +48,17 @@ class RoutineEditorVM @Inject constructor(
         val monthlyTarget: Int = 4,
         val every: Int = 1,
         val unit: IntervalUnit = IntervalUnit.WEEK,
-        /** First day; for a chore, when it's next due. */
+        /** First day; for a chore, when it's next due; for a repeat, its first date. */
         val startDate: LocalDate = LocalDate.now(),
         val isChallenge: Boolean = false,
         val challengeDays: Int = 30
     ) {
         val challengeEnd: LocalDate get() = startDate.plusDays(challengeDays - 1L)
 
-        val canBeChallenge: Boolean get() = schedule != RoutineSchedule.INTERVAL
+        /** Chores and repeats run on their own dates rather than a run of days. */
+        val countsEvery: Boolean get() = schedule == RoutineSchedule.INTERVAL || schedule == RoutineSchedule.REPEAT
+
+        val canBeChallenge: Boolean get() = !countsEvery
 
         /** The routine this form would save, for working out its past days before it exists. */
         fun preview(): Routine = Routine(
@@ -84,8 +87,8 @@ class RoutineEditorVM @Inject constructor(
                 RoutineSchedule.MONTHLY -> monthlyTarget
                 else -> null
             },
-            every = every.takeIf { schedule == RoutineSchedule.INTERVAL },
-            unit = unit.key.takeIf { schedule == RoutineSchedule.INTERVAL },
+            every = every.takeIf { countsEvery },
+            unit = unit.key.takeIf { countsEvery },
             startDate = startDate.toString(),
             endDate = if (isChallenge && canBeChallenge) challengeEnd.toString() else ""
         )

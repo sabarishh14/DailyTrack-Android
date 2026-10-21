@@ -133,7 +133,7 @@ fun SabdekhoScreen(
                 onSave = { rating, review, liked, rewatch, tag, date, season, episode ->
                     viewModel.onAction(
                         SabdekhoAction.SubmitEditLog(
-                            logId = logToEdit.id,
+                            logIds = logToEdit.allLogIds,
                             isMovie = isMovie,
                             rating = rating,
                             review = review,
@@ -147,7 +147,7 @@ fun SabdekhoScreen(
                     )
                 },
                 onDelete = {
-                    viewModel.onAction(SabdekhoAction.DeleteLog(logToEdit.id, isMovie))
+                    viewModel.onAction(SabdekhoAction.DeleteLog(logToEdit.allLogIds, isMovie))
                 }
             )
         }

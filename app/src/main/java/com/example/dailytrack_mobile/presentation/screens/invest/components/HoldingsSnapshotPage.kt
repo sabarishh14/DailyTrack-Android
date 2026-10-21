@@ -140,7 +140,7 @@ fun HoldingsSnapshotPage(
 
 /** Lists end clear of the gesture bar, which the page draws behind. */
 @Composable
-private fun listBottomPadding(): Dp = 28.dp + navigationBarPadding()
+internal fun listBottomPadding(): Dp = 28.dp + navigationBarPadding()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Single date
@@ -681,7 +681,7 @@ private fun ExpandedDetail(expanded: Boolean, content: @Composable ColumnScope.(
 }
 
 @Composable
-private fun DetailStat(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color? = null) {
+internal fun DetailStat(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color? = null) {
     Column(modifier = modifier) {
         StatLabel(label)
         Spacer(Modifier.height(3.dp))
@@ -696,7 +696,7 @@ private fun DetailStat(label: String, value: String, modifier: Modifier = Modifi
 
 /** "▲ 4.2%" in a tinted capsule, coloured by direction; flat moves stay grey. */
 @Composable
-private fun ChangePill(percent: Double, large: Boolean = false) {
+internal fun ChangePill(percent: Double, large: Boolean = false) {
     val flat = abs(percent) < 0.05
     val color = when {
         flat -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -869,7 +869,7 @@ private fun HeroDivider() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun PageHeader(subtitle: String, onBack: () -> Unit) {
+internal fun PageHeader(subtitle: String, onBack: () -> Unit, title: String = "Holdings") {
     val dims = Dimens.current
     Row(
         modifier = Modifier
@@ -887,9 +887,11 @@ private fun PageHeader(subtitle: String, onBack: () -> Unit) {
         Spacer(Modifier.width(4.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Holdings",
+                text = title,
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = subtitle,
@@ -1082,7 +1084,7 @@ private fun DateChip(label: String, caption: String?, isSelected: Boolean, onCli
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun StatLabel(text: String) {
+internal fun StatLabel(text: String) {
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
@@ -1125,7 +1127,7 @@ private fun SkeletonContent(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SheetMessage(title: String, detail: String) {
+internal fun SheetMessage(title: String, detail: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1156,7 +1158,7 @@ private fun SheetMessage(title: String, detail: String) {
 }
 
 @Composable
-private fun gainColor(amount: Double): Color = when {
+internal fun gainColor(amount: Double): Color = when {
     abs(amount) < 0.5 -> MaterialTheme.colorScheme.onSurfaceVariant
     amount > 0 -> InvestColors.GainGreen
     else -> InvestColors.LossRed
@@ -1166,13 +1168,13 @@ private fun gainColor(amount: Double): Color = when {
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-private val HoldingsType.priceLabel: String
+internal val HoldingsType.priceLabel: String
     get() = when (this) {
         HoldingsType.EQUITY -> "LTP"
         HoldingsType.MUTUAL_FUNDS -> "NAV"
     }
 
-private val HoldingsType.unitWord: String
+internal val HoldingsType.unitWord: String
     get() = when (this) {
         HoldingsType.EQUITY -> "shares"
         HoldingsType.MUTUAL_FUNDS -> "units"
@@ -1197,20 +1199,20 @@ private val quantityFormat = DecimalFormat("#,##0.##")
 private val priceFormat = DecimalFormat("#,##0.00")
 private val oneDecimalFormat = DecimalFormat("0.0")
 
-private fun quantity(value: Double): String = quantityFormat.format(value)
+internal fun quantity(value: Double): String = quantityFormat.format(value)
 
 private fun signedQuantity(value: Double): String =
     (if (value >= 0) "+" else "-") + quantityFormat.format(abs(value))
 
 /** Per-unit prices keep paise; they matter at that scale. */
-private fun price(value: Double): String = "₹${priceFormat.format(value)}"
+internal fun price(value: Double): String = "₹${priceFormat.format(value)}"
 
 private fun signedPrice(value: Double): String = (if (value >= 0) "+" else "-") + price(abs(value))
 
 /** Whole rupees with Indian grouping for position totals. */
-private fun rupees(amount: Double): String = formatExactCurrency(round(amount))
+internal fun rupees(amount: Double): String = formatExactCurrency(round(amount))
 
-private fun signedRupees(amount: Double): String =
+internal fun signedRupees(amount: Double): String =
     if (round(amount) >= 0) "+${rupees(amount)}" else rupees(amount)
 
 private fun oneDecimal(value: Double): String = oneDecimalFormat.format(value)
@@ -1221,7 +1223,7 @@ private fun signedNumber(value: Double): String =
 private fun percentOf(part: Double, whole: Double): Double =
     if (whole == 0.0) 0.0 else part / whole * 100.0
 
-private fun signedPercent(percent: Double): String =
+internal fun signedPercent(percent: Double): String =
     "${if (percent >= 0) "+" else ""}${oneDecimalFormat.format(percent)}%"
 
 /** "12 Sep" for chips; the year only when it isn't this one. */

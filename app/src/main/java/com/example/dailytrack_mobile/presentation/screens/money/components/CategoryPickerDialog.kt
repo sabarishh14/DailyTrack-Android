@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.dailytrack_mobile.domain.search.smartSearch
 import com.example.dailytrack_mobile.presentation.screens.money.CategoryEmojis
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,11 +41,7 @@ fun CategoryPickerDialog(
     }
 
     val filteredCategories = remember(query, combinedCategories) {
-        if (query.isBlank()) {
-            combinedCategories
-        } else {
-            combinedCategories.filter { it.contains(query, ignoreCase = true) }
-        }
+        combinedCategories.smartSearch(query)
     }
 
     val isExactMatch = combinedCategories.any { it.equals(query, ignoreCase = true) }

@@ -26,6 +26,11 @@ import com.example.dailytrack_mobile.data.remote.dto.AddTvShowRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.ApiResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.CategoriesResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.EquityHoldingDto
+import com.example.dailytrack_mobile.data.remote.dto.AddFundRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.FundImportResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.FundSearchResponseDto
+import com.example.dailytrack_mobile.data.remote.dto.FundSipRequestDto
+import com.example.dailytrack_mobile.data.remote.dto.FundsResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.ManualAssetDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaFiltersResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaLibraryResponseDto
@@ -40,13 +45,17 @@ import com.example.dailytrack_mobile.data.remote.dto.SaveRoutineCheckInsRequestD
 import com.example.dailytrack_mobile.data.remote.dto.SaveRoutineCheckInsResponseDto
 import com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Streaming
@@ -152,6 +161,13 @@ interface DailyTrackApi {
 
     @GET("/api/investments/{date}/equity_holdings")
     suspend fun getEquityHoldingsForDate(@Path("date") date: String): List<EquityHoldingDto>
+
+    /** One stock's or fund's value over time; [type] is EQUITY or MF. */
+    @GET("/api/investments/history")
+    suspend fun getHoldingHistory(
+        @Query("symbol") symbol: String,
+        @Query("type") type: String
+    ): List<com.example.dailytrack_mobile.data.remote.dto.HoldingHistoryPointDto>
 
     @GET("/api/manual_assets")
     suspend fun getManualAssets(): List<ManualAssetDto>
@@ -384,4 +400,32 @@ interface DailyTrackApi {
 
     @POST("/api/routines/checkins")
     suspend fun saveRoutineCheckIns(@Body body: SaveRoutineCheckInsRequestDto): Response<SaveRoutineCheckInsResponseDto>
+
+    // ── Mutual funds held outside Kite ──────────────────────────────────────
+
+    @GET("/api/funds")
+    suspend fun getFunds(): Response<FundsResponseDto>
+
+    @GET("/api/funds/search")
+    suspend fun searchFunds(@Query("q") query: String): Response<FundSearchResponseDto>
+
+    @POST("/api/funds")
+    suspend fun addFund(@Body body: AddFundRequestDto): Response<FundsResponseDto>
+
+    @DELETE("/api/funds/{code}")
+    suspend fun removeFund(@Path("code") code: String): Response<FundsResponseDto>
+
+    @POST("/api/funds/{code}/sip")
+    suspend fun addFundSip(@Path("code") code: String, @Body body: FundSipRequestDto): Response<FundsResponseDto>
+
+    @DELETE("/api/funds/sips/{id}")
+    suspend fun stopFundSip(@Path("id") id: Long): Response<FundsResponseDto>
+
+    /** A CAS PDF and its password, read once on the server and never kept. */
+    @Multipart
+    @POST("/api/funds/import")
+    suspend fun importFundStatement(
+        @Part file: MultipartBody.Part,
+        @Part("password") password: RequestBody
+    ): Response<FundImportResponseDto>
 }

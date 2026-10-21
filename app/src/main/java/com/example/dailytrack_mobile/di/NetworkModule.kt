@@ -28,8 +28,12 @@ object NetworkModule {
         "/api/sync/investments-to-sheets",
         "/api/sync/ocr-balances",
         "/api/sync/ocr-split",
-        "/api/movies/sync/rss"
+        "/api/movies/sync/rss",
+        "/api/funds/import"
     )
+
+    /** Never logged, even in debug builds: a statement and its password go up here. */
+    private val UNLOGGED_PATHS = listOf("/api/funds/import")
 
     /** Always about the signed-in person, even while viewing someone's shared data. */
     private val OWN_ONLY_PATHS = listOf(
@@ -53,6 +57,10 @@ object NetworkModule {
         // token) and full payloads to Logcat. Only safe in debug builds.
         val loggingInterceptor = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+        }
+        val logging = Interceptor { chain ->
+            if (UNLOGGED_PATHS.any { chain.request().url.encodedPath.startsWith(it) }) chain.proceed(chain.request())
+            else loggingInterceptor.intercept(chain)
         }
 
         val authInterceptor = Interceptor { chain ->
@@ -119,7 +127,7 @@ object NetworkModule {
             .addInterceptor(sessionInterceptor)
             .addInterceptor(authInterceptor)
             .addInterceptor(slowEndpointInterceptor)
-            .addInterceptor(loggingInterceptor)
+            .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

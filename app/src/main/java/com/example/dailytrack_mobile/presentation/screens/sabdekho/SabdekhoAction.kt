@@ -79,7 +79,7 @@ sealed class SabdekhoAction {
     data class OpenEditLog(val log: MediaDiaryLogDto) : SabdekhoAction()
     object CloseEditLog : SabdekhoAction()
     data class SubmitEditLog(
-        val logId: Int,
+        val logIds: List<Int>,
         val isMovie: Boolean,
         val rating: Float?,
         val review: String?,
@@ -90,7 +90,7 @@ sealed class SabdekhoAction {
         val season: Int? = null,
         val episode: Int? = null
     ) : SabdekhoAction()
-    data class DeleteLog(val logId: Int, val isMovie: Boolean) : SabdekhoAction()
+    data class DeleteLog(val logIds: List<Int>, val isMovie: Boolean) : SabdekhoAction()
 
     // Rematch TMDB
     data class SearchRematch(val query: String) : SabdekhoAction()

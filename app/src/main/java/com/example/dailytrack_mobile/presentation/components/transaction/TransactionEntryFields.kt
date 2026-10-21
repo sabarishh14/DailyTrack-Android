@@ -52,6 +52,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.dailytrack_mobile.domain.search.smartSearch
 import com.example.dailytrack_mobile.presentation.screens.money.CategoryEmojis
 import com.example.dailytrack_mobile.presentation.theme.AppTheme
 import com.example.dailytrack_mobile.presentation.theme.LocalAppTheme
@@ -812,10 +813,7 @@ fun rankDescriptionSuggestions(
     val combined = history.descriptionsFor(type, category)
     val q = query.trim()
     if (q.isBlank()) return combined.take(limit)
-    val (startsWith, rest) = combined
-        .filter { !it.equals(q, ignoreCase = true) }
-        .partition { it.startsWith(q, ignoreCase = true) }
-    return (startsWith + rest.filter { it.contains(q, ignoreCase = true) }).take(limit)
+    return combined.filter { !it.equals(q, ignoreCase = true) }.smartSearch(q).take(limit)
 }
 
 // ── Collapsed entry card ─────────────────────────────────────────────────────

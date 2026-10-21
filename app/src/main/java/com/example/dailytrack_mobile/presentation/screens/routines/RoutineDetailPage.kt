@@ -235,7 +235,7 @@ private fun scheduleNote(detail: RoutineDetail, today: LocalDate): String? {
             val period = if (it.unit == PeriodUnit.WEEK) "week" else "month"
             if (it.met) "Done for this $period: ${it.done} of ${it.needed} ✓" else "This $period: ${it.done} of ${it.needed}"
         }
-        RoutineSchedule.INTERVAL -> {
+        RoutineSchedule.INTERVAL, RoutineSchedule.REPEAT -> {
             val due = detail.nextDue?.let { due ->
                 when {
                     due < today -> "Overdue since ${RoutineText.weekdayDate(due)}"

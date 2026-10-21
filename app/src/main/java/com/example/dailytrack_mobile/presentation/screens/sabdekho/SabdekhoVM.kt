@@ -293,7 +293,7 @@ class SabdekhoVM @Inject constructor(
             }
             is SabdekhoAction.SubmitEditLog -> {
                 submitEditLog(
-                    action.logId,
+                    action.logIds,
                     action.isMovie,
                     action.rating,
                     action.review,
@@ -306,7 +306,7 @@ class SabdekhoVM @Inject constructor(
                 )
             }
             is SabdekhoAction.DeleteLog -> {
-                deleteLog(action.logId, action.isMovie)
+                deleteLog(action.logIds, action.isMovie)
             }
 
             // Rematch TMDB
@@ -638,7 +638,7 @@ class SabdekhoVM @Inject constructor(
     }
 
     private fun submitEditLog(
-        logId: Int,
+        logIds: List<Int>,
         isMovie: Boolean,
         rating: Float?,
         review: String?,
@@ -653,7 +653,7 @@ class SabdekhoVM @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isSavingEditLog = true, editLogError = null) }
             repository.updateDiaryLog(
-                logId = logId,
+                logIds = logIds,
                 isMovie = isMovie,
                 rating = rating,
                 review = review,
@@ -678,9 +678,9 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
-    private fun deleteLog(logId: Int, isMovie: Boolean) {
+    private fun deleteLog(logIds: List<Int>, isMovie: Boolean) {
         viewModelScope.launch {
-            repository.deleteDiaryLog(logId, isMovie)
+            repository.deleteDiaryLog(logIds, isMovie)
                 .onSuccess {
                     _state.update { it.copy(isEditDialogOpen = false, editingLog = null) }
                     loadDiary(_state.value.diaryTypeFilter)

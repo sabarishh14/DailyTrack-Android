@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.settings
 
+import com.example.dailytrack_mobile.domain.search.SmartSearch
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -273,16 +274,7 @@ fun SettingsScreen(
     }
 
     val filteredCategories = remember(searchQuery, categories) {
-        if (searchQuery.isBlank()) {
-            categories
-        } else {
-            val q = searchQuery.trim()
-            categories.filter { cat ->
-                cat.title.contains(q, ignoreCase = true) ||
-                cat.subtitle.contains(q, ignoreCase = true) ||
-                cat.keywords.any { it.contains(q, ignoreCase = true) }
-            }
-        }
+        SmartSearch.rank(categories, searchQuery) { "${it.title} ${it.subtitle} ${it.keywords.joinToString(" ")}" }
     }
 
     // Material 3 Loading Dialog during Force Sync (global overlay)

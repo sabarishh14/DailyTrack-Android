@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.dailytrack_mobile.domain.search.smartSearch
 import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCanonical
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,8 +40,7 @@ fun AccountPickerDialog(
     }
 
     val filteredAccounts = remember(query, sortedAccounts) {
-        if (query.isBlank()) sortedAccounts
-        else sortedAccounts.filter { it.contains(query, ignoreCase = true) }
+        sortedAccounts.smartSearch(query)
     }
 
     val isExactMatch = sortedAccounts.any { it.equals(query, ignoreCase = true) }

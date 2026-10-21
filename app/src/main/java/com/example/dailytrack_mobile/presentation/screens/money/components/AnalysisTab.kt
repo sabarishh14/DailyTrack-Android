@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup
 import com.example.dailytrack_mobile.presentation.components.LocalFloatingBarClearance
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.FilterAlt
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -160,6 +162,7 @@ internal fun cleanDescriptionTitle(raw: String): String {
 // ─────────────────────────────────────────────────────────────────────────────
 // Analysis Tab
 // ─────────────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnalysisTab(
     state: MoneyState,
@@ -171,7 +174,11 @@ fun AnalysisTab(
     val filterState = state.analysisFilterState
     val isInitialLoading = state.isLoading && state.transactions.isEmpty()
     var drilldownCategories by remember { mutableStateOf<Set<String>?>(null) }
-    val drilldownTransactions = drilldownCategories?.takeIf { categories.isNotEmpty() }?.let { selected ->
+    // Slices by category, or by account (AccountBreakdownCard).
+    var byAccount by rememberSaveable { mutableStateOf(false) }
+    // Tapping an account narrows to it; Back puts the filters as they were.
+    var beforeAccount by remember { mutableStateOf<AnalysisFilterState?>(null) }
+    val drilldownTransactions = drilldownCategories?.takeIf { categories.isNotEmpty() && !byAccount }?.let { selected ->
         state.filteredAnalysisTransactions.filter { tx -> selected.any { it.equals(tx.category, ignoreCase = true) } }
     }
 
@@ -195,6 +202,30 @@ fun AnalysisTab(
             )
         }
 
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ConnectedToggleGroup(
+                    options = listOf(false, true),
+                    selected = byAccount,
+                    onSelect = { byAccount = it },
+                    label = { if (it) "Account" else "Category" },
+                    modifier = Modifier.weight(1f)
+                )
+                beforeAccount?.let { before ->
+                    Spacer(Modifier.width(8.dp))
+                    FilledTonalButton(onClick = {
+                        onAction(MoneyAction.UpdateAnalysisFilterState(before))
+                        byAccount = true
+                        beforeAccount = null
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Back")
+                    }
+                }
+            }
+        }
+
         // Cash Flow Breakdown Donut Card
         item {
             val periodTitle = filterState.financialYear ?: when (filterState.activeDatePreset) {
@@ -202,7 +233,21 @@ fun AnalysisTab(
                 QuickFilterPreset.LAST_MONTH -> "LAST MONTH"
                 else -> filterState.formattedDateRange() ?: "ALL TIME"
             }
-            if (isInitialLoading && categories.isEmpty()) {
+            if (byAccount && state.accountStats.rows.isNotEmpty()) {
+                AccountBreakdownCard(
+                    stats = state.accountStats,
+                    periodLabel = periodTitle,
+                    spending = filterState.selectedTypes == setOf(TransactionType.DEBIT),
+                    onPick = { account ->
+                        // That account's categories.
+                        beforeAccount = filterState
+                        onAction(MoneyAction.UpdateAnalysisFilterState(
+                            filterState.copy(accountFilters = mapOf(account to ItemFilterStatus.INCLUDED))
+                        ))
+                        byAccount = false
+                    }
+                )
+            } else if (isInitialLoading && categories.isEmpty()) {
                 CashFlowBreakdownCard(
                     categories = emptyList(),
                     transactions = emptyList(),

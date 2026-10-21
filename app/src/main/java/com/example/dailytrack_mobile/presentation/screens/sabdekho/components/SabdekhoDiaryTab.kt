@@ -33,6 +33,9 @@ import com.example.dailytrack_mobile.data.remote.dto.MediaDiaryLogDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaShowDto
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoAction
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.allLogIds
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.episodeLabel
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.groupDiaryLogs
 import com.example.dailytrack_mobile.presentation.util.Dimens
 
 @Composable
@@ -44,11 +47,13 @@ fun SabdekhoDiaryTab(
     val dims = Dimens.current
 
     val filteredLogs = remember(state.diaryLogs, state.diaryTypeFilter) {
-        when (state.diaryTypeFilter.lowercase()) {
-            "movie" -> state.diaryLogs.filter { it.type.equals("movie", ignoreCase = true) }
-            "tv" -> state.diaryLogs.filter { !it.type.equals("movie", ignoreCase = true) }
-            else -> state.diaryLogs
-        }
+        groupDiaryLogs(
+            when (state.diaryTypeFilter.lowercase()) {
+                "movie" -> state.diaryLogs.filter { it.type.equals("movie", ignoreCase = true) }
+                "tv" -> state.diaryLogs.filter { !it.type.equals("movie", ignoreCase = true) }
+                else -> state.diaryLogs
+            }
+        )
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -144,7 +149,7 @@ fun SabdekhoDiaryTab(
                             onAction(SabdekhoAction.OpenMediaDetails(matchedShow))
                         },
                         onEditClick = { onAction(SabdekhoAction.OpenEditLog(log)) },
-                        onDeleteClick = { onAction(SabdekhoAction.DeleteLog(log.id, log.type.equals("movie", ignoreCase = true))) }
+                        onDeleteClick = { onAction(SabdekhoAction.DeleteLog(log.allLogIds, log.type.equals("movie", ignoreCase = true))) }
                     )
                 }
             }
@@ -205,7 +210,8 @@ fun DiaryLogCard(
 
                     if (!isMovie) {
                         val epText = when {
-                            log.seasonNumber != null && log.episodeNumber != null -> "S%02dE%02d".format(log.seasonNumber, log.episodeNumber)
+                            log.seasonNumber != null && log.episodeNumber != null ->
+                                episodeLabel(log.seasonNumber, log.episodes.ifEmpty { listOf(log.episodeNumber) })
                             log.seasonNumber != null -> "Season %d".format(log.seasonNumber)
                             else -> "Whole Show"
                         }

@@ -3,6 +3,7 @@ package com.example.dailytrack_mobile.data.repository
 import com.example.dailytrack_mobile.data.local.demo.DemoDataManager
 import com.example.dailytrack_mobile.data.remote.api.DailyTrackApi
 import com.example.dailytrack_mobile.data.remote.dto.EquityHoldingDto
+import com.example.dailytrack_mobile.data.remote.dto.HoldingHistoryPointDto
 import com.example.dailytrack_mobile.data.remote.dto.ManualAssetDto
 import com.example.dailytrack_mobile.data.remote.dto.AddManualAssetRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.MutualFundHoldingDto
@@ -30,11 +31,13 @@ class InvestmentsRepository @Inject constructor(
     private var cachedPortfolio: FullPortfolioData? = null
     private val cachedEquityByDate = mutableMapOf<String, List<EquityHoldingDto>>()
     private val cachedMutualFundsByDate = mutableMapOf<String, List<MutualFundHoldingDto>>()
+    private val cachedHistory = mutableMapOf<String, List<HoldingHistoryPointDto>>()
 
     fun clearCache() {
         cachedPortfolio = null
         cachedEquityByDate.clear()
         cachedMutualFundsByDate.clear()
+        cachedHistory.clear()
     }
 
     suspend fun getFullPortfolio(forceRefresh: Boolean = false): Result<FullPortfolioData> = runCatching {
@@ -97,6 +100,36 @@ class InvestmentsRepository @Inject constructor(
         }
     }
 
+    /**
+     * One stock's ([type] EQUITY) or fund's (MF) value over time, oldest first.
+     * Kept until the next refresh, like the holdings above.
+     */
+    suspend fun getHoldingHistory(symbol: String, type: String): Result<List<HoldingHistoryPointDto>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) {
+            demoHoldingHistory(symbol, type)
+        } else {
+            val key = "$type|$symbol"
+            cachedHistory[key] ?: api.getHoldingHistory(symbol, type).also { cachedHistory[key] = it }
+        }
+    }
+
+    /** Demo data has no per-holding history: its category's line, scaled to the holding's share. */
+    private suspend fun demoHoldingHistory(symbol: String, type: String): List<HoldingHistoryPointDto> {
+        val data = demoDataManager.getFullPortfolio()
+        val isEquity = type == "EQUITY"
+        val positions = if (isEquity) data.equityHoldings.map { Triple(it.symbol, it.investedValue, it.currentValue) }
+            else data.mutualFundHoldings.map { Triple(it.symbol, it.investedValue, it.currentValue) }
+        val (_, invested, current) = positions.find { it.first == symbol } ?: return emptyList()
+        val totalInvested = positions.sumOf { it.second }
+        val totalCurrent = positions.sumOf { it.third }
+        if (totalInvested <= 0 || totalCurrent <= 0) return emptyList()
+        return data.snapshots.mapNotNull { s ->
+            val curr = (if (isEquity) s.currStocks else s.currMf) ?: return@mapNotNull null
+            val inv = (if (isEquity) s.invStocks else s.invMf) ?: 0.0
+            HoldingHistoryPointDto(s.date.substringBefore("T"), curr * current / totalCurrent, inv * invested / totalInvested)
+        }.sortedBy { it.date }
+    }
+
     suspend fun addInvestment(
         name: String,
         category: String,
@@ -127,7 +160,8 @@ class InvestmentsRepository @Inject constructor(
         amountToAdd: Double? = null,
         intervalValue: Int? = null,
         intervalUnit: String? = null,
-        nextRunDate: String? = null
+        nextRunDate: String? = null,
+        installment: Double? = null
     ): Result<Unit> = coroutineScope {
         try {
             if (demoDataManager.isDemoModeEnabled()) {
@@ -160,7 +194,8 @@ class InvestmentsRepository @Inject constructor(
                 amountToAdd = amountToAdd,
                 intervalValue = intervalValue,
                 intervalUnit = intervalUnit,
-                nextRunDate = nextRunDate
+                nextRunDate = nextRunDate,
+                installment = installment
             )
             val response = api.addManualAsset(request)
             if (response.success) {

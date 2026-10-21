@@ -338,12 +338,14 @@ internal fun EmptyHoldingsState(
 // Individual Holding Item
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-internal fun HoldingItem(holding: InvestmentHolding) {
+internal fun HoldingItem(holding: InvestmentHolding, onClick: (() -> Unit)? = null) {
     val dims = Dimens.current
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = dims.screenHorizontalPadding, vertical = 4.dp),
+            .padding(horizontal = dims.screenHorizontalPadding, vertical = 4.dp)
+            .clip(RoundedCornerShape(dims.buttonCornerRadius))
+            .clickable(enabled = onClick != null) { onClick?.invoke() },
         shape = RoundedCornerShape(dims.buttonCornerRadius),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -408,6 +410,17 @@ internal fun HoldingItem(holding: InvestmentHolding) {
                     color = if (holding.isGain) InvestColors.GainGreen else InvestColors.LossRed,
                     maxLines = 1,
                     softWrap = false
+                )
+            }
+
+            // Stocks and funds open their own chart.
+            if (onClick != null) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

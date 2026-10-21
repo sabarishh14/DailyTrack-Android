@@ -397,7 +397,7 @@ class SabdekhoRepository @Inject constructor(
     }
 
     suspend fun updateDiaryLog(
-        logId: Int,
+        logIds: List<Int>,
         isMovie: Boolean,
         rating: Float?,
         review: String?,
@@ -409,18 +409,20 @@ class SabdekhoRepository @Inject constructor(
         episodeNumber: Int? = null
     ): Result<Boolean> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) {
-            val res = demoDataManager.updateDiaryLog(
-                logId = logId,
-                isMovie = isMovie,
-                rating = rating,
-                review = review,
-                liked = liked,
-                rewatch = rewatch,
-                tags = tags,
-                date = date,
-                seasonNumber = seasonNumber,
-                episodeNumber = episodeNumber
-            )
+            val res = logIds.map { logId ->
+                demoDataManager.updateDiaryLog(
+                    logId = logId,
+                    isMovie = isMovie,
+                    rating = rating,
+                    review = review,
+                    liked = liked,
+                    rewatch = rewatch,
+                    tags = tags,
+                    date = date,
+                    seasonNumber = seasonNumber,
+                    episodeNumber = episodeNumber
+                )
+            }.all { it }
             demoDataManager.notifyDataUpdated()
             res
         } else {
@@ -428,7 +430,7 @@ class SabdekhoRepository @Inject constructor(
             // it isn't sent — so a cleared rating/review/tag must go over as an
             // explicit empty value, which the server stores as "none".
             val req = com.example.dailytrack_mobile.data.remote.dto.UpdateDiaryLogRequestDto(
-                log_ids = listOf(logId),
+                log_ids = logIds,
                 rating = rating ?: 0f,
                 review = review ?: "",
                 liked = liked,
@@ -449,15 +451,15 @@ class SabdekhoRepository @Inject constructor(
     }
 
     suspend fun deleteDiaryLog(
-        logId: Int,
+        logIds: List<Int>,
         isMovie: Boolean
     ): Result<Boolean> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) {
-            val res = demoDataManager.deleteDiaryLog(logId = logId, isMovie = isMovie)
+            val res = logIds.map { demoDataManager.deleteDiaryLog(logId = it, isMovie = isMovie) }.all { it }
             demoDataManager.notifyDataUpdated()
             res
         } else {
-            val req = com.example.dailytrack_mobile.data.remote.dto.DeleteDiaryLogRequestDto(log_ids = listOf(logId))
+            val req = com.example.dailytrack_mobile.data.remote.dto.DeleteDiaryLogRequestDto(log_ids = logIds)
             if (isMovie) api.deleteMovieDiary(req) else api.deleteTvDiary(req)
             demoDataManager.notifyDataUpdated()
             true
@@ -501,6 +503,8 @@ class SabdekhoRepository @Inject constructor(
      */
     suspend fun syncLetterboxd(
         username: String,
+        fast: Boolean = false,
+        // Last, so callers can pass it as a trailing lambda.
         onProgress: (String) -> Unit = {}
     ): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
@@ -508,7 +512,7 @@ class SabdekhoRepository @Inject constructor(
                 return@runCatching "Demo mode — Letterboxd import is disabled."
             }
 
-            val response = api.syncLetterboxdRss(LetterboxdSyncRequestDto(username.trim()))
+            val response = api.syncLetterboxdRss(LetterboxdSyncRequestDto(username.trim(), fast = fast.takeIf { it }))
             if (!response.isSuccessful) {
                 throw Exception("Letterboxd sync failed (HTTP ${response.code()})")
             }

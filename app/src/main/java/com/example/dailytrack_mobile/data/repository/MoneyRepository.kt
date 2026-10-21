@@ -381,7 +381,9 @@ class MoneyRepository @Inject constructor(
         val byAccount = changes.associateBy { it.account }
         synchronized(this) {
             cachedAccounts = cachedAccounts?.map { acc ->
-                byAccount[acc.account]?.let { acc.copy(usedThisMonth = it.after) } ?: acc
+                byAccount[acc.account]?.let {
+                    acc.copy(usedThisMonth = it.after, budgetUsedThisMonth = it.budgetAfter ?: acc.budgetUsedThisMonth)
+                } ?: acc
             }
         }
     }

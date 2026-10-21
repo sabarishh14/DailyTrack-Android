@@ -134,6 +134,7 @@ class HomeVM @Inject constructor(
                             balanceTracked = dto.balanceTracked,
                             minBalance = dto.minBalance,
                             usedThisMonth = dto.usedThisMonth,
+                            budgetUsedThisMonth = dto.budgetUsedThisMonth,
                             monthlyBudget = dto.monthlyBudget
                         )
                     }

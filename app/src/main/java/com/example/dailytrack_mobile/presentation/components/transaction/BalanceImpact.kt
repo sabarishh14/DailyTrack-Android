@@ -37,7 +37,14 @@ sealed interface AccountImpact
 data class BalanceProjection(val account: String, val before: Double, val after: Double, val min: Double?) : AccountImpact
 
 /** A card's used-this-month before and after the entry, against its monthly budget. */
-data class CardProjection(val account: String, val before: Double, val after: Double, val budget: Double?) : AccountImpact
+/** [budgetAfter]: the part of [after] the budget counts (entries left out of the spending analyser aren't). */
+data class CardProjection(
+    val account: String,
+    val before: Double,
+    val after: Double,
+    val budget: Double?,
+    val budgetAfter: Double = after
+) : AccountImpact
 
 enum class BalanceLevel { OK, WARN, DANGER }
 
@@ -69,18 +76,27 @@ fun projectCardSpend(
 ): Map<Long, CardProjection> {
     val byName = accounts.associateBy { it.account }
     val running = mutableMapOf<String, Double>()
+    val runningCounted = mutableMapOf<String, Double>()
     val out = mutableMapOf<Long, CardProjection>()
     for (entry in entries) {
         val name = entry.account ?: continue
         if (!isCcAccount(name)) continue
         val used = byName[name]?.usedThisMonth ?: continue
+        val counted = byName[name]?.budgetUsedThisMonth ?: used
         val amount = entry.evaluatedAmount?.takeIf { it > 0 } ?: continue
         val date = Instant.ofEpochMilli(entry.dateMillis).atZone(ZoneId.systemDefault()).toLocalDate()
         if (YearMonth.from(date) != YearMonth.from(today)) continue
         val before = running[name] ?: used
         val after = if (entry.type == EntryType.INCOME) maxOf(0.0, before - amount) else before + amount
         running[name] = after
-        out[entry.id] = CardProjection(name, before, after, byName[name]?.monthlyBudget)
+        val countedBefore = runningCounted[name] ?: counted
+        val countedAfter = when {
+            entry.excludeAnalytics -> countedBefore
+            entry.type == EntryType.INCOME -> maxOf(0.0, countedBefore - amount)
+            else -> countedBefore + amount
+        }
+        runningCounted[name] = countedAfter
+        out[entry.id] = CardProjection(name, before, after, byName[name]?.monthlyBudget, countedAfter)
     }
     return out
 }
@@ -211,15 +227,15 @@ fun EntryBalancePreview(projection: BalanceProjection, modifier: Modifier = Modi
 @Composable
 fun CardSpendPreview(projection: CardProjection, modifier: Modifier = Modifier) {
     val budget = projection.budget
-    val level = cardLevel(projection.after, budget)
+    val level = cardLevel(projection.budgetAfter, budget)
     val accountColor = bankColor(projection.account) ?: MaterialTheme.colorScheme.primary
     val barColor by animateColorAsState(
         if (level == BalanceLevel.OK) accountColor else balanceLevelColor(level), tween(250), label = "cardSpendColor"
     )
     val note = when {
         budget == null || level == BalanceLevel.OK -> null
-        level == BalanceLevel.DANGER -> "⚠ ₹${formatRupees(projection.after - budget)} over your ₹${formatRupees(budget)} monthly budget"
-        else -> "₹${formatRupees(budget - projection.after)} left of your ₹${formatRupees(budget)} monthly budget"
+        level == BalanceLevel.DANGER -> "⚠ ₹${formatRupees(projection.budgetAfter - budget)} over your ₹${formatRupees(budget)} monthly budget"
+        else -> "₹${formatRupees(budget - projection.budgetAfter)} left of your ₹${formatRupees(budget)} monthly budget"
     }
 
     Card(
@@ -263,7 +279,7 @@ fun CardSpendPreview(projection: CardProjection, modifier: Modifier = Modifier) 
                     )
                 }
                 // Filling towards the budget; once over, the tick marks where the budget was.
-                if (budget != null) FloorBar(before = budget, after = projection.after, min = budget, color = barColor)
+                if (budget != null) FloorBar(before = budget, after = projection.budgetAfter, min = budget, color = barColor)
                 note?.let {
                     Text(
                         text = it,

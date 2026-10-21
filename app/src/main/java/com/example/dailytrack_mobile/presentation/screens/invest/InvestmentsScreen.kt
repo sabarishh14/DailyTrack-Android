@@ -44,12 +44,16 @@ import com.example.dailytrack_mobile.presentation.screens.invest.components.Cate
 import com.example.dailytrack_mobile.presentation.screens.invest.components.ChartLegend
 import com.example.dailytrack_mobile.presentation.screens.invest.components.EmptyHoldingsState
 import com.example.dailytrack_mobile.presentation.screens.invest.components.FilterPills
+import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingDetailPage
 import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingItem
 import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingsSnapshotPage
 import com.example.dailytrack_mobile.presentation.screens.invest.components.PortfolioHeader
 import com.example.dailytrack_mobile.presentation.screens.invest.components.AdvancedChart
 import com.example.dailytrack_mobile.presentation.screens.invest.components.SummaryRow
 import com.example.dailytrack_mobile.presentation.screens.invest.components.TimeRangeToggle
+import com.example.dailytrack_mobile.presentation.screens.invest.funds.FundsEntryCard
+import com.example.dailytrack_mobile.presentation.screens.invest.funds.FundsSheet
+import com.example.dailytrack_mobile.presentation.screens.invest.funds.FundsVM
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -141,10 +145,13 @@ internal fun formatPointDate(dateStr: String): String {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 fun InvestmentsScreen(
-    viewModel: InvestVM = hiltViewModel()
+    viewModel: InvestVM = hiltViewModel(),
+    fundsViewModel: FundsVM = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val dims = Dimens.current
+    val fundsAvailable by fundsViewModel.available.collectAsState()
+    var showFunds by rememberSaveable { mutableStateOf(false) }
 
     var isValueMode by remember { mutableStateOf(true) }
     var selectedChartPoint by remember { mutableStateOf<ChartPoint?>(null) }
@@ -342,6 +349,10 @@ fun InvestmentsScreen(
                         }
                     }
                     else -> {
+                        // Funds outside Kite are managed from their tab (FundsSheet).
+                        if (state.selectedTab == InvestTab.MUTUAL_FUNDS && fundsAvailable) {
+                            item { FundsEntryCard(onClick = { showFunds = true }) }
+                        }
                         // Show individual holdings directly (TabSummaryHeader is removed as cards below graph show it)
                         val filtered = state.filteredHoldings
                         if (filtered.isEmpty()) {
@@ -350,7 +361,12 @@ fun InvestmentsScreen(
                             }
                         } else {
                             items(filtered) { holding ->
-                                HoldingItem(holding = holding)
+                                HoldingItem(
+                                    holding = holding,
+                                    onClick = if (holding.historyType != null) {
+                                        { viewModel.onAction(InvestAction.OpenHoldingDetail(holding)) }
+                                    } else null
+                                )
                             }
                         }
                     }
@@ -363,6 +379,17 @@ fun InvestmentsScreen(
                 state = state,
                 onAction = viewModel::onAction
             )
+        }
+
+        if (state.detailHolding != null) {
+            HoldingDetailPage(
+                state = state,
+                onAction = viewModel::onAction
+            )
+        }
+
+        if (showFunds) {
+            FundsSheet(viewModel = fundsViewModel, onDismiss = { showFunds = false })
         }
 
         if (state.isCategorySettingsOpen) {

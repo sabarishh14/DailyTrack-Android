@@ -15,4 +15,9 @@ sealed class InvestAction {
     /** Passing null drops back to the single-date view. */
     data class SelectCompareDate(val date: String?) : InvestAction()
     data class SetComparePickerOpen(val isOpen: Boolean) : InvestAction()
+
+    // One stock's or fund's page
+    data class OpenHoldingDetail(val holding: InvestmentHolding) : InvestAction()
+    object CloseHoldingDetail : InvestAction()
+    data class SelectDetailRange(val range: ChartTimeRange) : InvestAction()
 }

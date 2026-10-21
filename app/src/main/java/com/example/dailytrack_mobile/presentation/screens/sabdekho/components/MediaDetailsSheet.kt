@@ -40,6 +40,8 @@ import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaShowDto
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoAction
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.allLogIds
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.groupDiaryLogs
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.LocalDate
 import com.example.dailytrack_mobile.presentation.components.rememberSheetHeight
@@ -601,7 +603,7 @@ private fun HistorySubTab(
     // alone matches the other kind's logs too — that showed up as "copies".
     val showIsMovie = show.type.equals("movie", ignoreCase = true)
     val showLogs = remember(state.diaryLogs, show.id, showIsMovie) {
-        state.diaryLogs.filter { it.showId == show.id && it.type.equals("movie", ignoreCase = true) == showIsMovie }
+        groupDiaryLogs(state.diaryLogs.filter { it.showId == show.id && it.type.equals("movie", ignoreCase = true) == showIsMovie })
     }
 
     if (showLogs.isEmpty()) {
@@ -648,7 +650,7 @@ private fun HistorySubTab(
                     log = log,
                     onCardClick = {},
                     onEditClick = { onAction(SabdekhoAction.OpenEditLog(log)) },
-                    onDeleteClick = { onAction(SabdekhoAction.DeleteLog(log.id, log.type.equals("movie", ignoreCase = true))) }
+                    onDeleteClick = { onAction(SabdekhoAction.DeleteLog(log.allLogIds, log.type.equals("movie", ignoreCase = true))) }
                 )
             }
         }
