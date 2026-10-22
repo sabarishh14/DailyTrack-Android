@@ -13,7 +13,8 @@ import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
 import com.example.dailytrack_mobile.notification.routines.RoutineAlarmService
 import com.example.dailytrack_mobile.notification.routines.RoutineCheckInScheduler
-import com.example.dailytrack_mobile.widget.RoutinesWidget
+import com.example.dailytrack_mobile.widget.DailyTrackWidgets
+import com.example.dailytrack_mobile.widget.WidgetCache
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -64,11 +65,18 @@ class PersonalDataReset @Inject constructor(
     /** Switching whose data is on screen (sharing): drop every cached copy so screens reload theirs. */
     fun forgetCachedData() = forgetCaches()
 
+    /** Signed out: the home-screen widgets stop showing anything of theirs. */
+    suspend fun signedOut() {
+        WidgetCache.clear(context)
+        DailyTrackWidgets.refreshAll(context)
+    }
+
     private fun forgetCaches() {
         moneyRepository.forgetPerson()
         investmentsRepository.clearCache()
         sabdekhoRepository.forgetPerson()
         activitiesRepository.clearCache()
+        WidgetCache.clear(context)
     }
 
     private suspend fun forgetLastPerson(last: String, next: String) {
@@ -88,7 +96,8 @@ class PersonalDataReset @Inject constructor(
         RoutineAlarmService.stop(context)
         NotificationManagerCompat.from(context).cancelAll()
         restoreRoutineSettings(next)
-        RoutinesWidget.refreshAll(context)
+        // Widgets show the last person's look until redrawn (the caches went above).
+        DailyTrackWidgets.refreshAll(context)
     }
 
     private fun kept(person: String, what: String) = "kept:$person:$what"

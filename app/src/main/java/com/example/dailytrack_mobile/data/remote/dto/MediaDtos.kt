@@ -162,7 +162,9 @@ data class MediaDiaryLogDto(
     @Json(name = "created_at") val createdAt: String? = null,
     // Filled on the phone when same-day episode logs merge into one diary row.
     @Json(ignore = true) val logIds: List<Int> = emptyList(),
-    @Json(ignore = true) val episodes: List<Int> = emptyList()
+    @Json(ignore = true) val episodes: List<Int> = emptyList(),
+    // Which server logs hold each episode of a merged row, so an edit can add or drop single episodes.
+    @Json(ignore = true) val episodeLogIds: Map<Int, List<Int>> = emptyMap()
 )
 
 @JsonClass(generateAdapter = true)

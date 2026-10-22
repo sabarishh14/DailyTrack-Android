@@ -43,6 +43,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.hasTag
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.toggleTag
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -89,7 +91,8 @@ fun AddMovieScreen(
     var showDatePicker by remember { mutableStateOf(false) }
 
     val showLoggingSection = selectedStatus == WatchStatus.WATCHED || (!isMovie && selectedStatus == WatchStatus.IN_PROGRESS && logTvEpisodeNow)
-    val quickTags = listOf("Theatre", "IMAX", "Netflix", "Prime Video", "Apple TV+", "Hotstar", "4K UHD")
+    val quickTags by formsVM.quickTags.collectAsState()
+    LaunchedEffect(Unit) { formsVM.loadQuickTags() }
 
     LaunchedEffect(initialMedia) {
         if (initialMedia != null) {
@@ -864,24 +867,15 @@ fun AddMovieScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                     )
 
-                    FlowRow(
+                    if (quickTags.isNotEmpty()) FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         quickTags.forEach { tagItem ->
-                            val isSelected = tags.contains(tagItem, ignoreCase = true)
+                            val isSelected = hasTag(tags, tagItem)
                             FilterChip(
                                 selected = isSelected,
-                                onClick = {
-                                    tags = if (isSelected) {
-                                        tags.split(",")
-                                            .map { it.trim() }
-                                            .filterNot { it.equals(tagItem, ignoreCase = true) }
-                                            .joinToString(", ")
-                                    } else {
-                                        if (tags.isBlank()) tagItem else "$tags, $tagItem"
-                                    }
-                                },
+                                onClick = { tags = toggleTag(tags, tagItem) },
                                 label = { Text(tagItem, style = MaterialTheme.typography.labelSmall) },
                                 shape = RoundedCornerShape(dims.buttonCornerRadius - 2.dp)
                             )

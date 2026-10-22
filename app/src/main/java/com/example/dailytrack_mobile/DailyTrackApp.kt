@@ -3,7 +3,9 @@ package com.example.dailytrack_mobile
 import android.app.Application
 import com.example.dailytrack_mobile.data.local.auth.AuthManager
 import com.example.dailytrack_mobile.data.local.auth.PersonalDataReset
+import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.RoutinesRepository
+import com.example.dailytrack_mobile.widget.DailyTrackWidgets
 import com.example.dailytrack_mobile.widget.RoutinesWidget
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +23,7 @@ import javax.inject.Inject
 class DailyTrackApp : Application() {
 
     @Inject lateinit var routinesRepository: RoutinesRepository
+    @Inject lateinit var moneyRepository: MoneyRepository
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var personalData: PersonalDataReset
 
@@ -41,6 +44,13 @@ class DailyTrackApp : Application() {
             routinesRepository.snapshot.filterNotNull().collectLatest {
                 delay(WIDGET_REFRESH_DEBOUNCE_MS) // a burst of changes redraws once
                 RoutinesWidget.refreshAll(this@DailyTrackApp)
+            }
+        }
+        // And the money widgets every saved transaction, budget or holding.
+        appScope.launch {
+            moneyRepository.dataUpdateFlow.collectLatest {
+                delay(WIDGET_REFRESH_DEBOUNCE_MS)
+                DailyTrackWidgets.refreshMoney(this@DailyTrackApp)
             }
         }
     }

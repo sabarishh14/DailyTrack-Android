@@ -45,55 +45,45 @@ sealed class SabdekhoAction {
     // Diary Tab Actions
     data class LoadDiary(val type: String = "all", val forceRefresh: Boolean = false) : SabdekhoAction()
     data class ChangeDiaryTypeFilter(val type: String) : SabdekhoAction()
+    /** The Diary was scrolled near its end: fetch the next page. */
+    object LoadMoreDiary : SabdekhoAction()
 
     // Stats Tab Actions
     data class LoadStats(val year: String = java.time.LocalDate.now().year.toString()) : SabdekhoAction()
     data class SelectStatsYear(val year: String) : SabdekhoAction()
 
-    // Media Details & Log Bottom Sheet Actions
+    // A title's page
     data class OpenMediaDetails(val show: MediaShowDto) : SabdekhoAction()
     object CloseMediaDetails : SabdekhoAction()
-    data class SetDetailsSubTab(val tabIndex: Int) : SabdekhoAction()
 
     // Status & Show Management
     data class UpdateShowStatus(val showId: Int, val isMovie: Boolean, val newStatus: String) : SabdekhoAction()
     data class DeleteShow(val showId: Int, val isMovie: Boolean) : SabdekhoAction()
 
-    // Log Form Actions
+    // The log page: a new log of the open title, or a log being changed
+    /** A new log; [season] when a season's row was tapped, to start in it. */
+    data class OpenLogPage(val season: Int? = null) : SabdekhoAction()
+    data class OpenEditLog(val log: MediaDiaryLogDto) : SabdekhoAction()
+    object CloseLogPage : SabdekhoAction()
     data class UpdateLogForm(
         val rating: Float? = null,
         val review: String? = null,
         val liked: Boolean? = null,
         val rewatch: Boolean? = null,
         val platformTag: String? = null,
-        val date: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null
+        val date: String? = null
     ) : SabdekhoAction()
+    /** A season tapped: picked or unpicked (several can be), or moved to while picking episodes. Null is the whole show. */
     data class SelectLogSeason(val season: Int?) : SabdekhoAction()
     data class ToggleLogEpisode(val episode: Int) : SabdekhoAction()
     object ToggleAllLogEpisodes : SabdekhoAction()
+    /** Saves the log page: a new log, or the changes to the one being edited. */
     object SubmitLog : SabdekhoAction()
-
-    // Edit Log
-    data class OpenEditLog(val log: MediaDiaryLogDto) : SabdekhoAction()
-    object CloseEditLog : SabdekhoAction()
-    data class SubmitEditLog(
-        val logIds: List<Int>,
-        val isMovie: Boolean,
-        val rating: Float?,
-        val review: String?,
-        val liked: Boolean?,
-        val rewatch: Boolean?,
-        val tag: String?,
-        val date: String? = null,
-        val season: Int? = null,
-        val episode: Int? = null
-    ) : SabdekhoAction()
     data class DeleteLog(val logIds: List<Int>, val isMovie: Boolean) : SabdekhoAction()
 
-    // Rematch TMDB
+    // Fix match
+    object OpenFixMatch : SabdekhoAction()
+    object CloseFixMatch : SabdekhoAction()
     data class SearchRematch(val query: String) : SabdekhoAction()
     data class ApplyRematch(val showId: Int, val isMovie: Boolean, val tmdbResult: MediaSearchResultDto) : SabdekhoAction()
 }
-

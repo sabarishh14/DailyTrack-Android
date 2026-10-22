@@ -195,6 +195,7 @@ class AuthRepository @Inject constructor(
             FirebaseAuth.getInstance().signOut()
         } catch (_: Exception) { }
         authManager.clearSession()
+        personalData.signedOut()
     }
 }
 

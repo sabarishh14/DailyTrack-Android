@@ -113,43 +113,16 @@ fun SabdekhoScreen(
             }
         }
 
-        // ── Media Details & Logging Bottom Sheet ────────────────────────
-        if (state.isDetailsSheetOpen && state.selectedShow != null) {
-            MediaDetailsSheet(
-                state = state,
-                onAction = viewModel::onAction
-            )
+        // ── Full pages, each over the last: a title, its Fix match, a log ──
+        // Pages, not sheets: scrolling back up can never close them.
+        if (state.isTitlePageOpen && state.selectedShow != null) {
+            TitlePage(state = state, onAction = viewModel::onAction)
         }
-
-        // ── Edit Diary Log Modal Bottom Sheet ───────────────────────────
-        if (state.isEditDialogOpen && state.editingLog != null) {
-            val logToEdit = state.editingLog!!
-            val isMovie = logToEdit.type.equals("movie", ignoreCase = true)
-            EditDiaryLogSheet(
-                log = logToEdit,
-                isSaving = state.isSavingEditLog,
-                errorMessage = state.editLogError,
-                onDismiss = { viewModel.onAction(SabdekhoAction.CloseEditLog) },
-                onSave = { rating, review, liked, rewatch, tag, date, season, episode ->
-                    viewModel.onAction(
-                        SabdekhoAction.SubmitEditLog(
-                            logIds = logToEdit.allLogIds,
-                            isMovie = isMovie,
-                            rating = rating,
-                            review = review,
-                            liked = liked,
-                            rewatch = rewatch,
-                            tag = tag,
-                            date = date,
-                            season = season,
-                            episode = episode
-                        )
-                    )
-                },
-                onDelete = {
-                    viewModel.onAction(SabdekhoAction.DeleteLog(logToEdit.allLogIds, isMovie))
-                }
-            )
+        if (state.isFixMatchOpen && state.selectedShow != null) {
+            FixMatchPage(state = state, onAction = viewModel::onAction)
+        }
+        if (state.isLogPageOpen && state.selectedShow != null) {
+            LogPage(state = state, onAction = viewModel::onAction)
         }
     }
 }
@@ -521,7 +494,8 @@ private fun LibraryTabContent(
                 horizontalArrangement = Arrangement.spacedBy(dims.itemSpacingLarge),
                 contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
             ) {
-                items(filteredItems, key = { it.id }) { item ->
+                // Films and shows have their own ids: the pair is what's unique in "All".
+                items(filteredItems, key = { "${it.type}-${it.id}" }) { item ->
                     MediaCard(
                         item = item,
                         gridSpan = state.gridColumns,

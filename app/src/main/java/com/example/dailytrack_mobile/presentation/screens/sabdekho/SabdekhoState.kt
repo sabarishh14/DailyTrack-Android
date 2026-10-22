@@ -40,10 +40,12 @@ data class SabdekhoState(
     val filterLanguages: List<MediaFilterLanguageDto> = emptyList(),
     val isFilterOptionsLoaded: Boolean = false,
 
-    // Diary Tab
+    // Diary Tab — a page at a time, more as it's scrolled
     val isDiaryLoading: Boolean = false,
     val diaryLogs: List<MediaDiaryLogDto> = emptyList(),
     val diaryTypeFilter: String = "all", // "all", "movie", "tv"
+    val diaryHasMore: Boolean = false,
+    val isDiaryLoadingMore: Boolean = false,
 
     // Stats Tab
     val isStatsLoading: Boolean = false,
@@ -54,39 +56,81 @@ data class SabdekhoState(
     val tvStats: TvStatsResponseDto? = null,
     val tvStatsError: String? = null,
 
-    // Media Details & Log Sheet
-    val isDetailsSheetOpen: Boolean = false,
+    // A title's page. The title stays selected while its log page is open,
+    // even when that was opened straight from the Diary.
+    val isTitlePageOpen: Boolean = false,
     val selectedShow: MediaShowDto? = null,
     val isLoadingDetails: Boolean = false,
     val detailsData: MediaDetailsDataDto? = null,
-    val detailsSheetSubTab: Int = 0, // 0 = Log, 1 = History, 2 = Details, 3 = Match
+    /** Every log of the open title, fetched for it alone (the Diary tab only holds pages). */
+    val selectedShowLogs: List<MediaDiaryLogDto> = emptyList(),
+    /** Why a status didn't change (a show is Watched only once all of it is logged). */
+    val statusNote: String? = null,
 
-    // Logging Form State
+    // The log page: a new log, or [editingLog] being changed
+    val isLogPageOpen: Boolean = false,
+    val editingLog: MediaDiaryLogDto? = null,
     val logDate: String = LocalDate.now().toString(),
     val logRating: Float = 0f,
     val logReview: String = "",
     val logLiked: Boolean = false,
     val logRewatch: Boolean = false,
     val logPlatformTag: String = "",
-    val logSeason: Int? = 1,
-    val logEpisode: Int? = null,
+    /** One-tap tags in the log forms: the ones most used before, most used first. */
+    val quickTags: List<String> = emptyList(),
+    /** Seasons picked to log; none is the whole show, several log each season whole. */
+    val logSeasons: Set<Int> = emptySet(),
+    /** One season's picked episodes; none logs that season whole. */
     val selectedLogEpisodes: Set<Int> = emptySet(),
     val isSubmittingLog: Boolean = false,
-    val isSavingEditLog: Boolean = false,
-    val editLogError: String? = null,
+    val logError: String? = null,
 
-    // Rematch Search State
+    // Fix match
+    val isFixMatchOpen: Boolean = false,
     val rematchQuery: String = "",
     val isSearchingRematch: Boolean = false,
     val rematchResults: List<MediaSearchResultDto> = emptyList(),
-
-    // Edit Log Modal
-    val editingLog: MediaDiaryLogDto? = null,
-    val isEditDialogOpen: Boolean = false
+    val isApplyingRematch: Boolean = false,
+    val rematchError: String? = null
 ) {
     val activeLibraryFilterCount: Int
         get() = listOf(yearFilter, monthFilter, weekFilter, languageFilter, weekdayFilter, ratingFilter).count { it != "all" }
 
     val hasActiveLibraryFilters: Boolean
         get() = activeLibraryFilterCount > 0
-}
+
+    /** The one season picked, when it's just one: its episodes can be picked too. */
+    val logSeason: Int? get() = logSeasons.singleOrNull()
+}
+
+/** Whether the comma-separated [text] already holds [tag], as a whole tag. */
+internal fun hasTag(text: String, tag: String): Boolean =
+    text.split(',').any { it.trim().equals(tag, ignoreCase = true) }
+
+/** [text] with [tag] added, or taken out if it's already there. */
+internal fun toggleTag(text: String, tag: String): String {
+    val tags = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    return (if (hasTag(text, tag)) tags.filterNot { it.equals(tag, ignoreCase = true) } else tags + tag)
+        .joinToString(", ")
+}
+
+/** [text] with each comma-separated tag typed in [typed] added, unless it's there already. */
+internal fun addTags(text: String, typed: String): String =
+    typed.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        .fold(text) { acc, tag -> if (hasTag(acc, tag)) acc else toggleTag(acc, tag) }
+
+/**
+ * Whether [logs] cover every episode of a show: a whole-show log, or whole
+ * seasons and single episodes adding up to all of them. False without
+ * [details] to count against.
+ */
+internal fun allEpisodesLogged(logs: List<MediaDiaryLogDto>, details: MediaDetailsDataDto?): Boolean {
+    if (logs.any { it.seasonNumber == null }) return true
+    val seasons = details?.seasons?.filter { it.season_number > 0 && it.episode_count > 0 } ?: return false
+    if (seasons.isEmpty()) return false
+    val wholeSeasons = logs.filter { it.episodeNumber == null }.mapNotNull { it.seasonNumber }.toSet()
+    return seasons.all { s ->
+        s.season_number in wholeSeasons ||
+            logs.filter { it.seasonNumber == s.season_number }.mapNotNull { it.episodeNumber }.toSet().size >= s.episode_count
+    }
+}

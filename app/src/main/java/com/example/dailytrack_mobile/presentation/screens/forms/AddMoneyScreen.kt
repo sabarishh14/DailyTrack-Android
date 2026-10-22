@@ -140,10 +140,12 @@ fun AddMoneyScreen(
     LaunchedEffect(Unit) { formsVM.refreshAccounts() }
     var showDraftBanner by remember { mutableStateOf(restoredDrafts.isNotEmpty()) }
 
+    // A category tapped on the Quick add widget starts a fresh entry with it.
+    val quickCategory = remember { QuickAddRequest.consume() }
     val entries = remember {
         mutableStateListOf<TransactionEntryState>().apply {
-            if (restoredDrafts.isEmpty()) add(TransactionEntryState())
-            else restoredDrafts.forEach { add(it.toEntry()) }
+            restoredDrafts.forEach { add(it.toEntry()) }
+            if (isEmpty() || quickCategory != null) add(TransactionEntryState(category = quickCategory.orEmpty()))
         }
     }
     var activeId by remember { mutableStateOf<Long?>(entries.last().id) }

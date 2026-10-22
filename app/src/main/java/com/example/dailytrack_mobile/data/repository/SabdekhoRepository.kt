@@ -86,6 +86,12 @@ class SabdekhoRepository @Inject constructor(
         }
     }
 
+    /** The log form's one-tap tags: the ones most used in this person's diary, most used first. */
+    suspend fun quickTags(): Result<List<String>> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) return@runCatching emptyList()
+        api.getMediaTags().tags.orEmpty()
+    }
+
     /** Tags already used in the diary, minus the theatre ones the server adds itself. */
     suspend fun movieTags(): Result<List<String>> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) return@runCatching emptyList()

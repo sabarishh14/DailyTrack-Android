@@ -14,8 +14,8 @@
         android:orientation="horizontal">
 
         <FrameLayout
-            android:layout_width="46dp"
-            android:layout_height="46dp">
+            android:layout_width="42dp"
+            android:layout_height="42dp">
 
             <ImageView
                 android:layout_width="match_parent"
@@ -29,14 +29,14 @@
                 android:layout_gravity="center"
                 android:text="89%"
                 android:textColor="#FFFFFFFF"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="12dp"
             android:layout_weight="1"
             android:orientation="vertical">
 
@@ -51,56 +51,127 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="2 of 4 done · 2 left"
+                android:text="1 of 2 done"
                 android:textColor="#B3FFFFFF"
                 android:textSize="12sp" />
         </LinearLayout>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/widget_preview_chip"
+            android:paddingStart="9dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="9dp"
+            android:paddingBottom="4dp"
+            android:text="🔥 5"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:layout_marginTop="8dp"
+        android:layout_height="52dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/widget_preview_row"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/widget_preview_heart"
+            android:gravity="center"
+            android:text="📖"
+            android:textSize="16sp" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:layout_weight="1"
-            android:text="📖  Read 20 min"
+            android:text="Read 20 min"
             android:textColor="#FFFFFFFF"
-            android:textSize="13sp" />
+            android:textSize="14sp" />
 
-        <TextView
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/widget_preview_heart"
-            android:gravity="center"
-            android:text="❤️"
-            android:textSize="13sp" />
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_heart_outline"
+            android:tint="#B3FFFFFF" />
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_missed"
+            android:tint="#B3FFFFFF" />
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_skip"
+            android:tint="#B3FFFFFF" />
     </LinearLayout>
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="40dp"
+        android:layout_height="52dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/widget_preview_row"
         android:gravity="center_vertical"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="6dp">
+
+        <TextView
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/widget_preview_done"
+            android:gravity="center"
+            android:text="🧘"
+            android:textSize="16sp" />
 
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
             android:layout_weight="1"
-            android:text="🧘  Meditate"
-            android:textColor="#FFFFFFFF"
-            android:textSize="13sp" />
+            android:text="Meditate"
+            android:textColor="#B3FFFFFF"
+            android:textSize="14sp" />
 
-        <TextView
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/widget_preview_heart"
-            android:gravity="center"
-            android:text="❤️"
-            android:textSize="13sp" />
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="@drawable/widget_preview_done"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_heart"
+            android:tint="#FFFF4D6D" />
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_missed"
+            android:tint="#66FFFFFF" />
+
+        <ImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:importantForAccessibility="no"
+            android:padding="8dp"
+            android:src="@drawable/ic_widget_skip"
+            android:tint="#66FFFFFF" />
     </LinearLayout>
 </LinearLayout>

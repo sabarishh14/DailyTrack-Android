@@ -71,6 +71,12 @@ class MainActivity : FragmentActivity() {
 
     private fun extractDeepLinkRoute(intent: Intent?): String? {
         if (intent == null) return null
+        // A category chip on the Quick add widget: the Add screen opens with it
+        // picked. Taken off the intent so a rotation doesn't pick it again.
+        intent.getStringExtra("category")?.let {
+            com.example.dailytrack_mobile.presentation.screens.forms.QuickAddRequest.set(it)
+            intent.removeExtra("category")
+        }
         val uri = intent.data
         if (uri != null) {
             val uriStr = uri.toString().lowercase()

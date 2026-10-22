@@ -230,6 +230,10 @@ interface DailyTrackApi {
     @GET("/api/movies/tags")
     suspend fun getMovieTags(): com.example.dailytrack_mobile.data.remote.dto.MovieTagsResponseDto
 
+    /** The log form's one-tap tags: this person's most used, first. */
+    @GET("/api/media/tags")
+    suspend fun getMediaTags(): com.example.dailytrack_mobile.data.remote.dto.MovieTagsResponseDto
+
     @GET("/api/movies/stats")
     suspend fun getMovieStats(
         @Query("year") year: String? = null

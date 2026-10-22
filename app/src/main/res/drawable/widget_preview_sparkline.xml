@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview: the portfolio's three-month line. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="40dp"
+    android:viewportWidth="120"
+    android:viewportHeight="40">
+    <path
+        android:fillColor="#332ECC71"
+        android:pathData="M2,30 L14,27 L26,29 L38,22 L50,24 L62,18 L74,20 L86,13 L98,15 L110,8 L118,6 L118,40 L2,40 Z" />
+    <path
+        android:pathData="M2,30 L14,27 L26,29 L38,22 L50,24 L62,18 L74,20 L86,13 L98,15 L110,8 L118,6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2.2"
+        android:strokeColor="#FF2ECC71" />
+</vector>

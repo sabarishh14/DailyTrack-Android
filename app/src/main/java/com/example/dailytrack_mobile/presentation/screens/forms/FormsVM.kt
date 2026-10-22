@@ -190,6 +190,10 @@ class FormsVM @Inject constructor(
     private val _movieTags = MutableStateFlow<List<String>>(emptyList())
     val movieTags: StateFlow<List<String>> = _movieTags.asStateFlow()
 
+    private val _quickTags = MutableStateFlow<List<String>>(emptyList())
+    /** The Add Movie form's one-tap tags: the ones most used before. */
+    val quickTags: StateFlow<List<String>> = _quickTags.asStateFlow()
+
     private var cinemaJob: Job? = null
 
     /** Films only; anything under two letters clears the list. */
@@ -205,6 +209,12 @@ class FormsVM @Inject constructor(
             _cinemaResults.value = sabdekhoRepository.searchMedia(trimmed).getOrNull().orEmpty()
                 .filter { it.isMovie }
                 .take(8)
+        }
+    }
+
+    fun loadQuickTags() {
+        viewModelScope.launch {
+            sabdekhoRepository.quickTags().onSuccess { _quickTags.value = it }
         }
     }
 

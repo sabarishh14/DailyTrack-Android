@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -124,7 +125,19 @@ fun SabdekhoDiaryTab(
                 }
             }
         } else {
+            // A page at a time: nearing the end asks for the next one.
+            val listState = rememberLazyListState()
+            val nearEnd by remember(filteredLogs.size) {
+                derivedStateOf {
+                    val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    last >= filteredLogs.size - 5
+                }
+            }
+            LaunchedEffect(nearEnd, state.diaryHasMore) {
+                if (nearEnd && state.diaryHasMore) onAction(SabdekhoAction.LoadMoreDiary)
+            }
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(dims.itemSpacingMedium),
                 contentPadding = PaddingValues(bottom = dims.screenBottomPadding + LocalFloatingBarClearance.current)
@@ -151,6 +164,13 @@ fun SabdekhoDiaryTab(
                         onEditClick = { onAction(SabdekhoAction.OpenEditLog(log)) },
                         onDeleteClick = { onAction(SabdekhoAction.DeleteLog(log.allLogIds, log.type.equals("movie", ignoreCase = true))) }
                     )
+                }
+                if (state.isDiaryLoadingMore) {
+                    item(key = "loading-more") {
+                        Box(modifier = Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        }
+                    }
                 }
             }
         }

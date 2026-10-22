@@ -9,16 +9,19 @@ import com.example.dailytrack_mobile.data.remote.dto.MediaSearchResultDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaShowDto
 import com.example.dailytrack_mobile.data.repository.SabdekhoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class SabdekhoVM @Inject constructor(
     private val repository: SabdekhoRepository,
@@ -31,19 +34,25 @@ class SabdekhoVM @Inject constructor(
     private var onlineSearchJob: Job? = null
     private var rematchSearchJob: Job? = null
 
+    /** What the open log page has saved so far, so trying again after a failure doesn't save it twice. */
+    private val savedThisSession = mutableSetOf<Pair<Int?, Int?>>()
+
     init {
         viewModelScope.launch {
             demoModeManager.isDemoModeEnabledFlow.collect {
+                loadQuickTags()
                 reloadShows()
                 loadDiary(type = _state.value.diaryTypeFilter)
                 loadStats(year = _state.value.selectedStatsYear)
             }
         }
         viewModelScope.launch {
-            repository.dataUpdateFlow.collect {
+            // Every save announces itself; logging ten episodes is ten saves, and one reload.
+            repository.dataUpdateFlow.debounce(300).collect {
                 reloadShows()
                 loadDiary(type = _state.value.diaryTypeFilter)
                 loadStats(year = _state.value.selectedStatsYear)
+                if (_state.value.selectedShow != null) loadSelectedShowLogs()
             }
         }
     }
@@ -189,6 +198,7 @@ class SabdekhoVM @Inject constructor(
                 _state.update { it.copy(diaryTypeFilter = action.type) }
                 loadDiary(action.type)
             }
+            is SabdekhoAction.LoadMoreDiary -> loadMoreDiary()
 
             // Stats Actions
             is SabdekhoAction.LoadStats -> {
@@ -199,26 +209,41 @@ class SabdekhoVM @Inject constructor(
                 loadStats(action.year)
             }
 
-            // Media Details Sheet Actions
+            // A title's page
             is SabdekhoAction.OpenMediaDetails -> {
-                openMediaDetails(action.show)
+                selectTitle(action.show)
+                _state.update { it.copy(isTitlePageOpen = true) }
             }
             is SabdekhoAction.CloseMediaDetails -> {
-                _state.update { it.copy(isDetailsSheetOpen = false, selectedShow = null, detailsData = null) }
-            }
-            is SabdekhoAction.SetDetailsSubTab -> {
-                _state.update { it.copy(detailsSheetSubTab = action.tabIndex) }
+                _state.update { it.copy(isTitlePageOpen = false, isFixMatchOpen = false) }
+                if (!_state.value.isLogPageOpen) clearTitle()
             }
 
             // Status & Show Management
             is SabdekhoAction.UpdateShowStatus -> {
+                val s = _state.value
+                // A show is Watched once all of it is logged, as on the web.
+                if (action.newStatus.equals("WATCHED", ignoreCase = true) && !action.isMovie &&
+                    s.detailsData != null && !allEpisodesLogged(s.selectedShowLogs, s.detailsData)
+                ) {
+                    _state.update { it.copy(statusNote = "Log every episode, or the whole show, to mark it watched") }
+                    return
+                }
+                _state.update { it.copy(statusNote = null) }
                 updateShowStatus(action.showId, action.isMovie, action.newStatus)
             }
             is SabdekhoAction.DeleteShow -> {
                 deleteShow(action.showId, action.isMovie)
             }
 
-            // Log Form
+            // The log page
+            is SabdekhoAction.OpenLogPage -> openLogPage(action.season)
+            is SabdekhoAction.OpenEditLog -> openEditLog(action.log)
+            is SabdekhoAction.CloseLogPage -> {
+                if (_state.value.isSubmittingLog) return
+                _state.update { it.copy(isLogPageOpen = false, editingLog = null, logError = null) }
+                if (!_state.value.isTitlePageOpen) clearTitle()
+            }
             is SabdekhoAction.UpdateLogForm -> {
                 _state.update { curr ->
                     curr.copy(
@@ -228,90 +253,70 @@ class SabdekhoVM @Inject constructor(
                         logRewatch = action.rewatch ?: curr.logRewatch,
                         logPlatformTag = action.platformTag ?: curr.logPlatformTag,
                         logDate = action.date ?: curr.logDate,
-                        logSeason = action.season ?: curr.logSeason,
-                        logEpisode = action.episode ?: curr.logEpisode
+                        logError = null
                     )
                 }
             }
             is SabdekhoAction.SelectLogSeason -> {
                 _state.update { curr ->
+                    val season = action.season
                     curr.copy(
-                        logSeason = action.season,
-                        logEpisode = null,
-                        selectedLogEpisodes = emptySet()
+                        logSeasons = when {
+                            season == null -> emptySet()
+                            // Picking episodes: another season is where they're picked next.
+                            curr.selectedLogEpisodes.isNotEmpty() -> setOf(season)
+                            // Whole seasons toggle, so several can be logged at once.
+                            season in curr.logSeasons -> curr.logSeasons - season
+                            else -> curr.logSeasons + season
+                        },
+                        selectedLogEpisodes = emptySet(),
+                        logError = null
                     )
                 }
             }
             is SabdekhoAction.ToggleLogEpisode -> {
+                val s = _state.value
+                val season = s.logSeason ?: return
                 val ep = action.episode
-                val showId = _state.value.selectedShow?.id
-                val season = _state.value.logSeason
-                val isAlreadyWatched = _state.value.diaryLogs.any { log ->
-                    log.showId == showId && !log.type.equals("movie", ignoreCase = true) &&
-                            log.seasonNumber == season && (log.episodeNumber == ep || log.episodeNumber == null)
-                }
+                // An episode logged before (outside the log being edited) makes this a rewatch.
+                val editingIds = s.editingLog?.allLogIds.orEmpty().toSet()
+                val seenBefore = WatchedEpisodes(s.selectedShowLogs.filterNot { it.id in editingIds }).isWatched(season, ep)
                 _state.update { curr ->
-                    val updatedEps = if (curr.selectedLogEpisodes.contains(ep)) {
-                        curr.selectedLogEpisodes - ep
-                    } else {
-                        curr.selectedLogEpisodes + ep
-                    }
+                    val adding = ep !in curr.selectedLogEpisodes
                     curr.copy(
-                        selectedLogEpisodes = updatedEps,
-                        logEpisode = if (updatedEps.size == 1) updatedEps.first() else null,
-                        logRewatch = if (isAlreadyWatched) true else curr.logRewatch
+                        selectedLogEpisodes = if (adding) curr.selectedLogEpisodes + ep else curr.selectedLogEpisodes - ep,
+                        logRewatch = curr.logRewatch || (adding && seenBefore),
+                        logError = null
                     )
                 }
             }
             is SabdekhoAction.ToggleAllLogEpisodes -> {
-                val season = _state.value.logSeason
-                val seasonData = _state.value.detailsData?.seasons?.find { it.season_number == season }
-                val count = seasonData?.episode_count ?: 10
-                val allEps = (1..count).toSet()
-
-                _state.update { curr ->
-                    val newSet = if (curr.selectedLogEpisodes.size == allEps.size) emptySet() else allEps
-                    curr.copy(
-                        selectedLogEpisodes = newSet,
-                        logEpisode = if (newSet.size == 1) newSet.first() else null
-                    )
-                }
-            }
-            is SabdekhoAction.SubmitLog -> {
-                submitLog()
-            }
-
-            // Edit Log
-            is SabdekhoAction.OpenEditLog -> {
+                val s = _state.value
+                val season = s.logSeason ?: return
+                val count = seasonsOf(s.detailsData, s.selectedShowLogs, s.logSeasons, s.selectedLogEpisodes)
+                    .firstOrNull { it.number == season }?.episodeCount ?: return
+                val all = (1..count).toSet()
                 _state.update {
-                    it.copy(editingLog = action.log, isEditDialogOpen = true, isSavingEditLog = false, editLogError = null)
+                    it.copy(selectedLogEpisodes = if (it.selectedLogEpisodes.containsAll(all)) emptySet() else all, logError = null)
                 }
             }
-            is SabdekhoAction.CloseEditLog -> {
-                if (_state.value.isSavingEditLog) return
-                _state.update { it.copy(editingLog = null, isEditDialogOpen = false, editLogError = null) }
-            }
-            is SabdekhoAction.SubmitEditLog -> {
-                submitEditLog(
-                    action.logIds,
-                    action.isMovie,
-                    action.rating,
-                    action.review,
-                    action.liked,
-                    action.rewatch,
-                    action.tag,
-                    action.date,
-                    action.season,
-                    action.episode
-                )
-            }
-            is SabdekhoAction.DeleteLog -> {
-                deleteLog(action.logIds, action.isMovie)
-            }
+            is SabdekhoAction.SubmitLog -> submitLog()
+            is SabdekhoAction.DeleteLog -> deleteLog(action.logIds, action.isMovie)
 
-            // Rematch TMDB
+            // Fix match
+            is SabdekhoAction.OpenFixMatch -> {
+                val name = _state.value.selectedShow?.name.orEmpty()
+                _state.update {
+                    it.copy(isFixMatchOpen = true, rematchQuery = name, rematchResults = emptyList(), rematchError = null)
+                }
+                performRematchSearch(name)
+            }
+            is SabdekhoAction.CloseFixMatch -> {
+                if (_state.value.isApplyingRematch) return
+                _state.update { it.copy(isFixMatchOpen = false, rematchError = null) }
+            }
             is SabdekhoAction.SearchRematch -> {
-                _state.update { it.copy(rematchQuery = action.query) }
+                _state.update { it.copy(rematchQuery = action.query, rematchError = null) }
                 performRematchSearch(action.query)
             }
             is SabdekhoAction.ApplyRematch -> {
@@ -348,12 +353,16 @@ class SabdekhoVM @Inject constructor(
             return
         }
 
+        // Busy from the first keystroke, so "Nothing found" never flashes while typing.
+        _state.update { it.copy(isSearchingRematch = true) }
         rematchSearchJob = viewModelScope.launch {
             delay(350)
-            _state.update { it.copy(isSearchingRematch = true) }
             val result = repository.searchMedia(trimmed)
             result.onSuccess { list ->
-                _state.update { it.copy(isSearchingRematch = false, rematchResults = list) }
+                // A film is re-matched to a film, a show to a show.
+                val wantMovie = _state.value.selectedShow?.type.equals("movie", ignoreCase = true)
+                val wanted = list.filter { if (wantMovie) it.isMovie else it.mediaType.equals("tv", ignoreCase = true) }
+                _state.update { it.copy(isSearchingRematch = false, rematchResults = wanted) }
             }.onFailure {
                 _state.update { it.copy(isSearchingRematch = false, rematchResults = emptyList()) }
             }
@@ -378,19 +387,31 @@ class SabdekhoVM @Inject constructor(
             } else {
                 _state.update { it.copy(isLoading = true, error = null) }
             }
-            repository.getMediaLibrary(
-                limit = 100, offset = 0, type = type, status = status,
-                year = year, month = month, week = week, language = language,
-                weekday = weekday, rating = rating,
-                forceRefresh = forceRefresh
-            )
-                .onSuccess { response ->
+            // Every page, so nothing past the first one goes missing and the
+            // title search on top of it sees the whole library.
+            runCatching {
+                val all = mutableListOf<MediaShowDto>()
+                var total = 0
+                do {
+                    val page = repository.getMediaLibrary(
+                        limit = LIBRARY_PAGE, offset = all.size, type = type, status = status,
+                        year = year, month = month, week = week, language = language,
+                        weekday = weekday, rating = rating,
+                        forceRefresh = forceRefresh
+                    ).getOrThrow()
+                    val shows = page.shows.orEmpty()
+                    all += shows
+                    total = page.totalCount ?: all.size
+                } while (shows.size == LIBRARY_PAGE && all.size < total)
+                all.distinctBy { "${it.type}-${it.id}" } to total
+            }
+                .onSuccess { (shows, total) ->
                     _state.update {
                         it.copy(
                             isLoading = false,
                             isRefreshing = false,
-                            shows = response.shows ?: emptyList(),
-                            totalCount = response.totalCount ?: (response.shows?.size ?: 0)
+                            shows = shows,
+                            totalCount = total
                         )
                     }
                 }
@@ -422,6 +443,12 @@ class SabdekhoVM @Inject constructor(
         )
     }
 
+    private fun loadQuickTags() {
+        viewModelScope.launch {
+            repository.quickTags().onSuccess { tags -> _state.update { it.copy(quickTags = tags) } }
+        }
+    }
+
     private fun loadFilterOptions() {
         viewModelScope.launch {
             repository.getMediaFilters().onSuccess { response ->
@@ -436,15 +463,21 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
+    private var diaryJob: Job? = null
+
+    /** The Diary's first page; [loadMoreDiary] brings the rest as it's scrolled. */
     private fun loadDiary(type: String = "all", forceRefresh: Boolean = false) {
-        viewModelScope.launch {
-            _state.update { it.copy(isDiaryLoading = true) }
-            repository.getMediaDiary(limit = 100, offset = 0, type = type, forceRefresh = forceRefresh)
+        diaryJob?.cancel()
+        diaryJob = viewModelScope.launch {
+            _state.update { it.copy(isDiaryLoading = true, isDiaryLoadingMore = false) }
+            repository.getMediaDiary(limit = DIARY_PAGE, offset = 0, type = type, forceRefresh = forceRefresh)
                 .onSuccess { response ->
+                    val logs = response.logs ?: emptyList()
                     _state.update {
                         it.copy(
                             isDiaryLoading = false,
-                            diaryLogs = response.logs ?: emptyList()
+                            diaryLogs = logs,
+                            diaryHasMore = hasMore(logs.size, response.totalCount)
                         )
                     }
                 }
@@ -452,6 +485,52 @@ class SabdekhoVM @Inject constructor(
                     _state.update { it.copy(isDiaryLoading = false) }
                 }
         }
+    }
+
+    private fun loadMoreDiary() {
+        val s = _state.value
+        if (!s.diaryHasMore || s.isDiaryLoading || s.isDiaryLoadingMore) return
+        val type = s.diaryTypeFilter
+        diaryJob = viewModelScope.launch {
+            _state.update { it.copy(isDiaryLoadingMore = true) }
+            repository.getMediaDiary(limit = DIARY_PAGE, offset = s.diaryLogs.size, type = type)
+                .onSuccess { response ->
+                    val page = response.logs ?: emptyList()
+                    _state.update {
+                        // A filter switched meanwhile: this page is for the old one.
+                        if (it.diaryTypeFilter != type) return@update it.copy(isDiaryLoadingMore = false)
+                        val logs = (it.diaryLogs + page).distinctBy { log -> "${log.type}-${log.id}" }
+                        it.copy(
+                            isDiaryLoadingMore = false,
+                            diaryLogs = logs,
+                            diaryHasMore = page.size == DIARY_PAGE && hasMore(logs.size, response.totalCount)
+                        )
+                    }
+                }
+                .onFailure {
+                    _state.update { it.copy(isDiaryLoadingMore = false) }
+                }
+        }
+    }
+
+    private fun hasMore(loaded: Int, total: Int?): Boolean = if (total != null) loaded < total else loaded >= DIARY_PAGE
+
+    /** Every log of the open title, for its History, the watched marks and its status. */
+    private suspend fun loadSelectedShowLogs(): List<MediaDiaryLogDto> {
+        val show = _state.value.selectedShow ?: return emptyList()
+        val isMovie = show.type.equals("movie", ignoreCase = true)
+        // Offline for a moment: keep what's showing rather than blank it.
+        val response = repository.getMediaDiary(limit = 5000, offset = 0, type = if (isMovie) "movie" else "tv", showId = show.id)
+            .getOrNull() ?: return _state.value.selectedShowLogs
+        val logs = response.logs.orEmpty()
+            .filter { it.showId == show.id && it.type.equals("movie", ignoreCase = true) == isMovie }
+        _state.update { if (isSameTitle(it.selectedShow, show)) it.copy(selectedShowLogs = logs) else it }
+        return logs
+    }
+
+    private companion object {
+        const val LIBRARY_PAGE = 200
+        const val DIARY_PAGE = 100
     }
 
     // Movie and TV stats load side by side: the stats tab follows the
@@ -492,42 +571,33 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
-    private fun openMediaDetails(show: MediaShowDto) {
+    private fun isSameTitle(a: MediaShowDto?, b: MediaShowDto): Boolean =
+        a != null && a.id == b.id && a.type.equals("movie", ignoreCase = true) == b.type.equals("movie", ignoreCase = true)
+
+    /** Makes [show] the open title and loads its TMDB details and all its logs. */
+    private fun selectTitle(show: MediaShowDto) {
         val isMovie = show.type.equals("movie", ignoreCase = true)
+        val tmdbId = show.tmdbId?.takeIf { it > 0 }
         _state.update {
             it.copy(
                 selectedShow = show,
-                isDetailsSheetOpen = true,
-                detailsSheetSubTab = 0,
-                isLoadingDetails = show.tmdbId != null && show.tmdbId > 0,
+                isLoadingDetails = tmdbId != null,
                 detailsData = null,
-                logDate = LocalDate.now().toString(),
-                logRating = 0f,
-                logReview = "",
-                logLiked = false,
-                logRewatch = false,
-                logPlatformTag = "",
-                logSeason = if (!isMovie) 1 else null,
-                logEpisode = null,
-                selectedLogEpisodes = emptySet(),
+                selectedShowLogs = emptyList(),
+                statusNote = null,
+                isFixMatchOpen = false,
                 rematchQuery = show.name ?: "",
-                rematchResults = emptyList()
+                rematchResults = emptyList(),
+                rematchError = null
             )
         }
-
-        if (show.tmdbId != null && show.tmdbId > 0) {
+        viewModelScope.launch { loadSelectedShowLogs() }
+        if (tmdbId != null) {
             viewModelScope.launch {
-                repository.getMediaDetails(show.tmdbId, isMovie)
+                repository.getMediaDetails(tmdbId, isMovie)
                     .onSuccess { details ->
-                        val defaultSeason = if (!isMovie) {
-                            details.seasons?.filter { it.season_number > 0 }?.maxByOrNull { it.season_number }?.season_number ?: 1
-                        } else null
                         _state.update {
-                            it.copy(
-                                isLoadingDetails = false,
-                                detailsData = details,
-                                logSeason = defaultSeason ?: it.logSeason
-                            )
+                            if (isSameTitle(it.selectedShow, show)) it.copy(isLoadingDetails = false, detailsData = details) else it
                         }
                     }
                     .onFailure {
@@ -537,14 +607,114 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
+    /** Nothing open any more: the title goes too. */
+    private fun clearTitle() {
+        _state.update {
+            it.copy(
+                selectedShow = null,
+                detailsData = null,
+                isLoadingDetails = false,
+                selectedShowLogs = emptyList(),
+                statusNote = null,
+                isFixMatchOpen = false
+            )
+        }
+    }
+
+    /**
+     * A new log of the open title. A show starts on the first episode not
+     * logged yet (in [season], when a season's row was tapped); with all of
+     * it logged, it starts as a rewatch.
+     */
+    private fun openLogPage(season: Int? = null) {
+        val s = _state.value
+        val show = s.selectedShow ?: return
+        val isMovie = show.type.equals("movie", ignoreCase = true)
+        var seasons = emptySet<Int>()
+        var episodes = emptySet<Int>()
+        var rewatch = isMovie && s.selectedShowLogs.isNotEmpty()
+        if (!isMovie) {
+            val watched = WatchedEpisodes(s.selectedShowLogs)
+            val next = nextUp(watched, seasonsOf(s.detailsData, s.selectedShowLogs, emptySet(), emptySet()), season)
+            when {
+                next != null -> {
+                    seasons = setOf(next.first)
+                    episodes = setOf(next.second)
+                }
+                season != null -> {
+                    seasons = setOf(season)
+                    rewatch = true
+                }
+                s.selectedShowLogs.isNotEmpty() -> rewatch = true
+            }
+        }
+        savedThisSession.clear()
+        _state.update {
+            it.copy(
+                isLogPageOpen = true,
+                editingLog = null,
+                logError = null,
+                isSubmittingLog = false,
+                logDate = LocalDate.now().toString(),
+                logRating = 0f,
+                logReview = "",
+                logLiked = false,
+                logRewatch = rewatch,
+                logPlatformTag = "",
+                logSeasons = seasons,
+                selectedLogEpisodes = episodes
+            )
+        }
+    }
+
+    /** A logged row, ready to change: its date, what it covers, rating, review and tags. */
+    private fun openEditLog(log: MediaDiaryLogDto) {
+        val isMovie = log.type.equals("movie", ignoreCase = true)
+        val s = _state.value
+        val fromDiary = MediaShowDto(
+            id = log.showId,
+            tmdbId = log.tmdbId,
+            name = log.showName,
+            posterPath = log.posterPath,
+            type = log.type
+        )
+        if (!isSameTitle(s.selectedShow, fromDiary)) {
+            // Straight from the Diary: its show's episodes and logs are needed to change them.
+            selectTitle(s.shows.firstOrNull { isSameTitle(it, fromDiary) } ?: fromDiary)
+        }
+        val season = log.seasonNumber
+        savedThisSession.clear()
+        _state.update {
+            it.copy(
+                isLogPageOpen = true,
+                editingLog = log,
+                logError = null,
+                isSubmittingLog = false,
+                logDate = log.date?.take(10)?.takeIf { d -> d.length == 10 } ?: LocalDate.now().toString(),
+                logRating = log.rating ?: 0f,
+                logReview = log.review.orEmpty(),
+                logLiked = log.liked,
+                logRewatch = log.rewatch,
+                logPlatformTag = log.tags.orEmpty(),
+                logSeasons = if (isMovie || season == null) emptySet() else setOf(season),
+                selectedLogEpisodes = when {
+                    isMovie || season == null -> emptySet()
+                    log.episodes.isNotEmpty() -> log.episodes.toSet()
+                    else -> setOfNotNull(log.episodeNumber)
+                }
+            )
+        }
+    }
+
     private fun updateShowStatus(showId: Int, isMovie: Boolean, newStatus: String) {
         viewModelScope.launch {
             repository.updateMediaStatus(showId, isMovie, newStatus)
                 .onSuccess {
+                    fun same(item: MediaShowDto) = item.id == showId && item.type.equals("movie", ignoreCase = true) == isMovie
                     _state.update { curr ->
                         curr.copy(
-                            selectedShow = curr.selectedShow?.let { if (it.id == showId) it.copy(status = newStatus) else it },
-                            shows = curr.shows.map { if (it.id == showId) it.copy(status = newStatus) else it }
+                            selectedShow = curr.selectedShow?.let { if (same(it)) it.copy(status = newStatus) else it },
+                            shows = curr.shows.map { if (same(it)) it.copy(status = newStatus) else it }
                         )
                     }
                     reloadShows()
@@ -556,7 +726,8 @@ class SabdekhoVM @Inject constructor(
         viewModelScope.launch {
             repository.deleteMediaShow(showId, isMovie)
                 .onSuccess {
-                    _state.update { it.copy(isDetailsSheetOpen = false, selectedShow = null) }
+                    _state.update { it.copy(isTitlePageOpen = false, isLogPageOpen = false, editingLog = null) }
+                    clearTitle()
                     reloadShows()
                     loadDiary(_state.value.diaryTypeFilter)
                     loadStats(_state.value.selectedStatsYear)
@@ -564,133 +735,141 @@ class SabdekhoVM @Inject constructor(
         }
     }
 
+    /** What a save writes on every log it touches. */
+    private data class LogFields(
+        val date: String,
+        val rating: Float?,
+        val review: String?,
+        val liked: Boolean,
+        val rewatch: Boolean,
+        val tags: String?
+    )
+
     private fun submitLog() {
-        val show = _state.value.selectedShow ?: return
-        val isMovie = show.type.equals("movie", ignoreCase = true)
         val s = _state.value
+        if (s.isSubmittingLog) return  // a second tap must not save twice
+        val show = s.selectedShow ?: return
+        val isMovie = show.type.equals("movie", ignoreCase = true)
+        val editing = s.editingLog
+        val entries = logEntries(isMovie, s.logSeasons, s.selectedLogEpisodes)
+        val fields = LogFields(
+            date = s.logDate,
+            rating = s.logRating.takeIf { it > 0f },
+            review = s.logReview.trim().takeIf { it.isNotEmpty() },
+            liked = s.logLiked,
+            rewatch = s.logRewatch,
+            tags = s.logPlatformTag.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+                .joinToString(", ").takeIf { it.isNotEmpty() }
+        )
 
         viewModelScope.launch {
-            _state.update { it.copy(isSubmittingLog = true) }
-
-            if (!isMovie && s.selectedLogEpisodes.size > 1) {
-                for (ep in s.selectedLogEpisodes.sorted()) {
-                    repository.logDiaryEntry(
-                        showId = show.id,
-                        isMovie = false,
-                        date = s.logDate,
-                        rating = s.logRating.takeIf { it > 0f },
-                        review = s.logReview.takeIf { it.isNotBlank() },
-                        liked = s.logLiked,
-                        rewatch = s.logRewatch,
-                        tags = s.logPlatformTag.takeIf { it.isNotBlank() },
-                        seasonNumber = s.logSeason,
-                        episodeNumber = ep
-                    )
-                }
-                _state.update {
-                    it.copy(
-                        isSubmittingLog = false,
-                        detailsSheetSubTab = 1,
-                        logRating = 0f,
-                        logReview = "",
-                        selectedLogEpisodes = emptySet(),
-                        logEpisode = null
-                    )
-                }
-                loadDiary(_state.value.diaryTypeFilter)
-                loadStats(_state.value.selectedStatsYear)
+            _state.update { it.copy(isSubmittingLog = true, logError = null) }
+            val error = if (editing == null) {
+                addLogs(show.id, isMovie, entries, fields)
             } else {
-                val epNumber = if (!isMovie) {
-                    if (s.selectedLogEpisodes.size == 1) s.selectedLogEpisodes.first() else s.logEpisode
-                } else null
-
-                val res = repository.logDiaryEntry(
-                    showId = show.id,
-                    isMovie = isMovie,
-                    date = s.logDate,
-                    rating = s.logRating.takeIf { it > 0f },
-                    review = s.logReview.takeIf { it.isNotBlank() },
-                    liked = s.logLiked,
-                    rewatch = s.logRewatch,
-                    tags = s.logPlatformTag.takeIf { it.isNotBlank() },
-                    seasonNumber = if (!isMovie) s.logSeason else null,
-                    episodeNumber = epNumber
-                )
-
-                res.onSuccess {
-                    _state.update {
-                        it.copy(
-                            isSubmittingLog = false,
-                            detailsSheetSubTab = 1,
-                            logRating = 0f,
-                            logReview = "",
-                            selectedLogEpisodes = emptySet(),
-                            logEpisode = null
-                        )
-                    }
-                    loadDiary(_state.value.diaryTypeFilter)
-                    loadStats(_state.value.selectedStatsYear)
-                }.onFailure {
-                    _state.update { it.copy(isSubmittingLog = false) }
-                }
+                saveEdit(editing, isMovie, entries, fields)
             }
+            if (error != null) {
+                // The page stays open with everything as it was, to try again.
+                _state.update { it.copy(isSubmittingLog = false, logError = error) }
+                return@launch
+            }
+            _state.update { it.copy(isSubmittingLog = false, isLogPageOpen = false, editingLog = null, logError = null) }
+            loadQuickTags() // a new tag may now be one of the most used
+            val logs = loadSelectedShowLogs()
+            // As on the web: a logged film is Watched, and so is a show once all of it is logged.
+            val current = _state.value.selectedShow
+            if (current != null && isSameTitle(current, show) && current.status != null &&
+                !current.status.equals("WATCHED", ignoreCase = true) &&
+                (isMovie || allEpisodesLogged(logs, _state.value.detailsData))
+            ) {
+                updateShowStatus(show.id, isMovie, "WATCHED")
+            }
+            if (!_state.value.isTitlePageOpen) clearTitle()
         }
     }
 
-    private fun submitEditLog(
-        logIds: List<Int>,
-        isMovie: Boolean,
-        rating: Float?,
-        review: String?,
-        liked: Boolean?,
-        rewatch: Boolean?,
-        tag: String?,
-        date: String? = null,
-        season: Int? = null,
-        episode: Int? = null
-    ) {
-        if (_state.value.isSavingEditLog) return  // a second tap must not send a second save
-        viewModelScope.launch {
-            _state.update { it.copy(isSavingEditLog = true, editLogError = null) }
-            repository.updateDiaryLog(
-                logIds = logIds,
+    /** Saves each entry not saved yet; an error message when one fails. */
+    private suspend fun addLogs(showId: Int, isMovie: Boolean, entries: List<Pair<Int?, Int?>>, f: LogFields): String? {
+        for (entry in entries) {
+            if (entry in savedThisSession) continue
+            val saved = repository.logDiaryEntry(
+                showId = showId,
                 isMovie = isMovie,
-                rating = rating,
-                review = review,
-                liked = liked,
-                rewatch = rewatch,
-                tags = tag,
-                date = date,
-                seasonNumber = season,
-                episodeNumber = episode
-            ).onSuccess {
-                _state.update {
-                    it.copy(isSavingEditLog = false, isEditDialogOpen = false, editingLog = null, editLogError = null)
-                }
-                loadDiary(_state.value.diaryTypeFilter)
-                loadStats(_state.value.selectedStatsYear)
-            }.onFailure { error ->
-                // Keep the sheet open with the user's edits so they can retry.
-                _state.update {
-                    it.copy(isSavingEditLog = false, editLogError = error.message ?: "Couldn't save changes")
-                }
+                date = f.date,
+                rating = f.rating,
+                review = f.review,
+                liked = f.liked,
+                rewatch = f.rewatch,
+                tags = f.tags,
+                seasonNumber = entry.first,
+                episodeNumber = entry.second
+            ).isSuccess
+            if (!saved) {
+                return if (savedThisSession.isEmpty()) "Couldn't save. Try again." else "Some of it didn't save. Try again for the rest."
             }
+            savedThisSession += entry
         }
+        return null
     }
+
+    /**
+     * Saves changes to a logged row. A film's log is updated in place. A show's
+     * keeps the logs of episodes still picked (updated), adds newly picked ones
+     * and removes the ones unpicked, in that order, so a failure loses nothing.
+     */
+    private suspend fun saveEdit(log: MediaDiaryLogDto, isMovie: Boolean, entries: List<Pair<Int?, Int?>>, f: LogFields): String? {
+        if (isMovie) return updateFields(log.allLogIds, isMovie = true, f = f)
+        val original = log.entryIds()
+        val keepIds = entries.filter { it in original }.flatMap { original.getValue(it) }
+        val removeIds = original.filterKeys { it !in entries }.values.flatten()
+        if (keepIds.isNotEmpty()) {
+            updateFields(keepIds, isMovie = false, f = f)?.let { return it }
+        }
+        addLogs(log.showId, isMovie = false, entries = entries.filter { it !in original }, f = f)?.let { return it }
+        if (removeIds.isNotEmpty()) {
+            repository.deleteDiaryLog(removeIds, isMovie = false)
+                .exceptionOrNull()?.let { return it.message ?: "Couldn't save changes" }
+        }
+        return null
+    }
+
+    /** Writes [f] onto existing logs; an error message when it fails. */
+    private suspend fun updateFields(ids: List<Int>, isMovie: Boolean, f: LogFields): String? =
+        repository.updateDiaryLog(
+            logIds = ids,
+            isMovie = isMovie,
+            rating = f.rating,
+            review = f.review,
+            liked = f.liked,
+            rewatch = f.rewatch,
+            tags = f.tags,
+            date = f.date
+        ).exceptionOrNull()?.let { it.message ?: "Couldn't save changes" }
 
     private fun deleteLog(logIds: List<Int>, isMovie: Boolean) {
+        val fromLogPage = _state.value.isLogPageOpen
         viewModelScope.launch {
+            if (fromLogPage) _state.update { it.copy(isSubmittingLog = true, logError = null) }
             repository.deleteDiaryLog(logIds, isMovie)
                 .onSuccess {
-                    _state.update { it.copy(isEditDialogOpen = false, editingLog = null) }
-                    loadDiary(_state.value.diaryTypeFilter)
-                    loadStats(_state.value.selectedStatsYear)
+                    if (fromLogPage) {
+                        _state.update { it.copy(isSubmittingLog = false, isLogPageOpen = false, editingLog = null) }
+                        if (!_state.value.isTitlePageOpen) clearTitle()
+                    }
+                }
+                .onFailure { e ->
+                    if (fromLogPage) {
+                        _state.update { it.copy(isSubmittingLog = false, logError = e.message ?: "Couldn't delete. Try again.") }
+                    }
                 }
         }
     }
 
     private fun applyRematch(showId: Int, isMovie: Boolean, tmdbResult: MediaSearchResultDto) {
+        if (_state.value.isApplyingRematch) return
         viewModelScope.launch {
+            _state.update { it.copy(isApplyingRematch = true, rematchError = null) }
             repository.rematchMedia(
                 showId = showId,
                 isMovie = isMovie,
@@ -704,14 +883,24 @@ class SabdekhoVM @Inject constructor(
                     name = tmdbResult.displayTitle,
                     posterPath = tmdbResult.posterPath
                 )
-                _state.update { it.copy(selectedShow = updatedShow, detailsSheetSubTab = 2) }
+                _state.update {
+                    it.copy(
+                        selectedShow = updatedShow,
+                        isApplyingRematch = false,
+                        isFixMatchOpen = false,
+                        detailsData = null,
+                        isLoadingDetails = updatedShow != null
+                    )
+                }
                 reloadShows()
                 loadDiary(_state.value.diaryTypeFilter)
                 if (updatedShow != null) {
-                    repository.getMediaDetails(tmdbResult.id, isMovie).onSuccess { details ->
-                        _state.update { it.copy(detailsData = details) }
-                    }
+                    repository.getMediaDetails(tmdbResult.id, isMovie)
+                        .onSuccess { details -> _state.update { it.copy(detailsData = details, isLoadingDetails = false) } }
+                        .onFailure { _state.update { it.copy(isLoadingDetails = false) } }
                 }
+            }.onFailure { e ->
+                _state.update { it.copy(isApplyingRematch = false, rematchError = e.message ?: "Couldn't re-match. Try again.") }
             }
         }
     }

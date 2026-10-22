@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget picker preview: the budgets ring, 62% used. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:pathData="M24,4 A20,20 0 1,1 24,44 A20,20 0 1,1 24,4"
+        android:strokeWidth="4.5"
+        android:strokeColor="#33808080" />
+    <path
+        android:pathData="M24,4 A20,20 0 1,1 10.31,38.58"
+        android:strokeLineCap="round"
+        android:strokeWidth="4.5"
+        android:strokeColor="#FF34C759" />
+</vector>

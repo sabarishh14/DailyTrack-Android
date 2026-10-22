@@ -11,5 +11,11 @@
     <string name="shortcut_portfolio_long">Your portfolio</string>
     <!-- Home-screen widget -->
     <string name="widget_routines_label">Routines</string>
-    <string name="widget_routines_description">Today\'s routines and your consistency. Tap ❤️ to tick one off.</string>
+    <string name="widget_routines_description">Tick off today\'s routines right from your home screen.</string>
+    <string name="widget_money_label">Budgets</string>
+    <string name="widget_money_description">How this month\'s budgets are going, in percentages only.</string>
+    <string name="widget_investments_label">Portfolio</string>
+    <string name="widget_investments_description">Your returns and their trend, with the amounts kept private.</string>
+    <string name="widget_quick_add_label">Quick add</string>
+    <string name="widget_quick_add_description">Add a transaction in a tap, straight into your usual categories.</string>
 </resources>

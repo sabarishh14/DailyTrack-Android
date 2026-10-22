@@ -24,12 +24,18 @@ fun groupDiaryLogs(logs: List<MediaDiaryLogDto>): List<MediaDiaryLogDto> {
         val at = rowIndex[key]
         if (at == null) {
             rowIndex[key] = rows.size
-            rows += log.copy(logIds = listOf(log.id), episodes = listOf(episode))
+            rows += log.copy(
+                logIds = listOf(log.id),
+                episodes = listOf(episode),
+                episodeLogIds = mapOf(episode to listOf(log.id))
+            )
         } else {
             val row = rows[at]
+            val idsForEpisode = row.episodeLogIds[episode].orEmpty() + log.id
             rows[at] = row.copy(
                 logIds = row.logIds + log.id,
-                episodes = (row.episodes + episode).distinct().sorted()
+                episodes = (row.episodes + episode).distinct().sorted(),
+                episodeLogIds = row.episodeLogIds + (episode to idsForEpisode)
             )
         }
     }
