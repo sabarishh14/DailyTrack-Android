@@ -70,7 +70,9 @@ data class AccessRequestDto(
 /** The signed-in person's own settings, kept on the server so they follow them. */
 @JsonClass(generateAdapter = true)
 data class MySettingsDto(
-    @param:Json(name = "letterboxd_username") val letterboxdUsername: String? = null
+    @param:Json(name = "letterboxd_username") val letterboxdUsername: String? = null,
+    /** Kite's holdings: "manual" (worth changes with a sync) or "daily" (repriced every day). */
+    @param:Json(name = "kite_valuation") val kiteValuation: String? = null
 )
 
 // ---- Admin: people & permissions ----

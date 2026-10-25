@@ -106,6 +106,16 @@ class AuthRepository @Inject constructor(
         call { api.setShare(viewer.trim().lowercase(), com.example.dailytrack_mobile.data.remote.dto.ShareRequestDto(modules)) }
             .mapCatching { if (!it.success) throw Exception(it.message ?: "Couldn't save") }
 
+    // ---- Kite holdings: repriced every day, or only by a sync ----
+    /** "manual" or "daily", the signed-in person's own setting. */
+    suspend fun getKiteValuation(): Result<String> =
+        call { api.getMyAccess() }.map { it.settings?.kiteValuation ?: "manual" }
+
+    suspend fun setKiteValuation(mode: String): Result<Unit> = runCatching {
+        val res = api.updateMySettings(mapOf("kite_valuation" to mode))
+        if (!res.success) throw Exception(res.message ?: "Couldn't save")
+    }
+
     // ---- Admin: requests to join ----
     suspend fun approveRequest(email: String): Result<Unit> =
         call { api.approveAccessRequest(email) }.mapCatching { if (!it.success) throw Exception(it.message ?: "Couldn't approve") }

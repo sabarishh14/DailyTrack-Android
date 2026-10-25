@@ -87,6 +87,8 @@ internal fun SyncSettingsSubScreen(
     val canPushInvestments = access.isOwner
     val canReconcile = access.isOwner
     val canImportLetterboxd = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.SABDEKHO)
+    // Kite is wired to the owner's own account, like Sheets.
+    val canValueKite = access.isOwner && access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
 
     // Checking the Sheets queue is a network call, so it waits until the screen
     // that shows it is actually open.
@@ -230,6 +232,16 @@ internal fun SyncSettingsSubScreen(
                     }
                 }
             }
+
+            // -----------------------------------------------------------------
+            // Kite: repriced every day, or only by a sync
+            // -----------------------------------------------------------------
+            if (canValueKite) item {
+                Spacer(Modifier.height(8.dp))
+                SettingsSectionLabel("Investments")
+            }
+
+            if (canValueKite) item { KiteValuationCard() }
 
             // -----------------------------------------------------------------
             // Imports & reconciliation

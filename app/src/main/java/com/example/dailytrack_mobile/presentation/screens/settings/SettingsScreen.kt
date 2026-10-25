@@ -243,9 +243,10 @@ fun SettingsScreen(
                 id = "Sync",
                 icon = Icons.Default.Sync,
                 title = "Sync",
-                subtitle = "Force sync, Sheets, reconcile, imports",
+                subtitle = "Force sync, Sheets, Kite, reconcile, imports",
                 keywords = listOf(
                     "sync", "server", "cloud", "api", "refresh", "status", "hydrate",
+                    "kite", "zerodha", "stocks", "mutual funds", "investments", "daily", "manual", "prices",
                     "sheets", "google sheets", "push", "export", "upload",
                     "reconcile", "balance", "balances", "ocr", "screenshot", "upi",
                     "letterboxd", "import", "movies", "films"
