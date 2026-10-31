@@ -72,7 +72,7 @@ class InvestmentsWidget : GlanceAppWidget() {
             val cache = WidgetCache(context)
             val hidden = deps.investPreferences().getInitialHiddenCategories()
             val fresh = withTimeoutOrNull(LOAD_TIMEOUT_MS) {
-                deps.investmentsRepository().getFullPortfolio(forceRefresh = true).getOrNull()
+                deps.investmentsRepository().getFullPortfolio(forceRefresh = true, freshPrices = false).getOrNull()
             }?.let { data ->
                 // Holdings as the app sorts them into its categories (InvestVM).
                 val holdings = data.equityHoldings.map { Triple(InvestCategory.STOCKS, it.investedValue, it.currentValue) } +

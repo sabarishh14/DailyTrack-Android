@@ -86,3 +86,16 @@ data class AddManualAssetRequestDto(
     @Json(name = "installment") val installment: Double? = null
 )
 
+/**
+ * How fresh the holdings' prices are (/api/investments/prices, kite_daily.py):
+ * on Daily, when the stocks' prices traded ([stale] while the market's open and
+ * they're well behind); on Manual, the last Kite sync. Times are India's.
+ */
+@JsonClass(generateAdapter = true)
+data class PriceTimesDto(
+    @Json(name = "mode") val mode: String = "manual",
+    @Json(name = "synced") val synced: String? = null,
+    @Json(name = "stocks_at") val stocksAt: String? = null,
+    @Json(name = "checked_at") val checkedAt: String? = null,
+    @Json(name = "stale") val stale: Boolean = false
+)

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PieChart
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
@@ -315,5 +316,44 @@ internal fun PortfolioHeader(
                 softWrap = false
             )
         }
+
+        // How fresh the prices are; not while a past day is picked on the chart.
+        if (!isSelected) state.priceTimes?.let { PriceTime(it) }
+    }
+}
+
+private val priceClock = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH)
+private val priceDay = java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH)
+
+/** The web's line: "Stocks as of 3:29 pm" (Daily) or "Kite synced 20 Oct" (Manual);
+ *  amber, "not updating", when the market's open and the prices aren't moving. */
+@Composable
+private fun PriceTime(times: com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto) {
+    val text = remember(times) {
+        val dailyAt = (times.stocksAt ?: times.checkedAt)
+            ?.let { runCatching { java.time.LocalDateTime.parse(it) }.getOrNull() }
+        when {
+            times.mode == "daily" && dailyAt != null -> {
+                val time = dailyAt.format(priceClock).lowercase()
+                val day = if (dailyAt.toLocalDate() == java.time.LocalDate.now()) time else "${dailyAt.format(priceDay)}, $time"
+                "${if (times.stocksAt != null) "Stocks as of" else "Updated"} $day" + if (times.stale) " · not updating" else ""
+            }
+            times.mode == "manual" && times.synced != null ->
+                runCatching { "Kite synced ${java.time.LocalDate.parse(times.synced).format(priceDay)}" }.getOrNull()
+            else -> null
+        }
+    } ?: return
+    val color = if (times.stale) Color(0xFFD97706) else MaterialTheme.colorScheme.onSurfaceVariant
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = Icons.Default.Schedule, contentDescription = null, tint = color, modifier = Modifier.size(13.dp))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

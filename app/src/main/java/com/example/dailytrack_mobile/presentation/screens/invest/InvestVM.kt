@@ -380,6 +380,7 @@ class InvestVM @Inject constructor(
                         )
                         nextState.copy(chartPoints = getFilteredPoints(nextState.historicalSnapshots, nextState.selectedTimeRange, nextState.selectedTab, nextState.hiddenCategories))
                     }
+                    repository.getPriceTimes().onSuccess { times -> _state.update { it.copy(priceTimes = times) } }
                 }
             } else {
                 _state.update { it.copy(isLoading = false, isRefreshing = false) }

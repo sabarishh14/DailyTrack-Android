@@ -40,7 +40,19 @@ class InvestmentsRepository @Inject constructor(
         cachedHistory.clear()
     }
 
-    suspend fun getFullPortfolio(forceRefresh: Boolean = false): Result<FullPortfolioData> = runCatching {
+    /**
+     * [freshPrices]: the person asked (pulled to refresh, or just opened the app),
+     * so the server reprices stocks and funds now; a background reload doesn't.
+     */
+    /** How fresh the prices are; none in demo mode. */
+    suspend fun getPriceTimes(): Result<com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto?> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) null else api.getPriceTimes()
+    }
+
+    suspend fun getFullPortfolio(
+        forceRefresh: Boolean = false,
+        freshPrices: Boolean = forceRefresh
+    ): Result<FullPortfolioData> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) {
             return@runCatching demoDataManager.getFullPortfolio()
         }
@@ -49,8 +61,9 @@ class InvestmentsRepository @Inject constructor(
             return@runCatching cachedPortfolio!!
         }
 
-        // 1. Fetch snapshots to get historical data and the latest date
-        val snapshots = api.getInvestments()
+        // 1. Fetch snapshots to get historical data and the latest date. The first
+        // load since the app opened counts as asked for, like reloading the web page.
+        val snapshots = api.getInvestments(refresh = if (freshPrices || cachedPortfolio == null) 1 else null)
 
         // Extract the latest date (assuming the list is ordered descending as in the backend)
         val latestDate = snapshots.firstOrNull()?.date?.substringBefore("T")

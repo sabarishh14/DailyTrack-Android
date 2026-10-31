@@ -207,6 +207,8 @@ data class InvestState(
     val selectedTab: InvestTab = InvestTab.OVERVIEW,
     val holdings: List<InvestmentHolding> = emptyList(),
     val historicalSnapshots: List<com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto> = emptyList(),
+    /** "Stocks as of 3:29 pm" under the portfolio value. */
+    val priceTimes: com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto? = null,
     val selectedTimeRange: ChartTimeRange = ChartTimeRange.THREE_MONTHS,
     val chartPoints: List<ChartPoint> = emptyList(),
     val hiddenCategories: Set<InvestCategory> = emptySet(),

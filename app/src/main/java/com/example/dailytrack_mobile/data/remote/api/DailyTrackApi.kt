@@ -150,8 +150,14 @@ interface DailyTrackApi {
         @Body activity: AddActivityRequestDto
     ): ApiResponseDto
 
+    /** [refresh] = 1: asked for by hand, so the server prices stocks and funds now
+     *  rather than within half an hour (kite_daily.py). */
     @GET("/api/investments")
-    suspend fun getInvestments(): List<PortfolioSnapshotDto>
+    suspend fun getInvestments(@Query("refresh") refresh: Int? = null): List<PortfolioSnapshotDto>
+
+    /** When the prices are from (Daily) or the last Kite sync (Manual). */
+    @GET("/api/investments/prices")
+    suspend fun getPriceTimes(): com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto
 
     @GET("/api/equity")
     suspend fun getEquityHoldings(): List<EquityHoldingDto>
