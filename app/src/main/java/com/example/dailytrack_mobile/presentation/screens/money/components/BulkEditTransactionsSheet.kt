@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.util.accountCurrency
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
@@ -912,7 +913,8 @@ fun BulkEditTransactionsSheet(
                                         amount = item.amount,
                                         onAmountChange = { item.amount = it },
                                         accent = entryTypeAccent(item.type),
-                                        compact = true
+                                        compact = true,
+                                        currency = accountCurrency(item.account)
                                     )
                                     EntryDateAccountRow(
                                         dateMillis = item.dateMillis,

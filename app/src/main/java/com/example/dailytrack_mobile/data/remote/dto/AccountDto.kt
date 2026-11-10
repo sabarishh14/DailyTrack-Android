@@ -17,8 +17,15 @@ data class AccountDto(
     // …the part of it the budget counts (not what's left out of the spending analyser)…
     @Json(name = "budget_used_this_month") val budgetUsedThisMonth: Double? = null,
     // …and the most the user wants to spend on it in a month; null when unset.
-    @Json(name = "monthly_budget") val monthlyBudget: Double? = null
-)
+    @Json(name = "monthly_budget") val monthlyBudget: Double? = null,
+    // The currency its balance, minimum and budget are in (Currencies).
+    @Json(name = "currency") val currency: String = "INR",
+    // Rupees per unit at today's rate, for totals; null when there's no rate.
+    @Json(name = "inr_rate") val inrRate: Double? = null
+) {
+    /** [amount] of this account's currency in rupees; as-is without a rate. */
+    fun toRupees(amount: Double): Double = amount * (inrRate ?: 1.0)
+}
 
 /**
  * A new account. [type] is "savings" or "credit_card"; a card is named CC-… on
@@ -29,7 +36,8 @@ data class CreateAccountRequestDto(
     @Json(name = "name") val name: String,
     @Json(name = "type") val type: String,
     @Json(name = "balance") val balance: Double? = null,
-    @Json(name = "min_balance") val minBalance: Double? = null
+    @Json(name = "min_balance") val minBalance: Double? = null,
+    @Json(name = "currency") val currency: String? = null
 )
 
 @JsonClass(generateAdapter = true)

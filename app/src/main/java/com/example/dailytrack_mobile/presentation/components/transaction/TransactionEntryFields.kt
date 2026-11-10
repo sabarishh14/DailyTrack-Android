@@ -1,5 +1,8 @@
 package com.example.dailytrack_mobile.presentation.components.transaction
 
+import com.example.dailytrack_mobile.presentation.util.formatMoney
+import com.example.dailytrack_mobile.presentation.util.accountCurrency
+import com.example.dailytrack_mobile.presentation.util.Currencies
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -122,6 +125,10 @@ private fun entryTypeContainer(type: EntryType): Pair<Color, Color> {
 fun formatRupees(value: Double): String =
     if (value % 1.0 == 0.0) "%,.0f".format(value) else "%,.2f".format(value)
 
+/** [formatRupees] with its currency's symbol: "₹1,250", "$12.50", "AED 40". */
+fun formatAmountIn(value: Double, currency: String?): String =
+    "${com.example.dailytrack_mobile.presentation.util.Currencies.symbol(currency)}${formatRupees(value)}"
+
 // ── Type selector ────────────────────────────────────────────────────────────
 
 @Composable
@@ -202,10 +209,13 @@ fun EntryAmountCard(
     accent: Color,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester = remember { FocusRequester() },
-    compact: Boolean = false
+    compact: Boolean = false,
+    /** The account's currency: the amount is entered in it. */
+    currency: String = Currencies.HOME
 ) {
     var isFocused by remember { mutableStateOf(false) }
     val preview = remember(amount) { AmountExpression.previewFor(amount) }
+    val symbol = Currencies.symbol(currency).trim()
     val bigSize = if (compact) 34.sp else 42.sp
     val smallSize = if (compact) 26.sp else 30.sp
 
@@ -246,8 +256,8 @@ fun EntryAmountCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "₹",
-                    fontSize = if (compact) 26.sp else 32.sp,
+                    text = symbol,
+                    fontSize = if (symbol.length > 2) (if (compact) 16.sp else 20.sp) else if (compact) 26.sp else 32.sp,
                     fontWeight = FontWeight.Bold,
                     color = accent.copy(alpha = 0.85f),
                     modifier = Modifier.padding(end = 6.dp)
@@ -357,7 +367,7 @@ fun EntryAmountCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "= ₹${preview.orEmpty()}",
+                        text = "= $symbol${preview.orEmpty()}",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = accent.copy(alpha = 0.9f)
                     )
@@ -836,6 +846,7 @@ fun EntrySummaryCard(
     val missing = entry.missingFields
     val flagged = showIncomplete && !entry.isBlank && missing.isNotEmpty()
     val value = entry.evaluatedAmount
+    val currency = accountCurrency(entry.account)
 
     val title = entry.note.trim().ifBlank { entry.category.ifBlank { "New entry" } }
     val subtitle = if (flagged) {
@@ -915,9 +926,9 @@ fun EntrySummaryCard(
 
             Text(
                 text = when {
-                    value == null || value <= 0.0 -> "₹ —"
-                    entry.type == EntryType.INCOME -> "+₹${formatRupees(value)}"
-                    else -> "−₹${formatRupees(value)}"
+                    value == null || value <= 0.0 -> "${Currencies.symbol(currency).trim()} —"
+                    entry.type == EntryType.INCOME -> "+${formatMoney(value, currency).removeSuffix(".00")}"
+                    else -> "−${formatMoney(value, currency).removeSuffix(".00")}"
                 },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = if (value == null || value <= 0.0) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f) else accent,

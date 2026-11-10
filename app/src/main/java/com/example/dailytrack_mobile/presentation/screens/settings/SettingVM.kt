@@ -623,7 +623,9 @@ class SettingsVM @Inject constructor(
                                         account = dto.account,
                                         balance = dto.balance ?: 0.0,
                                         realBalance = dto.realBalance,
-                                        balanceTracked = dto.balanceTracked
+                                        balanceTracked = dto.balanceTracked,
+                                        currency = dto.currency,
+                                        inrRate = dto.inrRate
                                     )
                                 }
                         )

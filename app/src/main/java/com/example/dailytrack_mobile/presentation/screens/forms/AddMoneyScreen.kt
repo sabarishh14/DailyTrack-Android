@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.forms
 
+import com.example.dailytrack_mobile.presentation.util.accountCurrency
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -442,7 +443,7 @@ fun AddMoneyScreen(
             }
 
             if (entries.size > 1) {
-                BatchSummaryRow(entries = toSave)
+                BatchSummaryRow(entries = toSave, accounts = formState.accountDetails)
             }
 
             AnimatedVisibility(
@@ -724,7 +725,8 @@ private fun EntryEditor(
             amount = entry.amount,
             onAmountChange = { entry.amount = it },
             accent = accent,
-            focusRequester = amountFocusRequester
+            focusRequester = amountFocusRequester,
+            currency = accountCurrency(entry.account)
         )
 
         EntryDateAccountRow(
@@ -803,9 +805,14 @@ private fun EntryEditor(
 
 /** "3 TRANSACTIONS · ₹1,240 out · ₹500 in" */
 @Composable
-private fun BatchSummaryRow(entries: List<TransactionEntryState>) {
-    val out = entries.filter { it.type != EntryType.INCOME }.sumOf { it.evaluatedAmount ?: 0.0 }
-    val income = entries.filter { it.type == EntryType.INCOME }.sumOf { it.evaluatedAmount ?: 0.0 }
+private fun BatchSummaryRow(entries: List<TransactionEntryState>, accounts: List<com.example.dailytrack_mobile.data.remote.dto.AccountDto>) {
+    val byName = accounts.associateBy { it.account }
+    fun rupees(entry: TransactionEntryState): Double {
+        val amount = entry.evaluatedAmount ?: 0.0
+        return byName[entry.account]?.toRupees(amount) ?: amount
+    }
+    val out = entries.filter { it.type != EntryType.INCOME }.sumOf(::rupees)
+    val income = entries.filter { it.type == EntryType.INCOME }.sumOf(::rupees)
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically

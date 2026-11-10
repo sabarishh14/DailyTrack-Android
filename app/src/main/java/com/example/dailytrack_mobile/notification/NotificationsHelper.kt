@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.notification
 
+import com.example.dailytrack_mobile.presentation.components.transaction.formatAmountIn
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -11,7 +12,6 @@ import com.example.dailytrack_mobile.MainActivity
 import com.example.dailytrack_mobile.R
 import com.example.dailytrack_mobile.data.remote.dto.BalanceChangeDto
 import com.example.dailytrack_mobile.data.remote.dto.CardChangeDto
-import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
 
 class NotificationsHelper(private val context: Context) {
 
@@ -74,7 +74,7 @@ class NotificationsHelper(private val context: Context) {
         else "${accounts.size} accounts are below their minimum"
         val lines = accounts.map { a ->
             val min = a.minBalance ?: 0.0
-            "${a.account}: ₹${formatRupees(a.after)} left · ₹${formatRupees(min - a.after)} under ₹${formatRupees(min)}"
+            "${a.account}: ${formatAmountIn(a.after, a.currency)} left · ${formatAmountIn(min - a.after, a.currency)} under ${formatAmountIn(min, a.currency)}"
         }
         showBalanceAlert(title, lines.joinToString("\n"))
     }
@@ -87,7 +87,7 @@ class NotificationsHelper(private val context: Context) {
         val lines = cards.map { c ->
             val budget = c.monthlyBudget ?: 0.0
             val spent = c.budgetAfter ?: c.after   // the budget counts what the spending analyser does
-            "${c.account}: ₹${formatRupees(spent)} spent · ₹${formatRupees(spent - budget)} over ₹${formatRupees(budget)}"
+            "${c.account}: ${formatAmountIn(spent, c.currency)} spent · ${formatAmountIn(spent - budget, c.currency)} over ${formatAmountIn(budget, c.currency)}"
         }
         showBalanceAlert(title, lines.joinToString("\n"), cardBudget = true)
     }

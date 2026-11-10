@@ -26,7 +26,11 @@ data class TransactionDto(
     @Json(name = "type") val type: String,
     @Json(name = "heading") val heading: String,
     @Json(name = "description") val description: String?,
+    // Always rupees, what budgets and analytics add up…
     @Json(name = "amount") val amount: Double,
+    // …and on an account in another currency, what was entered and in what.
+    @Json(name = "original_amount") val originalAmount: Double? = null,
+    @Json(name = "currency") val currency: String? = null,
     @Json(name = "exclude_analytics") val excludeAnalytics: Boolean,
     @Json(name = "split") val split: SplitDto?,
     // Account balance right after this transaction; only when asked for and allowed.
@@ -89,7 +93,8 @@ data class CardChangeDto(
     @Json(name = "budget_before") val budgetBefore: Double? = null,
     @Json(name = "budget_after") val budgetAfter: Double? = null,
     @Json(name = "monthly_budget") val monthlyBudget: Double? = null,
-    @Json(name = "over_budget") val overBudget: Boolean = false
+    @Json(name = "over_budget") val overBudget: Boolean = false,
+    @Json(name = "currency") val currency: String = "INR"
 )
 
 @JsonClass(generateAdapter = true)
@@ -98,7 +103,8 @@ data class BalanceChangeDto(
     @Json(name = "before") val before: Double,
     @Json(name = "after") val after: Double,
     @Json(name = "min_balance") val minBalance: Double? = null,
-    @Json(name = "below_min") val belowMin: Boolean = false
+    @Json(name = "below_min") val belowMin: Boolean = false,
+    @Json(name = "currency") val currency: String = "INR"
 )
 
 @JsonClass(generateAdapter = true)

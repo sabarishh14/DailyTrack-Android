@@ -27,8 +27,11 @@ data class HomeState(
     val visibleInvestCategoriesCount: Int get() = com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory.entries.size - hiddenInvestCategories.size
     val totalInvestCategoriesCount: Int get() = com.example.dailytrack_mobile.presentation.screens.invest.InvestCategory.entries.size
 
+    fun currencyOf(account: String): String = accounts.firstOrNull { it.account == account }?.currency ?: "INR"
+
+    /** In rupees: other currencies at today's rate. */
     val totalBankBalance: Double
         get() = accounts
             .filter { it.balanceTracked }
-            .sumOf { it.balance }
+            .sumOf { it.balanceInRupees }
 }

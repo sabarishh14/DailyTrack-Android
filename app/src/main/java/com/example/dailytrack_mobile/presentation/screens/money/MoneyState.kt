@@ -85,8 +85,15 @@ data class AccountInfo(
     /** Credit cards: the part of [usedThisMonth] the budget counts, leaving out what the spending analyser does. */
     val budgetUsedThisMonth: Double? = null,
     /** Credit cards: the monthly spending limit; null when there is none. */
-    val monthlyBudget: Double? = null
+    val monthlyBudget: Double? = null,
+    /** What its balance, minimum and budget are in (Currencies). */
+    val currency: String = "INR",
+    /** Rupees per unit today, for totals; null when there's no rate. */
+    val inrRate: Double? = null
 ) {
+    /** The balance in rupees, for adding up with other accounts. */
+    val balanceInRupees: Double get() = balance * (inrRate ?: 1.0)
+
     /** What a card's budget is measured against. */
     val budgetUsed: Double get() = budgetUsedThisMonth ?: usedThisMonth ?: 0.0
 
@@ -114,8 +121,17 @@ data class Transaction(
     val rawType: String = "",
     val split: SplitInfo? = null,
     /** The account's balance right after this transaction, when known. */
-    val balanceAfter: Double? = null
+    val balanceAfter: Double? = null,
+    /** On an account in another currency: what was entered, and in what. [amount] is always rupees. */
+    val originalAmount: Double? = null,
+    val currency: String? = null
 ) {
+    /** The amount as entered, in its account's currency. */
+    val shownAmount: Double get() = originalAmount ?: amount
+
+    /** The currency [shownAmount] is in. */
+    val shownCurrency: String get() = currency ?: com.example.dailytrack_mobile.presentation.util.Currencies.HOME
+
     val isSavings: Boolean
         get() = type == TransactionType.SAVINGS ||
                 rawType.equals("Savings", ignoreCase = true) ||

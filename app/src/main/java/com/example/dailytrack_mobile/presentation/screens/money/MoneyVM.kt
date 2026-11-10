@@ -77,7 +77,9 @@ class MoneyVM @Inject constructor(
                                 account = dto.account,
                                 balance = dto.balance ?: 0.0,
                                 realBalance = dto.realBalance,
-                                balanceTracked = dto.balanceTracked
+                                balanceTracked = dto.balanceTracked,
+                                currency = dto.currency,
+                                inrRate = dto.inrRate
                             )
                         }
                     )
@@ -705,6 +707,8 @@ private fun com.example.dailytrack_mobile.data.remote.dto.TransactionDto.toDomai
                 }
             )
         },
-        balanceAfter = balanceAfter
+        balanceAfter = balanceAfter,
+        originalAmount = originalAmount,
+        currency = currency
     )
 }

@@ -76,11 +76,13 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
 import com.example.dailytrack_mobile.presentation.components.CardBudgetDialog
+import com.example.dailytrack_mobile.presentation.components.CurrencyPicker
 import com.example.dailytrack_mobile.presentation.components.topBarIconButtonColors
 import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
-import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
 import com.example.dailytrack_mobile.presentation.screens.settings.AccountsSettingsVM
+import com.example.dailytrack_mobile.presentation.util.Currencies
 import com.example.dailytrack_mobile.presentation.util.Dimens
+import com.example.dailytrack_mobile.presentation.util.formatMoney
 
 private val CardColor = Color(0xFFEC4899)
 private const val MAX_NAME = 50
@@ -236,6 +238,7 @@ fun AccountsSettingsSubScreen(
             card = card.account,
             usedThisMonth = card.budgetUsedThisMonth ?: card.usedThisMonth ?: 0.0,
             budget = card.monthlyBudget,
+            currency = card.currency,
             onSave = { budget ->
                 viewModel.setCardBudget(card.account, budget)
                 editingBudget = null
@@ -339,7 +342,7 @@ private fun Summary(total: Double, savings: Int, cards: Int) {
             color = colors.onPrimaryContainer.copy(alpha = 0.7f)
         )
         Text(
-            text = "₹${formatRupees(total)}",
+            text = formatMoney(total, Currencies.HOME),
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black),
             color = colors.onPrimaryContainer
         )
@@ -390,11 +393,11 @@ private fun AccountRow(account: AccountDto, creditCard: Boolean, onClick: (() ->
             )
             Text(
                 text = when {
-                    creditCard && account.monthlyBudget != null -> "Budget ₹${formatRupees(account.monthlyBudget)} a month"
+                    creditCard && account.monthlyBudget != null -> "Budget ${formatMoney(account.monthlyBudget, account.currency)} a month"
                     creditCard -> "No monthly budget set"
-                    account.minBalance != null -> "Min ₹${formatRupees(account.minBalance)}"
+                    account.minBalance != null -> "Min ${formatMoney(account.minBalance, account.currency)}"
                     else -> "No minimum set"
-                },
+                } + if (Currencies.isForeign(account.currency)) " · ${account.currency}" else "",
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant
             )
@@ -404,7 +407,7 @@ private fun AccountRow(account: AccountDto, creditCard: Boolean, onClick: (() ->
         if (amount != null) {
             Spacer(Modifier.width(8.dp))
             Text(
-                text = if (amount < 0) "-₹${formatRupees(-amount)}" else "₹${formatRupees(amount)}",
+                text = formatMoney(amount, account.currency),
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = colors.onSurface,
                 maxLines = 1
@@ -460,11 +463,12 @@ private fun AddAccountSheet(
     saving: Boolean,
     serverError: String?,
     onEdited: () -> Unit,
-    onAdd: (name: String, creditCard: Boolean, balance: Double?, minBalance: Double?) -> Unit,
+    onAdd: (name: String, creditCard: Boolean, balance: Double?, minBalance: Double?, currency: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = MaterialTheme.colorScheme
     var creditCard by rememberSaveable { mutableStateOf(false) }
+    var currency by rememberSaveable { mutableStateOf(Currencies.HOME) }
     var name by rememberSaveable { mutableStateOf("") }
     var balance by rememberSaveable { mutableStateOf("") }
     var minimum by rememberSaveable { mutableStateOf("") }
@@ -533,7 +537,8 @@ private fun AddAccountSheet(
                 creditCard = creditCard,
                 balance = if (creditCard) null else balanceValue ?: 0.0,
                 minimum = if (creditCard) null else minValue,
-                placeholder = finalName.isEmpty()
+                placeholder = finalName.isEmpty(),
+                currency = currency
             )
 
             OutlinedTextField(
@@ -554,6 +559,15 @@ private fun AddAccountSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            CurrencyPicker(
+                selected = currency,
+                onSelect = { picked -> edit { currency = picked } },
+                supportingText = if (Currencies.isForeign(currency))
+                    "Amounts on it are in $currency; totals turn them into rupees at today's rate."
+                else null,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             AnimatedVisibility(
                 visible = !creditCard,
                 enter = fadeIn() + expandVertically(),
@@ -565,20 +579,22 @@ private fun AddAccountSheet(
                         onChange = { edit { balance = it } },
                         label = "Current balance",
                         placeholder = "0",
-                        help = "What's in it right now. Transactions move it from here."
+                        help = "What's in it right now. Transactions move it from here.",
+                        currency = currency
                     )
                     MoneyField(
                         value = minimum,
                         onChange = { edit { minimum = it } },
                         label = "Minimum balance (optional)",
                         placeholder = "2000",
-                        help = "You'll get an alert when a transaction takes it below this."
+                        help = "You'll get an alert when a transaction takes it below this.",
+                        currency = currency
                     )
                 }
             }
             AnimatedVisibility(visible = creditCard, enter = fadeIn(), exit = fadeOut()) {
                 Text(
-                    text = "Spends are recorded against the card. Its balance stays at ₹0, so it doesn't change your totals.",
+                    text = "Spends are recorded against the card. Its balance stays at zero, so it doesn't change your totals.",
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant
                 )
@@ -589,7 +605,7 @@ private fun AddAccountSheet(
             }
 
             Button(
-                onClick = { onAdd(finalName, creditCard, balanceValue, minValue) },
+                onClick = { onAdd(finalName, creditCard, balanceValue, minValue, currency) },
                 enabled = canAdd,
                 shape = RoundedCornerShape(26.dp),
                 modifier = Modifier
@@ -639,7 +655,7 @@ private fun TypeOption(
 
 /** How the new account will look in your lists. */
 @Composable
-private fun Preview(name: String, creditCard: Boolean, balance: Double?, minimum: Double?, placeholder: Boolean) {
+private fun Preview(name: String, creditCard: Boolean, balance: Double?, minimum: Double?, placeholder: Boolean, currency: String) {
     val colors = MaterialTheme.colorScheme
     val accent = if (creditCard) CardColor else colors.primary
     Row(
@@ -663,7 +679,7 @@ private fun Preview(name: String, creditCard: Boolean, balance: Double?, minimum
             Text(
                 text = when {
                     creditCard -> "Credit card"
-                    minimum != null -> "Min ₹${formatRupees(minimum)}"
+                    minimum != null -> "Min ${formatMoney(minimum, currency)}"
                     else -> "Savings account"
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -672,7 +688,7 @@ private fun Preview(name: String, creditCard: Boolean, balance: Double?, minimum
         }
         if (balance != null) {
             Text(
-                text = "₹${formatRupees(balance)}",
+                text = formatMoney(balance, currency),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = colors.onSurface
             )
@@ -681,7 +697,7 @@ private fun Preview(name: String, creditCard: Boolean, balance: Double?, minimum
 }
 
 @Composable
-private fun MoneyField(value: String, onChange: (String) -> Unit, label: String, placeholder: String, help: String) {
+private fun MoneyField(value: String, onChange: (String) -> Unit, label: String, placeholder: String, help: String, currency: String) {
     OutlinedTextField(
         value = value,
         onValueChange = { typed ->
@@ -691,7 +707,7 @@ private fun MoneyField(value: String, onChange: (String) -> Unit, label: String,
         },
         label = { Text(label) },
         placeholder = { Text(placeholder) },
-        prefix = { Text("₹") },
+        prefix = { Text(Currencies.symbol(currency)) },
         supportingText = { Text(help) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -727,7 +743,7 @@ private fun MinBalanceDialog(account: AccountDto, onSave: (balance: Double, min:
                     value = balanceText,
                     onValueChange = { balanceText = clean(it) },
                     label = { Text("Balance") },
-                    prefix = { Text("₹") },
+                    prefix = { Text(Currencies.symbol(account.currency)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     shape = RoundedCornerShape(12.dp),
@@ -737,7 +753,7 @@ private fun MinBalanceDialog(account: AccountDto, onSave: (balance: Double, min:
                     value = minText,
                     onValueChange = { minText = clean(it) },
                     label = { Text("Minimum (optional)") },
-                    prefix = { Text("₹") },
+                    prefix = { Text(Currencies.symbol(account.currency)) },
                     placeholder = { Text("None") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

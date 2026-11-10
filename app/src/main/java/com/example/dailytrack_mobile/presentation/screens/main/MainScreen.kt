@@ -548,8 +548,13 @@ fun MainScreen(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
         ) {
+            // Entry forms write each amount in its account's currency.
+            val accountCurrencies = remember(moneyState.accounts) {
+                moneyState.accounts.associate { it.account to it.currency }
+            }
             CompositionLocalProvider(
-                LocalFloatingBarClearance provides if (isFormScreen) 0.dp else FloatingBarClearance
+                LocalFloatingBarClearance provides if (isFormScreen) 0.dp else FloatingBarClearance,
+                com.example.dailytrack_mobile.presentation.util.LocalAccountCurrencies provides accountCurrencies
             ) {
                 if (currentRoute in mainTabRoutes) {
                     HorizontalPager(

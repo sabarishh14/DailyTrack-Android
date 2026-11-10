@@ -323,7 +323,8 @@ class MoneyRepository @Inject constructor(
         name: String,
         creditCard: Boolean,
         balance: Double?,
-        minBalance: Double?
+        minBalance: Double?,
+        currency: String = "INR"
     ): Result<AccountDto> = runCatching {
         check(!demoDataManager.isDemoModeEnabled()) { "Not available in demo mode" }
         val response = api.createAccount(
@@ -331,7 +332,8 @@ class MoneyRepository @Inject constructor(
                 name = name.trim(),
                 type = if (creditCard) "credit_card" else "savings",
                 balance = balance.takeUnless { creditCard },
-                minBalance = minBalance.takeUnless { creditCard }
+                minBalance = minBalance.takeUnless { creditCard },
+                currency = currency
             )
         )
         val body = response.body()

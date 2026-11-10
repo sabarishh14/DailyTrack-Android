@@ -1,5 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.util.formatMoney
+import com.example.dailytrack_mobile.presentation.util.Currencies
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -71,9 +73,10 @@ fun TransactionDetailBottomSheet(
         }
     }
 
-    val formattedAmount = remember(transaction.amount) {
-        val abs = Math.abs(transaction.amount)
-        "₹%,.2f".format(abs)
+    // As entered, with the rupees it was stored as when that's another currency.
+    val formattedAmount = remember(transaction) {
+        val shown = formatMoney(Math.abs(transaction.shownAmount), transaction.shownCurrency)
+        if (Currencies.isForeign(transaction.currency)) "$shown  (₹%,.2f)".format(Math.abs(transaction.amount)) else shown
     }
 
     ModalBottomSheet(
@@ -307,7 +310,7 @@ fun TransactionDetailBottomSheet(
                                     )
                                 }
                                 Text(
-                                    text = "Total: ₹%,.2f".format(split.totalAmount),
+                                    text = "Total: ${formatMoney(split.totalAmount, transaction.shownCurrency)}",
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -355,7 +358,7 @@ fun TransactionDetailBottomSheet(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Text(
-                                            text = "₹%,.2f".format(member.amount),
+                                            text = formatMoney(member.amount, transaction.shownCurrency),
                                             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )

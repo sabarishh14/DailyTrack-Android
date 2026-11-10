@@ -1,5 +1,7 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.util.formatMoney
+import com.example.dailytrack_mobile.presentation.util.Currencies
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -58,6 +60,10 @@ import kotlinx.coroutines.launch
 // ─────────────────────────────────────────────────────────────────────────────
 private fun formatAmount(transaction: Transaction): String {
     val prefix = if (transaction.type == TransactionType.CREDIT) "+" else "-"
+    // As entered: an account in another currency shows its own ("$12.50").
+    if (Currencies.isForeign(transaction.currency)) {
+        return prefix + formatMoney(Math.abs(transaction.shownAmount), transaction.currency)
+    }
     val abs = Math.abs(transaction.amount)
     return when {
         abs >= 1_00_000 -> "${prefix}₹%.0fL".format(abs / 1_00_000)
@@ -400,7 +406,7 @@ fun CompactTransactionRow(
             val balance = transaction.balanceAfter
             if (showBalance) {
                 Text(
-                    text = if (balance != null) "₹%,.0f".format(balance) else "—",
+                    text = if (balance != null) formatMoney(balance, transaction.shownCurrency, 0) else "—",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f * contentAlpha),
                     maxLines = 1,
@@ -620,7 +626,7 @@ fun TransactionCardSurface(
                 val balance = transaction.balanceAfter
                 if (showBalance && balance != null) {
                     Text(
-                        text = "Bal ₹%,.0f".format(balance),
+                        text = "Bal ${formatMoney(balance, transaction.shownCurrency, 0)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                         maxLines = 1,

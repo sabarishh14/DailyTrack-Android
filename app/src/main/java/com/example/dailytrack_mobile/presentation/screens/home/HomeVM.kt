@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.example.dailytrack_mobile.presentation.util.formatMoney
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -139,7 +140,9 @@ class HomeVM @Inject constructor(
                             minBalance = dto.minBalance,
                             usedThisMonth = dto.usedThisMonth,
                             budgetUsedThisMonth = dto.budgetUsedThisMonth,
-                            monthlyBudget = dto.monthlyBudget
+                            monthlyBudget = dto.monthlyBudget,
+                            currency = dto.currency,
+                            inrRate = dto.inrRate
                         )
                     }
                 
@@ -216,7 +219,7 @@ class HomeVM @Inject constructor(
                         s.copy(
                             accounts = s.accounts.map { if (it.account == account) it.copy(monthlyBudget = budget) else it },
                             notice = if (budget == null) "Budget removed for $account"
-                            else "You'll be alerted when $account goes over ₹${"%,.0f".format(budget)} in a month"
+                            else "You'll be alerted when $account goes over ${formatMoney(budget, s.currencyOf(account), 0)} in a month"
                         )
                     }
                 }
@@ -231,7 +234,8 @@ class HomeVM @Inject constructor(
                     _state.update { s ->
                         s.copy(
                             accounts = s.accounts.map { if (it.account == account) it.copy(minBalance = min) else it },
-                            notice = if (min == null) "Minimum removed for $account" else "You'll be alerted when $account drops below ₹${"%,.0f".format(min)}"
+                            notice = if (min == null) "Minimum removed for $account"
+                                else "You'll be alerted when $account drops below ${formatMoney(min, s.currencyOf(account), 0)}"
                         )
                     }
                 }

@@ -34,7 +34,14 @@ import java.time.ZoneId
 /** What an entry does to its account: a balance, or a credit card's spending this month. */
 sealed interface AccountImpact
 
-data class BalanceProjection(val account: String, val before: Double, val after: Double, val min: Double?) : AccountImpact
+data class BalanceProjection(
+    val account: String,
+    val before: Double,
+    val after: Double,
+    val min: Double?,
+    /** The account's currency, which the amounts are in. */
+    val currency: String = "INR"
+) : AccountImpact
 
 /** A card's used-this-month before and after the entry, against its monthly budget. */
 /** [budgetAfter]: the part of [after] the budget counts (entries left out of the spending analyser aren't). */
@@ -43,7 +50,8 @@ data class CardProjection(
     val before: Double,
     val after: Double,
     val budget: Double?,
-    val budgetAfter: Double = after
+    val budgetAfter: Double = after,
+    val currency: String = "INR"
 ) : AccountImpact
 
 enum class BalanceLevel { OK, WARN, DANGER }
@@ -96,7 +104,7 @@ fun projectCardSpend(
             else -> countedBefore + amount
         }
         runningCounted[name] = countedAfter
-        out[entry.id] = CardProjection(name, before, after, byName[name]?.monthlyBudget, countedAfter)
+        out[entry.id] = CardProjection(name, before, after, byName[name]?.monthlyBudget, countedAfter, byName[name]?.currency ?: "INR")
     }
     return out
 }
@@ -118,7 +126,7 @@ fun projectBalances(entries: List<TransactionEntryState>, accounts: List<Account
         val before = running[name] ?: balance
         val after = if (entry.type == EntryType.INCOME) before + amount else before - amount
         running[name] = after
-        out[entry.id] = BalanceProjection(name, before, after, acc.minBalance)
+        out[entry.id] = BalanceProjection(name, before, after, acc.minBalance, acc.currency)
     }
     return out
 }
@@ -130,10 +138,10 @@ fun balanceLevelColor(level: BalanceLevel): Color = when (level) {
     BalanceLevel.DANGER -> MaterialTheme.colorScheme.error
 }
 
-private fun floorNote(after: Double, min: Double?, level: BalanceLevel): String? = when {
+private fun floorNote(after: Double, min: Double?, level: BalanceLevel, currency: String): String? = when {
     min == null -> if (level == BalanceLevel.DANGER) "Overdrawn" else null
-    level == BalanceLevel.DANGER -> "₹${formatRupees(min - after)} below your ₹${formatRupees(min)} minimum"
-    else -> "₹${formatRupees(after - min)} above your ₹${formatRupees(min)} minimum"
+    level == BalanceLevel.DANGER -> "${formatAmountIn(min - after, currency)} below your ${formatAmountIn(min, currency)} minimum"
+    else -> "${formatAmountIn(after - min, currency)} above your ${formatAmountIn(min, currency)} minimum"
 }
 
 /** Each account's colour, matching the web's BANKS. Credit cards share one. */
@@ -164,7 +172,7 @@ fun EntryBalancePreview(projection: BalanceProjection, modifier: Modifier = Modi
     val barColor by animateColorAsState(
         if (level == BalanceLevel.OK) accountColor else balanceLevelColor(level), tween(250), label = "balanceColor"
     )
-    val note = floorNote(projection.after, projection.min, level).takeIf { level != BalanceLevel.OK }
+    val note = floorNote(projection.after, projection.min, level, projection.currency).takeIf { level != BalanceLevel.OK }
 
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -195,13 +203,13 @@ fun EntryBalancePreview(projection: BalanceProjection, modifier: Modifier = Modi
                     )
                     if (projection.after != projection.before) {
                         Text(
-                            text = "₹${formatRupees(projection.before)}  →  ",
+                            text = "${formatAmountIn(projection.before, projection.currency)}  →  ",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Text(
-                        text = "₹${formatRupees(projection.after)}",
+                        text = formatAmountIn(projection.after, projection.currency),
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                         color = if (level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else barColor
                     )
@@ -234,8 +242,8 @@ fun CardSpendPreview(projection: CardProjection, modifier: Modifier = Modifier) 
     )
     val note = when {
         budget == null || level == BalanceLevel.OK -> null
-        level == BalanceLevel.DANGER -> "⚠ ₹${formatRupees(projection.budgetAfter - budget)} over your ₹${formatRupees(budget)} monthly budget"
-        else -> "₹${formatRupees(budget - projection.budgetAfter)} left of your ₹${formatRupees(budget)} monthly budget"
+        level == BalanceLevel.DANGER -> "⚠ ${formatAmountIn(projection.budgetAfter - budget, projection.currency)} over your ${formatAmountIn(budget, projection.currency)} monthly budget"
+        else -> "${formatAmountIn(budget - projection.budgetAfter, projection.currency)} left of your ${formatAmountIn(budget, projection.currency)} monthly budget"
     }
 
     Card(
@@ -267,13 +275,13 @@ fun CardSpendPreview(projection: CardProjection, modifier: Modifier = Modifier) 
                     )
                     if (projection.after != projection.before) {
                         Text(
-                            text = "₹${formatRupees(projection.before)}  →  ",
+                            text = "${formatAmountIn(projection.before, projection.currency)}  →  ",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
                     }
                     Text(
-                        text = "₹${formatRupees(projection.after)} used",
+                        text = "${formatAmountIn(projection.after, projection.currency)} used",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                         color = if (level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else barColor
                     )
@@ -332,11 +340,11 @@ fun balanceSummaryLine(
     cards: List<com.example.dailytrack_mobile.data.remote.dto.CardChangeDto> = emptyList()
 ): String? {
     val parts = changes.map { c ->
-        val base = "${c.account} ₹${formatRupees(c.after)} left"
-        if (c.belowMin && c.minBalance != null) "$base ⚠ under ₹${formatRupees(c.minBalance)}" else base
+        val base = "${c.account} ${formatAmountIn(c.after, c.currency)} left"
+        if (c.belowMin && c.minBalance != null) "$base ⚠ under ${formatAmountIn(c.minBalance, c.currency)}" else base
     } + cards.filter { it.after != it.before }.map { c ->
-        val base = "${c.account} ₹${formatRupees(c.after)} used this month"
-        if (c.overBudget && c.monthlyBudget != null) "$base ⚠ over ₹${formatRupees(c.monthlyBudget)}" else base
+        val base = "${c.account} ${formatAmountIn(c.after, c.currency)} used this month"
+        if (c.overBudget && c.monthlyBudget != null) "$base ⚠ over ${formatAmountIn(c.monthlyBudget, c.currency)}" else base
     }
     return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 }

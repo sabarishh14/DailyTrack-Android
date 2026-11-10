@@ -1,5 +1,6 @@
 package com.example.dailytrack_mobile.presentation.screens.money.components
 
+import com.example.dailytrack_mobile.presentation.util.accountCurrency
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -56,7 +57,8 @@ internal fun Transaction.toEntryState(): TransactionEntryState = TransactionEntr
     id = id,
     type = entryType(),
     category = category,
-    amount = if (amount % 1.0 == 0.0) "%.0f".format(amount) else "%.2f".format(amount),
+    // As entered: an account in another currency edits in it, not the rupees it's stored as.
+    amount = shownAmount.let { if (it % 1.0 == 0.0) "%.0f".format(it) else "%.2f".format(it) },
     note = note.orEmpty(),
     account = bank,
     dateMillis = TransactionEntryState.parseApiDate(rawDate) ?: timestampMillis,
@@ -222,7 +224,8 @@ fun EditTransactionDialog(
                 EntryAmountCard(
                     amount = entry.amount,
                     onAmountChange = { entry.amount = it },
-                    accent = entryTypeAccent(entry.type)
+                    accent = entryTypeAccent(entry.type),
+                    currency = accountCurrency(entry.account)
                 )
                 EntryDateAccountRow(
                     dateMillis = entry.dateMillis,

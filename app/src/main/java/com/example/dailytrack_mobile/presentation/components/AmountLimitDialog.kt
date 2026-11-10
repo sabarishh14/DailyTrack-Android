@@ -31,7 +31,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.dailytrack_mobile.presentation.components.transaction.bankColor
-import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
+import com.example.dailytrack_mobile.presentation.util.Currencies
+import com.example.dailytrack_mobile.presentation.util.formatMoney
 
 /**
  * One amount an alert is measured against (an account's minimum, a card's
@@ -46,7 +47,9 @@ fun AmountLimitDialog(
     current: Double?,
     placeholder: String,
     onSave: (Double?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** The account's currency: the amount is in it. */
+    currency: String = Currencies.HOME
 ) {
     var text by remember { mutableStateOf(current?.let { "%.0f".format(it) } ?: "") }
     val value = text.trim().toDoubleOrNull()
@@ -75,7 +78,7 @@ fun AmountLimitDialog(
                 OutlinedTextField(
                     value = text,
                     onValueChange = { new -> text = new.filter { it.isDigit() || it == '.' } },
-                    prefix = { Text("₹") },
+                    prefix = { Text(Currencies.symbol(currency)) },
                     placeholder = { Text(placeholder) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -109,15 +112,17 @@ fun CardBudgetDialog(
     usedThisMonth: Double,
     budget: Double?,
     onSave: (Double?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    currency: String = Currencies.HOME
 ) = AmountLimitDialog(
     account = card,
     icon = Icons.Default.CreditCard,
     title = "Monthly budget for $card",
     explanation = "Get an alert when spending on this card goes over it in a month. It starts again on the 1st. " +
-        "Used this month: ₹${formatRupees(usedThisMonth)}.",
+        "Used this month: ${formatMoney(usedThisMonth, currency)}.",
     current = budget,
     placeholder = "20000",
+    currency = currency,
     onSave = onSave,
     onDismiss = onDismiss
 )

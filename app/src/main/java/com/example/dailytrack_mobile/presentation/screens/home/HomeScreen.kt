@@ -64,6 +64,7 @@ import com.example.dailytrack_mobile.presentation.screens.money.MoneyState
 import com.example.dailytrack_mobile.presentation.screens.money.MoneyVM
 import com.example.dailytrack_mobile.presentation.screens.money.components.formatShortened
 import com.example.dailytrack_mobile.presentation.util.Dimens
+import com.example.dailytrack_mobile.presentation.util.formatMoney
 import java.time.Month
 import java.time.format.TextStyle
 import java.util.Calendar
@@ -534,7 +535,8 @@ private fun BankAccountsSection(
     var isGridView by rememberSaveable { mutableStateOf(true) }
     var editingMinFor by remember { mutableStateOf<AccountInfo?>(null) }
     var editingBudgetFor by remember { mutableStateOf<AccountInfo?>(null) }
-    val cardsUsed = accounts.filter { it.isCreditCard }.sumOf { it.usedThisMonth ?: 0.0 }
+    // In rupees: cards in another currency at today's rate.
+    val cardsUsed = accounts.filter { it.isCreditCard }.sumOf { (it.usedThisMonth ?: 0.0) * (it.inrRate ?: 1.0) }
 
     editingMinFor?.let { account ->
         MinBalanceDialog(
@@ -551,6 +553,7 @@ private fun BankAccountsSection(
             card = card.account,
             usedThisMonth = card.budgetUsed,
             budget = card.monthlyBudget,
+            currency = card.currency,
             onSave = { budget ->
                 onSetCardBudget?.invoke(card.account, budget)
                 editingBudgetFor = null
@@ -809,7 +812,7 @@ private fun BankAccountRow(account: AccountInfo, onClick: (() -> Unit)? = null) 
         }
         Spacer(modifier = Modifier.width(dims.itemSpacingMedium))
         Text(
-            text     = formatCurrencyFull(shownAmount(account)),
+            text     = formatMoney(shownAmount(account), account.currency),
             style    = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
             color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurface else balanceLevelColor(level),
             maxLines = 1,
@@ -871,7 +874,7 @@ private fun BankAccountCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text     = formatCurrencyFull(shownAmount(account)),
+                    text     = formatMoney(shownAmount(account), account.currency),
                     style    = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                     color    = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.primary else balanceLevelColor(level),
                     maxLines = 1,
@@ -907,8 +910,8 @@ private fun CardBudgetCaption(card: AccountInfo, level: BalanceLevel?) {
         Text(
             text = when {
                 budget == null -> "Used this month"
-                level == BalanceLevel.DANGER -> "⚠ ${formatCurrencyFull(used - budget)} over ${formatCurrencyFull(budget)} budget"
-                else -> "of ${formatCurrencyFull(budget)} budget"
+                level == BalanceLevel.DANGER -> "⚠ ${formatMoney(used - budget, card.currency)} over ${formatMoney(budget, card.currency)} budget"
+                else -> "of ${formatMoney(budget, card.currency)} budget"
             },
             style = MaterialTheme.typography.labelSmall,
             color = color,
@@ -936,8 +939,8 @@ private fun CardBudgetCaption(card: AccountInfo, level: BalanceLevel?) {
 private fun MinBalanceCaption(account: AccountInfo, level: BalanceLevel?) {
     val min = account.minBalance ?: return
     Text(
-        text = if (level == BalanceLevel.DANGER) "⚠ ${formatCurrencyFull(min - account.balance)} under ${formatCurrencyFull(min)} min"
-        else "Min ${formatCurrencyFull(min)}",
+        text = if (level == BalanceLevel.DANGER) "⚠ ${formatMoney(min - account.balance, account.currency)} under ${formatMoney(min, account.currency)} min"
+        else "Min ${formatMoney(min, account.currency)}",
         style = MaterialTheme.typography.labelSmall,
         color = if (level == null || level == BalanceLevel.OK) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
         else balanceLevelColor(level),
@@ -957,9 +960,10 @@ private fun MinBalanceDialog(
     icon = Icons.Default.AccountBalance,
     title = "Minimum for ${account.account}",
     explanation = "Get an alert when a transaction takes this account below it. " +
-        "Balance now: ${formatCurrencyFull(account.balance)}.",
+        "Balance now: ${formatMoney(account.balance, account.currency)}.",
     current = account.minBalance,
     placeholder = "2000",
+    currency = account.currency,
     onSave = onSave,
     onDismiss = onDismiss
 )

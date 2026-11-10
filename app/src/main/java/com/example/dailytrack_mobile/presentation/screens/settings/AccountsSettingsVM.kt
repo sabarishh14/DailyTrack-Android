@@ -5,7 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.example.dailytrack_mobile.data.remote.dto.AccountDto
 import com.example.dailytrack_mobile.data.repository.MoneyRepository
 import com.example.dailytrack_mobile.data.repository.isCcAccount
-import com.example.dailytrack_mobile.presentation.components.transaction.formatRupees
+import com.example.dailytrack_mobile.presentation.util.Currencies
+import com.example.dailytrack_mobile.presentation.util.formatMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,8 @@ class AccountsSettingsVM @Inject constructor(
         val addedCount: Int = 0,
         val message: String? = null
     ) {
-        val savingsTotal: Double get() = savings.sumOf { it.balance ?: 0.0 }
+        /** In rupees: accounts in another currency at today's rate. */
+        val savingsTotal: Double get() = savings.sumOf { it.toRupees(it.balance ?: 0.0) }
         val names: Set<String> get() = (savings + cards).map { it.account.lowercase() }.toSet()
     }
 
@@ -54,18 +56,19 @@ class AccountsSettingsVM @Inject constructor(
         }
     }
 
-    fun add(name: String, creditCard: Boolean, balance: Double?, minBalance: Double?) {
+    fun add(name: String, creditCard: Boolean, balance: Double?, minBalance: Double?, currency: String) {
         if (_state.value.adding) return
         _state.update { it.copy(adding = true, addError = null) }
         viewModelScope.launch {
-            repository.createAccount(name, creditCard, balance, minBalance)
+            repository.createAccount(name, creditCard, balance, minBalance, currency)
                 .onSuccess { account ->
                     val all = repository.getCachedAccountDetails().ifEmpty { current() + account }
                     _state.update {
                         it.withAccounts(all).copy(
                             adding = false,
                             addedCount = it.addedCount + 1,
-                            message = if (creditCard) "${account.account} added" else "${account.account} added with ₹${formatRupees(account.balance ?: 0.0)}"
+                            message = if (creditCard) "${account.account} added"
+                                else "${account.account} added with ${formatMoney(account.balance ?: 0.0, account.currency)}"
                         )
                     }
                 }
@@ -98,7 +101,7 @@ class AccountsSettingsVM @Inject constructor(
                         s.copy(
                             savings = s.savings.map { if (it.account == account) it.copy(minBalance = min) else it },
                             message = if (min == null) "Minimum removed for $account"
-                            else "You'll be alerted when $account drops below ₹${formatRupees(min)}"
+                            else "You'll be alerted when $account drops below ${formatMoney(min, currencyOf(account))}"
                         )
                     }
                 }
@@ -115,7 +118,7 @@ class AccountsSettingsVM @Inject constructor(
                         s.copy(
                             cards = s.cards.map { if (it.account == card) it.copy(monthlyBudget = budget) else it },
                             message = if (budget == null) "Budget removed for $card"
-                            else "You'll be alerted when $card goes over ₹${formatRupees(budget)} in a month"
+                            else "You'll be alerted when $card goes over ${formatMoney(budget, currencyOf(card))} in a month"
                         )
                     }
                 }
@@ -128,6 +131,8 @@ class AccountsSettingsVM @Inject constructor(
     fun consumeMessage() = _state.update { it.copy(message = null) }
 
     private fun current(): List<AccountDto> = _state.value.savings + _state.value.cards
+
+    private fun currencyOf(account: String): String = current().firstOrNull { it.account == account }?.currency ?: Currencies.HOME
 
     private fun State.withAccounts(accounts: List<AccountDto>): State {
         val (cards, savings) = accounts.partition { isCcAccount(it.account) }

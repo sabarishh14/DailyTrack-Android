@@ -67,10 +67,9 @@ private fun iconFor(account: String): ImageVector = when {
     else -> Icons.Default.AccountBalance
 }
 
-private fun formatAmount(amount: Double): String {
-    val prefix = if (amount < 0) "-" else ""
-    return "$prefix₹%,.2f".format(abs(amount))
-}
+/** In the account's currency. */
+private fun formatAmount(amount: Double, currency: String): String =
+    com.example.dailytrack_mobile.presentation.util.formatMoney(amount, currency)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -336,7 +335,7 @@ private fun ReconcileAccountRow(account: AccountInfo) {
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            text = formatAmount(account.balance),
+                            text = formatAmount(account.balance, account.currency),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -347,7 +346,7 @@ private fun ReconcileAccountRow(account: AccountInfo) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
                             Text(
-                                text = formatAmount(account.realBalance),
+                                text = formatAmount(account.realBalance, account.currency),
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -356,17 +355,17 @@ private fun ReconcileAccountRow(account: AccountInfo) {
                 }
             }
 
-            ReconcileStatusChip(status = status, diff = abs(account.balance - (account.realBalance ?: account.balance)))
+            ReconcileStatusChip(status = status, diff = abs(account.balance - (account.realBalance ?: account.balance)), currency = account.currency)
         }
     }
 }
 
 @Composable
-private fun ReconcileStatusChip(status: ReconcileStatus, diff: Double) {
+private fun ReconcileStatusChip(status: ReconcileStatus, diff: Double, currency: String) {
     val (label, color, icon) = when (status) {
         ReconcileStatus.MATCHED -> Triple("Matched", Color(0xFF2ECC71), Icons.Default.CheckCircle)
-        ReconcileStatus.INCREASE -> Triple("Add ${formatAmount(diff)}", Color(0xFF4DABF7), Icons.AutoMirrored.Filled.TrendingUp)
-        ReconcileStatus.REDUCE -> Triple("Remove ${formatAmount(diff)}", MaterialTheme.colorScheme.error, Icons.AutoMirrored.Filled.TrendingDown)
+        ReconcileStatus.INCREASE -> Triple("Add ${formatAmount(diff, currency)}", Color(0xFF4DABF7), Icons.AutoMirrored.Filled.TrendingUp)
+        ReconcileStatus.REDUCE -> Triple("Remove ${formatAmount(diff, currency)}", MaterialTheme.colorScheme.error, Icons.AutoMirrored.Filled.TrendingDown)
         ReconcileStatus.NOT_SCANNED -> Triple("Not scanned", MaterialTheme.colorScheme.onSurfaceVariant, Icons.Default.HourglassEmpty)
     }
 
