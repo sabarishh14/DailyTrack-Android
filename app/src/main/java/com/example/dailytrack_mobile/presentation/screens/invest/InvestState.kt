@@ -68,6 +68,7 @@ enum class InvestTab(val label: String) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum class ChartTimeRange(val label: String) {
+    ONE_WEEK("1W"),
     ONE_MONTH("1M"),
     THREE_MONTHS("3M"),
     SIX_MONTHS("6M"),
@@ -95,6 +96,7 @@ internal val ChartTimeRange.periodLabel: String
 
 /** The first day a range shows; null for ALL. */
 internal fun ChartTimeRange.cutoff(today: java.time.LocalDate = java.time.LocalDate.now()): java.time.LocalDate? = when (this) {
+    ChartTimeRange.ONE_WEEK -> today.minusWeeks(1)
     ChartTimeRange.ONE_MONTH -> today.minusMonths(1)
     ChartTimeRange.THREE_MONTHS -> today.minusMonths(3)
     ChartTimeRange.SIX_MONTHS -> today.minusMonths(6)
@@ -123,6 +125,66 @@ internal fun periodReturn(
     val pnl = (end.current - start.current).toDouble() - (end.invested - start.invested).toDouble()
     val base = start.current.toDouble()
     return pnl to if (base > 0.0) pnl / base * 100.0 else 0.0
+}
+
+/**
+ * What a portfolio snapshot was worth, and what had gone into it, for one tab
+ * (on Overview, the visible categories). Null when the tab held nothing then.
+ */
+internal fun com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto.pointFor(
+    tab: InvestTab,
+    hiddenCategories: Set<InvestCategory>
+): ChartPoint? {
+    fun visible(category: InvestCategory, amount: Double?) = if (category in hiddenCategories) 0.0 else amount ?: 0.0
+    val curr = when (tab) {
+        InvestTab.OVERVIEW -> visible(InvestCategory.STOCKS, currStocks) + visible(InvestCategory.MUTUAL_FUNDS, currMf) +
+            visible(InvestCategory.RETIREMENT, currProv) + visible(InvestCategory.FD, currFixed) + visible(InvestCategory.GOLD, currGold)
+        InvestTab.STOCKS -> currStocks
+        InvestTab.MUTUAL_FUNDS -> currMf
+        InvestTab.RETIREMENT -> currProv
+        InvestTab.FD -> currFixed
+        InvestTab.GOLD -> currGold
+        InvestTab.REAL_ESTATE -> null
+    }?.toFloat()
+    val inv = when (tab) {
+        InvestTab.OVERVIEW -> visible(InvestCategory.STOCKS, invStocks) + visible(InvestCategory.MUTUAL_FUNDS, invMf) +
+            visible(InvestCategory.RETIREMENT, invProv) + visible(InvestCategory.FD, invFixed) + visible(InvestCategory.GOLD, invGold)
+        InvestTab.STOCKS -> invStocks
+        InvestTab.MUTUAL_FUNDS -> invMf
+        InvestTab.RETIREMENT -> invProv
+        InvestTab.FD -> invFixed
+        InvestTab.GOLD -> invGold
+        InvestTab.REAL_ESTATE -> null
+    }?.toFloat()
+    return if (curr != null && curr > 0f) ChartPoint(date = date.substringBefore("T"), invested = inv ?: 0f, current = curr) else null
+}
+
+/**
+ * How the latest snapshot moved from the one before it, counted like a period
+ * return: the change in value less money put in. Snapshots are taken on
+ * trading days, so this is the day's move (Friday's over a weekend).
+ */
+data class LatestMove(val date: String, val previousDate: String, val pnl: Double, val percent: Double)
+
+/** How many gainers, and how many losers, the movers card shows. */
+internal const val MOVERS_EACH_WAY = 3
+
+/**
+ * One asset class's biggest price moves between the last two snapshots: the
+ * day's gainers and losers (Friday's over a weekend), held both days.
+ */
+data class DayMovers(
+    val date: String,
+    val previousDate: String,
+    val gainers: List<HoldingComparison>,
+    val losers: List<HoldingComparison>
+)
+
+/** The move between the last two of [points] (oldest first); null with fewer than two. */
+internal fun latestMoveOf(points: List<ChartPoint>): LatestMove? {
+    val (start, end) = points.takeLast(2).takeIf { it.size == 2 } ?: return null
+    val (pnl, percent) = periodReturn(listOf(start, end), ChartTimeRange.ONE_WEEK, 0.0, 0.0)
+    return LatestMove(end.date, start.date, pnl, percent)
 }
 
 // -----------------------------------------------------------------------------
@@ -226,6 +288,9 @@ data class InvestState(
     val compareHoldings: List<HoldingSnapshotRow> = emptyList(),
     val isComparePickerOpen: Boolean = false,
 
+    /** The day's movers per asset class, loaded with its tab. */
+    val movers: Map<HoldingsType, DayMovers> = emptyMap(),
+
     // One stock's or fund's page
     val detailHolding: InvestmentHolding? = null,
     val detailRange: ChartTimeRange = ChartTimeRange.THREE_MONTHS,
@@ -326,6 +391,22 @@ data class InvestState(
     val isPeriodGain: Boolean get() = periodPnl >= 0.0
 
     val periodLabel: String get() = selectedTimeRange.periodLabel
+
+    /** The open tab's latest daily move; null with fewer than two snapshots for it. */
+    val latestMove: LatestMove?
+        get() = latestMoveOf(
+            // ISO dates: string order is date order.
+            historicalSnapshots
+                .sortedByDescending { it.date }
+                .asSequence()
+                .mapNotNull { it.pointFor(selectedTab, hiddenCategories) }
+                .take(2)
+                .toList()
+                .reversed()
+        )
+
+    /** The open stock's or fund's latest daily move, from its history. */
+    val detailLatestMove: LatestMove? get() = latestMoveOf(detailHistory)
 
     // -- Holdings snapshot ------------------------------------------------
 

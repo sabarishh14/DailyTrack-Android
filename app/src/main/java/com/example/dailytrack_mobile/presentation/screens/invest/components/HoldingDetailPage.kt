@@ -95,7 +95,8 @@ fun HoldingDetailPage(
                     periodLabel = state.detailRange.periodLabel,
                     isValueMode = isValueMode,
                     onValueModeChanged = { isValueMode = it },
-                    onClearSelection = { selectedPoint = null }
+                    onClearSelection = { selectedPoint = null },
+                    latestMove = state.detailLatestMove
                 )
             }
 
@@ -160,7 +161,8 @@ private fun ValueHeader(
     periodLabel: String,
     isValueMode: Boolean,
     onValueModeChanged: (Boolean) -> Unit,
-    onClearSelection: () -> Unit
+    onClearSelection: () -> Unit,
+    latestMove: com.example.dailytrack_mobile.presentation.screens.invest.LatestMove? = null
 ) {
     val dims = Dimens.current
     val current = selectedPoint?.current?.toDouble() ?: holding.current
@@ -240,6 +242,9 @@ private fun ValueHeader(
                 softWrap = false
             )
         }
+
+        // Its day, as the portfolio header shows the portfolio's; not while a past day is held.
+        if (selectedPoint == null) latestMove?.let { LatestMoveLine(it) }
     }
 }
 

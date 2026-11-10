@@ -15,6 +15,8 @@ sealed class InvestAction {
     /** Passing null drops back to the single-date view. */
     data class SelectCompareDate(val date: String?) : InvestAction()
     data class SetComparePickerOpen(val isOpen: Boolean) : InvestAction()
+    /** The sheet on the latest day against the one before: every mover, not just the top few. */
+    data class OpenDayComparison(val type: HoldingsType) : InvestAction()
 
     // One stock's or fund's page
     data class OpenHoldingDetail(val holding: InvestmentHolding) : InvestAction()

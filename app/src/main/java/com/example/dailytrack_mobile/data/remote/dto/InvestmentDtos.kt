@@ -97,5 +97,7 @@ data class PriceTimesDto(
     @Json(name = "synced") val synced: String? = null,
     @Json(name = "stocks_at") val stocksAt: String? = null,
     @Json(name = "checked_at") val checkedAt: String? = null,
-    @Json(name = "stale") val stale: Boolean = false
+    @Json(name = "stale") val stale: Boolean = false,
+    // A weekday the market didn't open (a holiday): the last close stands.
+    @Json(name = "closed_today") val closedToday: Boolean = false
 )

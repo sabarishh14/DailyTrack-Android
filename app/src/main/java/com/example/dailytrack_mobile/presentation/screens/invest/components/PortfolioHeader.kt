@@ -317,13 +317,58 @@ internal fun PortfolioHeader(
             )
         }
 
-        // How fresh the prices are; not while a past day is picked on the chart.
+        // The day's move and how fresh the prices are; not while a past day is picked on the chart.
+        if (!isSelected) state.latestMove?.let { LatestMoveLine(it) }
         if (!isSelected) state.priceTimes?.let { PriceTime(it) }
+    }
+}
+
+/**
+ * "Today  +₹1.2K (+0.42%)": the latest snapshot against the one before. Named
+ * by its day when it isn't today's, and "Since 3 Nov" across a long gap, so a
+ * week-old comparison never passes for a day's move.
+ */
+@Composable
+internal fun LatestMoveLine(move: com.example.dailytrack_mobile.presentation.screens.invest.LatestMove) {
+    val label = remember(move) { moveDayLabel(move.date, move.previousDate) } ?: return
+    val gain = move.pnl >= 0.0
+    val color = if (gain) InvestColors.GainGreen else InvestColors.LossRed
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "${formatPnl(move.pnl)} (${if (gain) "+" else ""}${String.format(java.util.Locale.US, "%.2f", move.percent)}%)",
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = color,
+            maxLines = 1
+        )
     }
 }
 
 private val priceClock = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH)
 private val priceDay = java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.ENGLISH)
+
+/**
+ * What a move from [previousDate] to [date] is called: "Today", "Yesterday" or
+ * its day ("7 Nov", Friday's over a weekend), and "Since 3 Nov" across a long
+ * gap, so a week-old comparison never passes for a day's move.
+ */
+internal fun moveDayLabel(date: String, previousDate: String): String? {
+    val day = runCatching { java.time.LocalDate.parse(date) }.getOrNull() ?: return null
+    val previous = runCatching { java.time.LocalDate.parse(previousDate) }.getOrNull() ?: return null
+    val today = java.time.LocalDate.now()
+    return when {
+        java.time.temporal.ChronoUnit.DAYS.between(previous, day) > 5 -> "Since ${previous.format(priceDay)}"
+        day == today -> "Today"
+        day == today.minusDays(1) -> "Yesterday"
+        else -> day.format(priceDay)
+    }
+}
 
 /** The web's line: "Stocks as of 3:29 pm" (Daily) or "Kite synced 20 Oct" (Manual);
  *  amber, "not updating", when the market's open and the prices aren't moving. */
@@ -336,7 +381,11 @@ private fun PriceTime(times: com.example.dailytrack_mobile.data.remote.dto.Price
             times.mode == "daily" && dailyAt != null -> {
                 val time = dailyAt.format(priceClock).lowercase()
                 val day = if (dailyAt.toLocalDate() == java.time.LocalDate.now()) time else "${dailyAt.format(priceDay)}, $time"
-                "${if (times.stocksAt != null) "Stocks as of" else "Updated"} $day" + if (times.stale) " · not updating" else ""
+                "${if (times.stocksAt != null) "Stocks as of" else "Updated"} $day" + when {
+                    times.stale -> " · not updating"
+                    times.closedToday -> " · market closed today"
+                    else -> ""
+                }
             }
             times.mode == "manual" && times.synced != null ->
                 runCatching { "Kite synced ${java.time.LocalDate.parse(times.synced).format(priceDay)}" }.getOrNull()

@@ -42,8 +42,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * The portfolio on the home screen: its return overall and over the last three
- * months, and the shape of its value over them. Percentages and a line only —
+ * The portfolio on the home screen: its return overall, over the last three
+ * months and on the latest day, and the shape of its value over those months.
+ * Percentages and a line only —
  * the value itself stays in the app. Follows the categories hidden there. A tap
  * opens Invest.
  */
@@ -104,10 +105,18 @@ class InvestmentsWidget : GlanceAppWidget() {
             }
             val overall = if (invested > 0.0) (current - invested) / invested * 100.0 else null
             val period = if (points.size >= 2) periodReturn(points, RANGE, invested, current).second else null
+            // The last snapshot against the one before (snapshots are daily, weekends folded
+            // into Friday); not after a long gap, where it wouldn't be a day's move.
+            val day = points.takeLast(2).takeIf { it.size == 2 }?.let { (before, last) ->
+                val gap = runCatching {
+                    java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(before.date), LocalDate.parse(last.date))
+                }.getOrNull() ?: return@let null
+                if (gap > 5) null else periodReturn(listOf(before, last), ChartTimeRange.ONE_WEEK, 0.0, 0.0).second
+            }
             val asOf = snapshots.firstOrNull()?.date?.substringBefore("T")?.let {
                 runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())) }.getOrNull()
             }.orEmpty()
-            return InvestModel(InvestModel.Status.OK, overall, period, points.map { it.current }, asOf)
+            return InvestModel(InvestModel.Status.OK, overall, period, points.map { it.current }, asOf, day)
         }
 
         fun categoryOf(raw: String): InvestCategory = when (raw.uppercase()) {
@@ -133,7 +142,9 @@ internal data class InvestModel(
     /** The portfolio's value over those months, oldest first: drawn as a shape, never shown as numbers. */
     val series: List<Float> = emptyList(),
     /** The last snapshot's day, "18 Oct". */
-    val asOf: String = ""
+    val asOf: String = "",
+    /** The last snapshot's move from the one before, %. */
+    val day: Double? = null
 ) {
     enum class Status { OK, EMPTY, SIGNED_OUT, UNAVAILABLE }
 
@@ -142,6 +153,7 @@ internal data class InvestModel(
         .put("period", period ?: JSONObject.NULL)
         .put("series", JSONArray().apply { series.forEach { put(it.toDouble()) } })
         .put("asOf", asOf)
+        .put("day", day ?: JSONObject.NULL)
         .toString()
 
     companion object {
@@ -153,7 +165,9 @@ internal data class InvestModel(
                 overall = if (o.isNull("overall")) null else o.getDouble("overall"),
                 period = if (o.isNull("period")) null else o.getDouble("period"),
                 series = (0 until (series?.length() ?: 0)).map { series!!.getDouble(it).toFloat() },
-                asOf = o.optString("asOf")
+                asOf = o.optString("asOf"),
+                // Missing from a cache written before there was one.
+                day = if (!o.has("day") || o.isNull("day")) null else o.getDouble("day")
             )
         }.getOrNull()
     }
@@ -195,6 +209,14 @@ private fun PeriodChip(model: InvestModel) {
     Chip("${signedPercent(period)} · 3M", tint = gainColor(period))
 }
 
+/** "+0.4% · 1D": the latest day's move. */
+@Composable
+private fun DayChip(model: InvestModel) {
+    val day = model.day ?: return
+    Chip("${signedPercent(day)} · 1D", tint = gainColor(day))
+    Spacer(GlanceModifier.width(6.dp))
+}
+
 /** One cell: the overall return, big. */
 @Composable
 private fun Tiny(model: InvestModel) {
@@ -233,6 +255,8 @@ private fun Full(model: InvestModel, width: Dp, height: Dp) {
                 Title("Portfolio")
                 Subtitle(if (narrow) MASKED else listOf("Value $MASKED", model.asOf).filter { it.isNotEmpty() }.joinToString(" · "))
             }
+            // Both chips need room beside the title.
+            if (width >= 250.dp) DayChip(model)
             if (!narrow) PeriodChip(model)
         }
         Spacer(GlanceModifier.height(8.dp))

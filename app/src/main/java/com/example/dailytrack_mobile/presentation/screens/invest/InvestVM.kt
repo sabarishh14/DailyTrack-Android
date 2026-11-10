@@ -62,11 +62,32 @@ class InvestVM @Inject constructor(
 
     fun onAction(action: InvestAction) {
         when (action) {
-            is InvestAction.SelectTab -> _state.update {
-                it.copy(
-                    selectedTab = action.tab,
-                    chartPoints = getFilteredPoints(it.historicalSnapshots, it.selectedTimeRange, action.tab, it.hiddenCategories)
-                )
+            is InvestAction.SelectTab -> {
+                _state.update {
+                    it.copy(
+                        selectedTab = action.tab,
+                        chartPoints = getFilteredPoints(it.historicalSnapshots, it.selectedTimeRange, action.tab, it.hiddenCategories)
+                    )
+                }
+                loadMoversIfDue()
+            }
+
+            is InvestAction.OpenDayComparison -> {
+                // The holdings sheet, on the latest day against the one before.
+                val movers = _state.value.movers[action.type] ?: return
+                _state.update {
+                    it.copy(
+                        isHoldingsSheetOpen = true,
+                        snapshotDate = movers.date,
+                        snapshotType = action.type,
+                        snapshotHoldings = emptyList(),
+                        compareDate = movers.previousDate,
+                        compareHoldings = emptyList(),
+                        snapshotError = null,
+                        isComparePickerOpen = false
+                    )
+                }
+                loadSnapshotHoldings()
             }
             is InvestAction.SelectTimeRange -> _state.update {
                 it.copy(
@@ -203,6 +224,42 @@ class InvestVM @Inject constructor(
                     }
                 )
             }
+        }
+    }
+
+    // -- The day's movers -------------------------------------------------------
+
+    private var moversJob: Job? = null
+
+    /**
+     * The open Stocks or Funds tab's biggest price moves between the last two
+     * snapshots, unless they're already loaded for those two days.
+     */
+    private fun loadMoversIfDue(forceRefresh: Boolean = false) {
+        val s = _state.value
+        val type = when (s.selectedTab) {
+            InvestTab.STOCKS -> HoldingsType.EQUITY
+            InvestTab.MUTUAL_FUNDS -> HoldingsType.MUTUAL_FUNDS
+            else -> return
+        }
+        val (latest, previous) = s.availableSnapshotDates.take(2).takeIf { it.size == 2 } ?: return
+        val loaded = s.movers[type]
+        if (!forceRefresh && loaded?.date == latest && loaded.previousDate == previous) return
+        moversJob?.cancel()
+        moversJob = viewModelScope.launch {
+            val now = async { fetchHoldings(latest, type) }
+            val before = async { fetchHoldings(previous, type) }
+            val to = now.await().getOrNull() ?: return@launch
+            val from = before.await().getOrNull()?.associateBy { it.symbol } ?: return@launch
+            // Only what was held both days: a price move, not a buy or a sale.
+            val held = to.mapNotNull { row -> from[row.symbol]?.let { HoldingComparison(row.symbol, it, row) } }
+            val movers = DayMovers(
+                date = latest,
+                previousDate = previous,
+                gainers = held.filter { it.pricePercent > 0.0001 }.sortedByDescending { it.pricePercent }.take(MOVERS_EACH_WAY),
+                losers = held.filter { it.pricePercent < -0.0001 }.sortedBy { it.pricePercent }.take(MOVERS_EACH_WAY)
+            )
+            _state.update { it.copy(movers = it.movers + (type to movers)) }
         }
     }
 
@@ -380,6 +437,7 @@ class InvestVM @Inject constructor(
                         )
                         nextState.copy(chartPoints = getFilteredPoints(nextState.historicalSnapshots, nextState.selectedTimeRange, nextState.selectedTab, nextState.hiddenCategories))
                     }
+                    loadMoversIfDue(forceRefresh)
                     repository.getPriceTimes().onSuccess { times -> _state.update { it.copy(priceTimes = times) } }
                 }
             } else {
@@ -412,50 +470,6 @@ class InvestVM @Inject constructor(
                     }
                 }
             }
-            .mapNotNull { snapshot ->
-                val curr = when (tab) {
-                    InvestTab.OVERVIEW -> {
-                        var sum = 0.0
-                        if (InvestCategory.STOCKS !in hiddenCategories) sum += (snapshot.currStocks ?: 0.0)
-                        if (InvestCategory.MUTUAL_FUNDS !in hiddenCategories) sum += (snapshot.currMf ?: 0.0)
-                        if (InvestCategory.RETIREMENT !in hiddenCategories) sum += (snapshot.currProv ?: 0.0)
-                        if (InvestCategory.FD !in hiddenCategories) sum += (snapshot.currFixed ?: 0.0)
-                        if (InvestCategory.GOLD !in hiddenCategories) sum += (snapshot.currGold ?: 0.0)
-                        sum
-                    }
-                    InvestTab.STOCKS -> snapshot.currStocks
-                    InvestTab.MUTUAL_FUNDS -> snapshot.currMf
-                    InvestTab.RETIREMENT -> snapshot.currProv
-                    InvestTab.FD -> snapshot.currFixed
-                    InvestTab.GOLD -> snapshot.currGold
-                    InvestTab.REAL_ESTATE -> null
-                }?.toFloat()
-                
-                val inv = when (tab) {
-                    InvestTab.OVERVIEW -> {
-                        var sum = 0.0
-                        if (InvestCategory.STOCKS !in hiddenCategories) sum += (snapshot.invStocks ?: 0.0)
-                        if (InvestCategory.MUTUAL_FUNDS !in hiddenCategories) sum += (snapshot.invMf ?: 0.0)
-                        if (InvestCategory.RETIREMENT !in hiddenCategories) sum += (snapshot.invProv ?: 0.0)
-                        if (InvestCategory.FD !in hiddenCategories) sum += (snapshot.invFixed ?: 0.0)
-                        if (InvestCategory.GOLD !in hiddenCategories) sum += (snapshot.invGold ?: 0.0)
-                        sum
-                    }
-                    InvestTab.STOCKS -> snapshot.invStocks
-                    InvestTab.MUTUAL_FUNDS -> snapshot.invMf
-                    InvestTab.RETIREMENT -> snapshot.invProv
-                    InvestTab.FD -> snapshot.invFixed
-                    InvestTab.GOLD -> snapshot.invGold
-                    InvestTab.REAL_ESTATE -> null
-                }?.toFloat()
-
-                if (curr != null && curr > 0f) {
-                    ChartPoint(
-                        date = snapshot.date.substringBefore("T"),
-                        invested = inv ?: 0f,
-                        current = curr
-                    )
-                } else null
-            }
+            .mapNotNull { it.pointFor(tab, hiddenCategories) }
     }
 }

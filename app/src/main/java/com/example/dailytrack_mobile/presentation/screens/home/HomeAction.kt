@@ -10,4 +10,6 @@ sealed class HomeAction {
     /** [budget] null removes the credit card's monthly budget. */
     data class SetCardBudget(val account: String, val budget: Double?) : HomeAction()
     data object ClearNotice : HomeAction()
+    /** The screen came back to the foreground. */
+    data object Resumed : HomeAction()
 }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import javax.inject.Inject
 
 @HiltViewModel
@@ -34,6 +35,9 @@ class HomeVM @Inject constructor(
     val state: StateFlow<HomeState> = _state.asStateFlow()
 
     private var cachedLatestSnapshot: PortfolioSnapshotDto? = null
+
+    /** Showing this month rather than one picked by hand, so it follows the calendar. */
+    private var followsCurrentMonth = true
 
     init {
         // So low-balance alerts reach this phone even for transactions added on the web.
@@ -183,8 +187,20 @@ class HomeVM @Inject constructor(
         when (action) {
             is HomeAction.Refresh -> loadAccountsAndTransactions(forceRefresh = action.forceRefresh)
             is HomeAction.DateSelected -> {
+                val now = LocalDate.now()
+                followsCurrentMonth = action.month == now.month && action.year == now.year
                 _state.update { it.copy(selectedMonth = action.month, selectedYear = action.year) }
                 loadAccountsAndTransactions()
+            }
+            HomeAction.Resumed -> {
+                // The app can sit in memory across the 1st: "this month" moves on with
+                // the calendar (and cards' used-this-month starts again), a picked month doesn't.
+                val now = LocalDate.now()
+                val s = _state.value
+                if (followsCurrentMonth && (s.selectedMonth != now.month || s.selectedYear != now.year)) {
+                    _state.update { it.copy(selectedMonth = now.month, selectedYear = now.year) }
+                    loadAccountsAndTransactions(forceRefresh = true)
+                }
             }
             is HomeAction.SetMinBalance -> setMinBalance(action.account, action.min)
             is HomeAction.SetCardBudget -> setCardBudget(action.account, action.budget)

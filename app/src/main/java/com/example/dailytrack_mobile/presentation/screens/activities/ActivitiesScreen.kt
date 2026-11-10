@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRefreshBox
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import java.time.Month
@@ -64,6 +65,14 @@ fun ActivitiesScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val dims = Dimens.current
+
+    // Coming back on a new month moves "this month" along with it.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.onAction(ActivitiesAction.Resumed)
+        }
+    }
 
     // Derived stats for the selected month
     val activeDays   = state.activityLog.count { it.activities.isNotEmpty() }

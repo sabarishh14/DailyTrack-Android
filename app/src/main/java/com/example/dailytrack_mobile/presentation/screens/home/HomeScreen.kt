@@ -69,7 +69,7 @@ import java.time.format.TextStyle
 import java.util.Calendar
 import java.util.Locale
 import kotlinx.coroutines.delay
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.dailytrack_mobile.presentation.components.DailyTrackPullToRefreshBox
 import com.example.dailytrack_mobile.presentation.components.transaction.BalanceLevel
 import com.example.dailytrack_mobile.presentation.components.transaction.balanceLevel
@@ -184,6 +184,13 @@ fun HomeScreen(
     val firstRun = canMoney && access.fullMoneyAccess && homeState.noAccounts
 
     val context = LocalContext.current
+    // Coming back to the app on a new month moves "this month" along with it.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            viewModel.onAction(HomeAction.Resumed)
+        }
+    }
     LaunchedEffect(homeState.notice) {
         homeState.notice?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()

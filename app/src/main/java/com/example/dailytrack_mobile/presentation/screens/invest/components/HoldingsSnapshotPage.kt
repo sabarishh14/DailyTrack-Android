@@ -1256,6 +1256,8 @@ private fun buildPresets(baseDate: String, candidates: List<String>): List<Pair<
     if (parsed.isEmpty()) return emptyList()
 
     val offsets = listOf(
+        // Snapshots sync daily, so this is the one before: Friday's for a Monday.
+        "1D ago" to base.minusDays(1),
         "1W ago" to base.minusWeeks(1),
         "1M ago" to base.minusMonths(1),
         "3M ago" to base.minusMonths(3),

@@ -20,7 +20,10 @@ class ActivitiesVM @Inject constructor(
 
     private val _state = MutableStateFlow(ActivitiesState())
     val state = _state.asStateFlow()
-    
+
+    /** Showing this month rather than one picked by hand, so it follows the calendar. */
+    private var followsCurrentMonth = true
+
     init {
         val now = LocalDate.now()
         _state.update { it.copy(selectedMonth = now.month, selectedYear = now.year, allActivities = emptyList(), activityLog = emptyList()) }
@@ -39,8 +42,19 @@ class ActivitiesVM @Inject constructor(
     fun onAction(action: ActivitiesAction) {
         when (action) {
             is ActivitiesAction.OnMonthChanged -> {
+                val now = LocalDate.now()
+                followsCurrentMonth = action.month == now.month && action.year == now.year
                 _state.update { it.copy(selectedMonth = action.month, selectedYear = action.year) }
                 filterActivities()
+            }
+            ActivitiesAction.Resumed -> {
+                // Back on a new month: "this month" moves on with it, a picked month stays.
+                val now = LocalDate.now()
+                val s = _state.value
+                if (followsCurrentMonth && (s.selectedMonth != now.month || s.selectedYear != now.year)) {
+                    _state.update { it.copy(selectedMonth = now.month, selectedYear = now.year) }
+                    filterActivities()
+                }
             }
             is ActivitiesAction.Refresh -> {
                 loadActivities(forceRefresh = true)

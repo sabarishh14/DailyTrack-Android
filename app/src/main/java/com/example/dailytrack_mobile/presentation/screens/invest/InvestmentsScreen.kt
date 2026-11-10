@@ -42,6 +42,7 @@ import com.example.dailytrack_mobile.presentation.screens.invest.components.Asse
 import com.example.dailytrack_mobile.presentation.screens.invest.components.CategorySummaryCard
 import com.example.dailytrack_mobile.presentation.screens.invest.components.CategoryVisibilitySheet
 import com.example.dailytrack_mobile.presentation.screens.invest.components.ChartLegend
+import com.example.dailytrack_mobile.presentation.screens.invest.components.DayMoversCard
 import com.example.dailytrack_mobile.presentation.screens.invest.components.EmptyHoldingsState
 import com.example.dailytrack_mobile.presentation.screens.invest.components.FilterPills
 import com.example.dailytrack_mobile.presentation.screens.invest.components.HoldingDetailPage
@@ -352,6 +353,27 @@ fun InvestmentsScreen(
                         // Funds outside Kite are managed from their tab (FundsSheet).
                         if (state.selectedTab == InvestTab.MUTUAL_FUNDS && fundsAvailable) {
                             item { FundsEntryCard(onClick = { showFunds = true }) }
+                        }
+                        // The day's biggest price moves, above the holdings themselves.
+                        val moversType = when (state.selectedTab) {
+                            InvestTab.STOCKS -> HoldingsType.EQUITY
+                            InvestTab.MUTUAL_FUNDS -> HoldingsType.MUTUAL_FUNDS
+                            else -> null
+                        }
+                        val movers = moversType?.let { state.movers[it] }
+                            ?.takeIf { it.gainers.isNotEmpty() || it.losers.isNotEmpty() }
+                        if (moversType != null && movers != null) {
+                            item {
+                                DayMoversCard(
+                                    movers = movers,
+                                    onOpen = { symbol ->
+                                        state.holdings
+                                            .firstOrNull { it.name == symbol && it.historyType == moversType }
+                                            ?.let { viewModel.onAction(InvestAction.OpenHoldingDetail(it)) }
+                                    },
+                                    onSeeAll = { viewModel.onAction(InvestAction.OpenDayComparison(moversType)) }
+                                )
+                            }
                         }
                         // Show individual holdings directly (TabSummaryHeader is removed as cards below graph show it)
                         val filtered = state.filteredHoldings
