@@ -57,6 +57,7 @@ data class SettingsState(
     val reconcileAccounts: List<AccountInfo> = emptyList(),
     val isLoadingReconcileAccounts: Boolean = false,
     val letterboxdSync: SyncTaskState = SyncTaskState(),
+    val letterboxdImport: SyncTaskState = SyncTaskState(),
     /** Transactions still queued for Sheets, or null before it has been checked. */
     val pendingSheetSyncCount: Int? = null,
     val isLetterboxdDialogVisible: Boolean = false,

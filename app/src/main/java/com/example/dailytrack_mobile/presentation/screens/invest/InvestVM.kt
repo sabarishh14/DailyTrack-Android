@@ -137,6 +137,15 @@ class InvestVM @Inject constructor(
                 }
             }
 
+            is InvestAction.DeleteSnapshot -> viewModelScope.launch {
+                repository.deleteSnapshot(action.date)
+                    .onSuccess {
+                        onAction(InvestAction.CloseHoldingsSnapshot)
+                        loadInvestments(forceRefresh = true)
+                    }
+                    .onFailure { e -> _state.update { it.copy(snapshotError = e.message ?: "Couldn't delete") } }
+            }
+
             is InvestAction.SelectSnapshotType -> {
                 if (_state.value.snapshotType == action.type) return
                 _state.update {

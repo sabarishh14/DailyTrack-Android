@@ -40,5 +40,9 @@ data class LetterboxdSyncEventDto(
     @Json(name = "success") val success: Boolean? = null,
     @Json(name = "message") val message: String? = null,
     @Json(name = "added_movies") val addedMovies: Int? = null,
-    @Json(name = "added_logs") val addedLogs: Int? = null
+    @Json(name = "added_logs") val addedLogs: Int? = null,
+    // An export import's summary also says these.
+    @Json(name = "updated_logs") val updatedLogs: Int? = null,
+    @Json(name = "marked_watched") val markedWatched: Int? = null,
+    @Json(name = "skipped") val skipped: Int? = null
 )

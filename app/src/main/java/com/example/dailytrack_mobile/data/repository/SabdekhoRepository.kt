@@ -14,6 +14,8 @@ import com.example.dailytrack_mobile.data.remote.dto.LetterboxdSyncRequestDto
 import com.example.dailytrack_mobile.data.remote.dto.MediaShowDto
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.SharedFlow
 import javax.inject.Inject
@@ -519,30 +521,7 @@ class SabdekhoRepository @Inject constructor(
             }
 
             val response = api.syncLetterboxdRss(LetterboxdSyncRequestDto(username.trim(), fast = fast.takeIf { it }))
-            if (!response.isSuccessful) {
-                throw Exception("Letterboxd sync failed (HTTP ${response.code()})")
-            }
-            val body = response.body() ?: throw Exception("Letterboxd sync returned no data")
-
-            val adapter = moshi.adapter(LetterboxdSyncEventDto::class.java)
-            var last: LetterboxdSyncEventDto? = null
-
-            body.use {
-                val source = it.source()
-                while (true) {
-                    val line = source.readUtf8Line() ?: break
-                    if (line.isBlank()) continue
-                    val event = runCatching { adapter.fromJson(line) }.getOrNull() ?: continue
-                    last = event
-                    val status = event.status
-                    if (status != null && status != "complete") onProgress(status)
-                }
-            }
-
-            val result = last ?: throw Exception("Letterboxd sync ended without a result")
-            if (result.success == false) {
-                throw Exception(result.message ?: "Letterboxd sync failed")
-            }
+            val result = readLetterboxdStream(response, "Letterboxd sync", onProgress)
 
             clearCache()
             demoDataManager.notifyDataUpdated()
@@ -554,5 +533,68 @@ class SabdekhoRepository @Inject constructor(
                 else -> "Imported $logs log${if (logs == 1) "" else "s"} and $movies new film${if (movies == 1) "" else "s"}."
             }
         }
+    }
+
+    /**
+     * A Letterboxd data export (its ZIP, or diary.csv) into the diary, the same
+     * as the web's Settings: diary watches with ratings, reviews, likes and tags,
+     * and films only marked watched into the library. Progress as for the sync.
+     */
+    suspend fun importLetterboxdExport(
+        bytes: ByteArray,
+        fileName: String,
+        onProgress: (String) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (demoDataManager.isDemoModeEnabled()) {
+                return@runCatching "Demo mode — Letterboxd import is disabled."
+            }
+            val part = okhttp3.MultipartBody.Part.createFormData(
+                "file", fileName, bytes.toRequestBody("application/octet-stream".toMediaType())
+            )
+            val result = readLetterboxdStream(api.importLetterboxdExport(part), "Import", onProgress)
+
+            clearCache()
+            demoDataManager.notifyDataUpdated()
+
+            listOfNotNull(
+                "${result.addedLogs ?: 0} watch${if (result.addedLogs == 1) "" else "es"} added",
+                result.markedWatched?.takeIf { it > 0 }?.let { "$it more films marked watched" },
+                result.updatedLogs?.takeIf { it > 0 }?.let { "$it filled in" },
+                result.skipped?.takeIf { it > 0 }?.let { "$it not found" }
+            ).joinToString(" · ")
+        }
+    }
+
+    /** The server's newline-delimited JSON: progress lines carry a `status`, the last line the result. */
+    private fun readLetterboxdStream(
+        response: retrofit2.Response<okhttp3.ResponseBody>,
+        what: String,
+        onProgress: (String) -> Unit
+    ): LetterboxdSyncEventDto {
+        val body = response.body()
+        if (!response.isSuccessful || body == null) {
+            // A refused upload says why in a JSON message.
+            val message = response.errorBody()?.string()?.let {
+                runCatching { org.json.JSONObject(it).optString("message") }.getOrNull()?.takeIf { m -> m.isNotBlank() }
+            }
+            throw Exception(message ?: "$what failed (HTTP ${response.code()})")
+        }
+        val adapter = moshi.adapter(LetterboxdSyncEventDto::class.java)
+        var last: LetterboxdSyncEventDto? = null
+        body.use {
+            val source = it.source()
+            while (true) {
+                val line = source.readUtf8Line() ?: break
+                if (line.isBlank()) continue
+                val event = runCatching { adapter.fromJson(line) }.getOrNull() ?: continue
+                last = event
+                val status = event.status
+                if (status != null && status != "complete") onProgress(status)
+            }
+        }
+        val result = last ?: throw Exception("$what ended without a result")
+        if (result.success == false) throw Exception(result.message ?: "$what failed")
+        return result
     }
 }

@@ -118,7 +118,8 @@ fun CinemaMovieCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = listOf(movie.year, "SabDekho").filter { it.isNotBlank() }.joinToString(" · "),
+                        // Saving logs it in SabDekho as a theatre trip (the server tags it).
+                        text = listOf(movie.year, "🍿 Theatre trip in SabDekho").filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

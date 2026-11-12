@@ -273,6 +273,9 @@ internal fun SyncSettingsSubScreen(
                             onClick = { onAction(SettingsAction.OnLetterboxdDialogVisible(true)) }
                         )
                     }
+                    if (canImportLetterboxd) LetterboxdExportCard(state.letterboxdImport) {
+                        onAction(SettingsAction.OnLetterboxdExportPicked(it))
+                    }
                 }
             }
         }
@@ -332,6 +335,44 @@ private fun SyncActionItem(
         },
         onClick = onClick
     )
+}
+
+/** Letterboxd's page that makes the export ZIP (signed in there). */
+private const val LETTERBOXD_EXPORT = "https://letterboxd.com/user/exportdata"
+
+/**
+ * The whole Letterboxd history from its data export (ZIP or diary.csv), as on
+ * the web's Settings: a file to pick, and the link to download one.
+ */
+@Composable
+private fun LetterboxdExportCard(task: SyncTaskState, onPicked: (android.net.Uri) -> Unit) {
+    val picker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) onPicked(uri) }
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    SettingsCard {
+        SyncActionItem(
+            icon = Icons.Default.Inventory2,
+            title = "Import Letterboxd export",
+            idleSubtitle = "Your whole diary, with ratings, reviews, likes and tags. Watches tagged theatre or cinema count as theatre trips.",
+            task = task,
+            onClick = {
+                picker.launch(arrayOf("application/zip", "application/x-zip-compressed", "text/csv",
+                    "text/comma-separated-values", "application/octet-stream"))
+            }
+        )
+        Text(
+            text = "Download your export ↗",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier
+                .padding(start = 66.dp, bottom = 12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { uriHandler.openUri(LETTERBOXD_EXPORT) }
+                .padding(vertical = 4.dp, horizontal = 2.dp)
+        )
+    }
 }
 
 @Composable

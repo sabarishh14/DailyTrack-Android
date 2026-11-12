@@ -114,7 +114,7 @@ fun EditDiaryLogDialog(
                 OutlinedTextField(
                     value = tags,
                     onValueChange = { tags = it },
-                    label = { Text("Tags (e.g. IMAX, Netflix, Theatre)") },
+                    label = { Text("Tags (e.g. IMAX, Netflix)") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(dims.buttonCornerRadius),
                     singleLine = true,

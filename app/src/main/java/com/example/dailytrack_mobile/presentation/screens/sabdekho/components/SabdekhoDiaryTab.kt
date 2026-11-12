@@ -37,6 +37,7 @@ import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.allLogIds
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.episodeLabel
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.groupDiaryLogs
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.isTheatreTag
 import com.example.dailytrack_mobile.presentation.util.Dimens
 
 @Composable
@@ -401,14 +402,18 @@ fun DiaryLogCard(
                         }
                     }
 
-                    // Tags (IMAX, Theatre, Netflix, etc.)
+                    // Tags (IMAX, Netflix, a theatre trip, etc.)
                     if (!log.tags.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            log.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }.take(3).forEach { tag ->
+                            // A theatre trip's own tags show as one "🍿 Theatre", first.
+                            val all = log.tags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                            val shown = (if (all.any { isTheatreTag(it) }) listOf("🍿 Theatre") else emptyList()) +
+                                all.filterNot { isTheatreTag(it) }
+                            shown.take(3).forEach { tag ->
                                 Surface(
                                     color = MaterialTheme.colorScheme.surfaceVariant,
                                     shape = RoundedCornerShape(4.dp)

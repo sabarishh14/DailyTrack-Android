@@ -49,6 +49,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
@@ -74,6 +77,9 @@ import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoActio
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.SabdekhoState
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.WatchedEpisodes
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.addTags
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.hasTheatre
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.isTheatreTag
+import com.example.dailytrack_mobile.presentation.screens.sabdekho.withTheatre
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.allLogIds
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.hasTag
 import com.example.dailytrack_mobile.presentation.screens.sabdekho.logTargetLabel
@@ -144,6 +150,12 @@ fun LogPage(state: SabdekhoState, onAction: (SabdekhoAction) -> Unit) {
                 review = state.logReview,
                 onReview = { onAction(SabdekhoAction.UpdateLogForm(review = it)) }
             )
+            if (isMovie) {
+                val inTheatre = hasTheatre(state.logPlatformTag)
+                TheatreSwitch(on = inTheatre) {
+                    onAction(SabdekhoAction.UpdateLogForm(platformTag = withTheatre(state.logPlatformTag, !inTheatre, state.logDate)))
+                }
+            }
             TagsSection(
                 tags = state.logPlatformTag,
                 quickTags = state.quickTags,
@@ -548,6 +560,41 @@ private fun ReviewSection(review: String, onReview: (String) -> Unit) {
     }
 }
 
+/** "🍿 Watched in a theatre": makes the film's watch a theatre trip, for the theatre stats. */
+@Composable
+private fun TheatreSwitch(on: Boolean, onToggle: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val red = androidx.compose.ui.graphics.Color(0xFFE53935)
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(14.dp),
+        color = if (on) red.copy(alpha = 0.1f) else colors.surfaceContainer,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (on) red.copy(alpha = 0.5f) else colors.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🍿", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "Watched in a theatre",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = if (on) colors.onSurface else colors.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            Switch(
+                checked = on,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(checkedTrackColor = red, checkedThumbColor = androidx.compose.ui.graphics.Color.White)
+            )
+        }
+    }
+}
+
 /** The tags on this log and the ones used most, each a tap to add or remove; new ones typed below. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -558,7 +605,8 @@ private fun TagsSection(
     onDraft: (String) -> Unit,
     onTags: (String) -> Unit
 ) {
-    val current = remember(tags) { tags.split(',').map { it.trim() }.filter { it.isNotEmpty() } }
+    // Theatre tags are the switch above, not chips.
+    val current = remember(tags) { tags.split(',').map { it.trim() }.filter { it.isNotEmpty() && !isTheatreTag(it) } }
     val chips = remember(current, quickTags) { (current + quickTags).distinctBy { it.lowercase() } }
     val commit = {
         if (draft.isNotBlank()) onTags(addTags(tags, draft))

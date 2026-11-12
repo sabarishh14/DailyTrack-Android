@@ -319,7 +319,9 @@ data class MediaStatsMovieDto(
     // Null on theatre visits not yet rated; always set on the highest-rated lists.
     @Json(name = "rating") val rating: Float? = null,
     @Json(name = "release_year") val release_year: String? = null,
-    @Json(name = "tags") val tags: List<String> = emptyList()
+    @Json(name = "tags") val tags: List<String> = emptyList(),
+    /** Theatre visits: the year they went. */
+    @Json(name = "year") val year: Int? = null
 )
 
 @JsonClass(generateAdapter = true)

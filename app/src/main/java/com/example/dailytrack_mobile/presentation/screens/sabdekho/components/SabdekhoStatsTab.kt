@@ -38,6 +38,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -352,6 +354,35 @@ private fun LazyListScope.movieStatsItems(
                 })
             }
         }
+    }
+
+    // No theatre trips yet: how to get them, where they'd be (as on the web).
+    if ((theatre?.total_visits ?: 0) == 0) {
+        item(key = "movie-theatre-hint") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(TileShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("🍿", style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "Track your theatre trips: switch on Watched in a theatre when logging a film, " +
+                        "or add the ticket as a Cinema expense in Money.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    // All time: theatre trips each year, as on the web.
+    val tripsByYear = theatre?.movies?.mapNotNull { it.year }?.groupingBy { it }?.eachCount().orEmpty()
+    if (selectedYear == "all" && tripsByYear.size >= 2) {
+        item(key = "movie-theatre-years") { TheatreYears(tripsByYear) }
     }
 
     if (stats.by_month.isNotEmpty()) {
@@ -1285,6 +1316,88 @@ private fun ExtremeTile(item: ExtremeItem, accent: Color, modifier: Modifier = M
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Theatre trips by year: popcorn buckets, the web's StatsView TheatreYears
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val PopcornRed = Color(0xFFE53935)
+private val PopcornCream = Color(0xFFFBEEE0)
+private val PopcornKernels = listOf(Color(0xFFFFF3C4), Color(0xFFFFE48A))
+
+/** Each year a red-and-white striped bucket filled to its trips, popcorn piled
+ *  on top; the best year wears a 🍿. Years without a trip stay as gaps. */
+@Composable
+private fun TheatreYears(byYear: Map<Int, Int>) {
+    val first = byYear.keys.min()
+    val rows = (first..byYear.keys.max()).map { it to (byYear[it] ?: 0) }
+    val max = rows.maxOf { it.second }
+    val best = rows.first { it.second == max }
+    val fractions = animatedFractions(rows.map { it.second }, max, stagger = 60)
+    Column {
+        SectionHeader("Theatre trips by year") { HeaderNote("Best: ${best.first} · ${best.second}") }
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(rows.indices.toList(), key = { rows[it].first }) { i ->
+                val (year, count) = rows[i]
+                Column(modifier = Modifier.width(46.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.height(190.dp).fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+                        if (count > 0) {
+                            val fill = fractions.getOrElse(i) { 0f }.coerceAtLeast(0.12f)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = if (count == max) "🍿 $count" else count.toString(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Canvas(modifier = Modifier.width(38.dp).height(150.dp * fill + 10.dp)) {
+                                    val rim = 10.dp.toPx()
+                                    val top = rim
+                                    val h = size.height - rim
+                                    val w = size.width
+                                    // The bucket: narrower at the bottom, in stripes.
+                                    val bucket = Path().apply {
+                                        moveTo(0f, top); lineTo(w, top)
+                                        lineTo(w * 0.88f, top + h); lineTo(w * 0.12f, top + h); close()
+                                    }
+                                    clipPath(bucket) {
+                                        val stripe = 7.dp.toPx()
+                                        var x = 0f
+                                        var red = true
+                                        while (x < w) {
+                                            drawRect(if (red) PopcornRed else PopcornCream, Offset(x, top), Size(stripe, h))
+                                            x += stripe
+                                            red = !red
+                                        }
+                                    }
+                                    // Popcorn piled over the rim.
+                                    val r = 5.dp.toPx()
+                                    listOf(0.12f to 0.75f, 0.32f to 0.35f, 0.5f to 0.7f, 0.68f to 0.3f, 0.88f to 0.75f)
+                                        .forEachIndexed { k, (fx, fy) ->
+                                            drawCircle(PopcornKernels[k % 2], r, Offset(w * fx, rim * fy + r * 0.2f))
+                                        }
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = year.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

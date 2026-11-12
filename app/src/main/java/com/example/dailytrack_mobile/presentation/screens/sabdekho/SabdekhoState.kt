@@ -114,6 +114,27 @@ internal fun toggleTag(text: String, tag: String): String {
         .joinToString(", ")
 }
 
+/**
+ * A theatre trip is a watch tagged overall-theatres or theatres-… (the server's
+ * rule; Money's Cinema expenses add them too). The log form shows a switch for
+ * it and keeps these tags out of the tag chips, as on the web.
+ */
+internal fun isTheatreTag(tag: String): Boolean =
+    tag.trim().lowercase().let { it == "overall-theatres" || it.startsWith("theatres-") }
+
+internal fun hasTheatre(text: String): Boolean = text.split(',').any { isTheatreTag(it) }
+
+private val THEATRE_YEAR = Regex("^theatres-\\d{4}$", RegexOption.IGNORE_CASE)
+
+/** [text] as a theatre trip (overall-theatres and [date]'s year) or not; other theatre tags kept. */
+internal fun withTheatre(text: String, on: Boolean, date: String): String {
+    val all = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    val own = all.filterNot { isTheatreTag(it) }
+    if (!on) return own.joinToString(", ")
+    val kept = all.filter { isTheatreTag(it) && !THEATRE_YEAR.matches(it) && !it.equals("overall-theatres", ignoreCase = true) }
+    return (own + "overall-theatres" + "theatres-${date.take(4)}" + kept).joinToString(", ")
+}
+
 /** [text] with each comma-separated tag typed in [typed] added, unless it's there already. */
 internal fun addTags(text: String, typed: String): String =
     typed.split(',').map { it.trim() }.filter { it.isNotEmpty() }

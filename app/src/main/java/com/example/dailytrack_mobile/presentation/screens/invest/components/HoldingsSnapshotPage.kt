@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,6 +88,10 @@ fun HoldingsSnapshotPage(
     val snapshotDate = state.snapshotDate ?: return
     val type = state.snapshotType
     val close = { onAction(InvestAction.CloseHoldingsSnapshot) }
+    // Like the web's list of snapshots: those who can edit may delete a day.
+    val canDelete = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+        .canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
+    var confirmDelete by remember { mutableStateOf(false) }
 
     FullScreenPage(onDismiss = close) {
         PageHeader(
@@ -95,8 +100,34 @@ fun HoldingsSnapshotPage(
             } else {
                 formatPointDate(snapshotDate)
             },
-            onBack = close
+            onBack = close,
+            action = if (canDelete && !state.isComparing) {
+                {
+                    IconButton(onClick = { confirmDelete = true }) {
+                        Icon(
+                            imageVector = Icons.Outlined.Delete,
+                            contentDescription = "Delete this snapshot",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else null
         )
+
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Delete the snapshot of ${formatPointDate(snapshotDate)}?") },
+                text = { Text("Its holdings go with it.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmDelete = false
+                        onAction(InvestAction.DeleteSnapshot(snapshotDate))
+                    }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+            )
+        }
 
         Spacer(Modifier.height(8.dp))
 
@@ -869,7 +900,12 @@ private fun HeroDivider() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-internal fun PageHeader(subtitle: String, onBack: () -> Unit, title: String = "Holdings") {
+internal fun PageHeader(
+    subtitle: String,
+    onBack: () -> Unit,
+    title: String = "Holdings",
+    action: (@Composable () -> Unit)? = null
+) {
     val dims = Dimens.current
     Row(
         modifier = Modifier
@@ -899,6 +935,7 @@ internal fun PageHeader(subtitle: String, onBack: () -> Unit, title: String = "H
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        action?.invoke()
     }
 }
 

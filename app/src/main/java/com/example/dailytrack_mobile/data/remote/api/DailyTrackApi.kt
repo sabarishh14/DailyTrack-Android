@@ -337,6 +337,16 @@ interface DailyTrackApi {
         @Body request: LetterboxdSyncRequestDto
     ): Response<ResponseBody>
 
+    /** A Letterboxd data export (ZIP or diary.csv); streams progress like the RSS sync. */
+    @Streaming
+    @Multipart
+    @POST("/api/movies/import/letterboxd")
+    suspend fun importLetterboxdExport(@Part file: MultipartBody.Part): Response<ResponseBody>
+
+    /** Forgets one day's snapshot and the holdings behind it. */
+    @DELETE("/api/investments/{date}")
+    suspend fun deleteSnapshot(@Path("date") date: String): ApiResponseDto
+
     @GET("/")
     suspend fun checkHealth(): Response<ResponseBody>
 

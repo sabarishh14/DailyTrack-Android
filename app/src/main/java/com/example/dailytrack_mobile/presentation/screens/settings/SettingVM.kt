@@ -305,6 +305,10 @@ class SettingsVM @Inject constructor(
                 if (!_state.value.letterboxdSync.isRunning) syncLetterboxd(action.username)
             }
 
+            is SettingsAction.OnLetterboxdExportPicked -> {
+                if (!_state.value.letterboxdImport.isRunning) importLetterboxdExport(action.uri)
+            }
+
             is SettingsAction.OnServerStatusClicked -> {
                 checkServerStatus()
             }
@@ -633,6 +637,39 @@ class SettingsVM @Inject constructor(
                 }
                 .onFailure {
                     _state.update { it.copy(isLoadingReconcileAccounts = false) }
+                }
+        }
+    }
+
+    private fun importLetterboxdExport(uri: android.net.Uri) {
+        val repository = sabdekhoRepository ?: return
+        viewModelScope.launch {
+            _state.update { it.copy(letterboxdImport = SyncTaskState(isRunning = true, message = "Reading your export...")) }
+            val picked = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val resolver = context.contentResolver
+                    val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "letterboxd.zip"
+                    val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Couldn't open that file")
+                    if (bytes.size > 20 * 1024 * 1024) error("That file is too big for a Letterboxd export")
+                    name to bytes
+                }
+            }
+            picked.onFailure { error ->
+                _state.update { it.copy(letterboxdImport = SyncTaskState(isSuccess = false, message = error.message ?: "Couldn't read that file")) }
+                return@launch
+            }
+            val (name, bytes) = picked.getOrThrow()
+            repository.importLetterboxdExport(bytes, name) { progress ->
+                _state.update { it.copy(letterboxdImport = it.letterboxdImport.copy(message = progress)) }
+            }
+                .onSuccess { message ->
+                    _state.update { it.copy(letterboxdImport = SyncTaskState(isRunning = false, isSuccess = true, message = message)) }
+                }
+                .onFailure { error ->
+                    _state.update {
+                        it.copy(letterboxdImport = SyncTaskState(isRunning = false, isSuccess = false, message = error.message ?: "Import failed"))
+                    }
                 }
         }
     }

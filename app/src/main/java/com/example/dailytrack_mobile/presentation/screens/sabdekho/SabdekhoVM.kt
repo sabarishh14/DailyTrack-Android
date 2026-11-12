@@ -758,7 +758,9 @@ class SabdekhoVM @Inject constructor(
             review = s.logReview.trim().takeIf { it.isNotEmpty() },
             liked = s.logLiked,
             rewatch = s.logRewatch,
-            tags = s.logPlatformTag.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+            // A theatre trip's year tag follows the watch date.
+            tags = (if (isMovie && hasTheatre(s.logPlatformTag)) withTheatre(s.logPlatformTag, true, s.logDate) else s.logPlatformTag)
+                .split(',').map { it.trim() }.filter { it.isNotEmpty() }
                 .joinToString(", ").takeIf { it.isNotEmpty() }
         )
 

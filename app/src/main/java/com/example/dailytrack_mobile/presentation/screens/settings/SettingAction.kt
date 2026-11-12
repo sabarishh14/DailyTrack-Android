@@ -32,6 +32,8 @@ sealed interface SettingsAction {
     data class OnReconcileBalancesSheetVisible(val visible: Boolean) : SettingsAction
     data class OnLetterboxdDialogVisible(val visible: Boolean) : SettingsAction
     data class OnLetterboxdSyncStarted(val username: String) : SettingsAction
+    /** A Letterboxd export picked in the file picker. */
+    data class OnLetterboxdExportPicked(val uri: android.net.Uri) : SettingsAction
     object OnServerStatusClicked : SettingsAction
     data class OnReminderToggled(val enabled: Boolean) : SettingsAction
     data class OnReminderTimeChanged(val time: LocalTime) : SettingsAction

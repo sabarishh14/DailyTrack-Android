@@ -44,6 +44,14 @@ class InvestmentsRepository @Inject constructor(
      * [freshPrices]: the person asked (pulled to refresh, or just opened the app),
      * so the server reprices stocks and funds now; a background reload doesn't.
      */
+    /** Forgets one day's snapshot and the holdings behind it. */
+    suspend fun deleteSnapshot(date: String): Result<Unit> = runCatching {
+        if (demoDataManager.isDemoModeEnabled()) error("Demo mode: nothing to delete")
+        val res = api.deleteSnapshot(date)
+        if (!res.success) error(res.message ?: "Couldn't delete")
+        clearCache()
+    }
+
     /** How fresh the prices are; none in demo mode. */
     suspend fun getPriceTimes(): Result<com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto?> = runCatching {
         if (demoDataManager.isDemoModeEnabled()) null else api.getPriceTimes()

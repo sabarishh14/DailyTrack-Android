@@ -29,6 +29,7 @@ object NetworkModule {
         "/api/sync/ocr-balances",
         "/api/sync/ocr-split",
         "/api/movies/sync/rss",
+        "/api/movies/import/letterboxd",
         "/api/funds/import"
     )
 

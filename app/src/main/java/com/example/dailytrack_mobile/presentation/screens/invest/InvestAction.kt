@@ -11,6 +11,8 @@ sealed class InvestAction {
     // Holdings snapshot sheet
     data class OpenHoldingsSnapshot(val date: String) : InvestAction()
     object CloseHoldingsSnapshot : InvestAction()
+    /** Deletes the open day's snapshot, then reloads. */
+    data class DeleteSnapshot(val date: String) : InvestAction()
     data class SelectSnapshotType(val type: HoldingsType) : InvestAction()
     /** Passing null drops back to the single-date view. */
     data class SelectCompareDate(val date: String?) : InvestAction()
