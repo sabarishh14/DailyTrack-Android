@@ -152,6 +152,24 @@ fun InvestmentsScreen(
     val state by viewModel.state.collectAsState()
     val dims = Dimens.current
     val fundsAvailable by fundsViewModel.available.collectAsState()
+    // The private vault: locked on this phone, it asks for the passphrase first;
+    // opened (or locked again), the portfolio loads afresh from it.
+    val vaultVM: com.example.dailytrack_mobile.presentation.screens.vault.VaultVM = hiltViewModel()
+    val vault by vaultVM.ui.collectAsState()
+    var vaultWasOpen by remember { mutableStateOf(vault.open) }
+    LaunchedEffect(vault.open, vault.state) {
+        if (vault.open != vaultWasOpen) {
+            vaultWasOpen = vault.open
+            viewModel.onAction(InvestAction.Refresh)
+        }
+    }
+    if (vault.closed) {
+        com.example.dailytrack_mobile.presentation.screens.vault.VaultGate(vault, vaultVM)
+        return
+    }
+    val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+    val canChangeVault = access.viewing == null &&
+        access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
     var showFunds by rememberSaveable { mutableStateOf(false) }
 
     var isValueMode by remember { mutableStateOf(true) }
@@ -199,6 +217,8 @@ fun InvestmentsScreen(
                 item {
                     PortfolioHeader(
                         state = state,
+                        vault = vault,
+                        canChangeVault = canChangeVault,
                         isValueMode = isValueMode,
                         onValueModeChanged = { isValueMode = it },
                         selectedPoint = selectedChartPoint,

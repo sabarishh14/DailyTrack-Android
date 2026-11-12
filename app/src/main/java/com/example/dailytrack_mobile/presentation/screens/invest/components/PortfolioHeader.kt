@@ -80,7 +80,9 @@ internal fun PortfolioHeader(
     onValueModeChanged: (Boolean) -> Unit,
     selectedPoint: ChartPoint? = null,
     onClearSelection: () -> Unit = {},
-    onOpenCategorySettings: () -> Unit = {}
+    onOpenCategorySettings: () -> Unit = {},
+    vault: com.example.dailytrack_mobile.data.vault.VaultUi = com.example.dailytrack_mobile.data.vault.VaultUi(),
+    canChangeVault: Boolean = false
 ) {
     val dims = Dimens.current
     val isSelected = selectedPoint != null
@@ -132,6 +134,8 @@ internal fun PortfolioHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                if (!isSelected) com.example.dailytrack_mobile.presentation.screens.vault.VaultChip(vault, canChangeVault)
 
                 if (isSelected) {
                     Surface(

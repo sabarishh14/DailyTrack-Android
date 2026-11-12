@@ -30,11 +30,13 @@ object NetworkModule {
         "/api/sync/ocr-split",
         "/api/movies/sync/rss",
         "/api/movies/import/letterboxd",
-        "/api/funds/import"
+        "/api/funds/import",
+        "/api/vault/cas"
     )
 
-    /** Never logged, even in debug builds: a statement and its password go up here. */
-    private val UNLOGGED_PATHS = listOf("/api/funds/import")
+    /** Never logged, even in debug builds: a statement and its password go up here, and
+     *  investments readable while they move in and out of the private vault. */
+    private val UNLOGGED_PATHS = listOf("/api/funds/import", "/api/vault/cas", "/api/vault/plain", "/api/vault/restore")
 
     /** Always about the signed-in person, even while viewing someone's shared data. */
     private val OWN_ONLY_PATHS = listOf(
@@ -42,7 +44,14 @@ object NetworkModule {
         "/api/devices",
         "/api/me/",
         "/api/shares",
-        "/api/admin/"
+        "/api/admin/",
+        // Your own vault's keys, and moving your own investments in and out.
+        "/api/vault/keys",
+        "/api/vault/plain",
+        "/api/vault/finish",
+        "/api/vault/cancel",
+        "/api/vault/restore",
+        "/api/vault/grants"
     )
 
     @Provides
@@ -53,7 +62,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideOkHttpClient(authManager: com.example.dailytrack_mobile.data.local.auth.AuthManager): OkHttpClient {
+    fun provideOkHttpClient(
+        authManager: com.example.dailytrack_mobile.data.local.auth.AuthManager,
+        vaultInterceptor: com.example.dailytrack_mobile.data.vault.VaultInterceptor
+    ): OkHttpClient {
         // BODY-level logging prints request/response headers (including the auth Bearer
         // token) and full payloads to Logcat. Only safe in debug builds.
         val loggingInterceptor = HttpLoggingInterceptor().apply {
@@ -127,6 +139,8 @@ object NetworkModule {
         return OkHttpClient.Builder()
             .addInterceptor(sessionInterceptor)
             .addInterceptor(authInterceptor)
+            // With the private vault on, Investments is answered from it, on the phone.
+            .addInterceptor(vaultInterceptor)
             .addInterceptor(slowEndpointInterceptor)
             .addInterceptor(logging)
             .connectTimeout(30, TimeUnit.SECONDS)

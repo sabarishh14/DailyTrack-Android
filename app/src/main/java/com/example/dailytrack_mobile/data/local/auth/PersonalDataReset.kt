@@ -39,7 +39,9 @@ class PersonalDataReset @Inject constructor(
     private val syncPreferences: SyncPreferencesManager,
     private val reminders: RoutineReminders,
     private val checkInSettings: RoutineCheckInSettings,
-    private val scheduler: RoutineCheckInScheduler
+    private val scheduler: RoutineCheckInScheduler,
+    private val vault: com.example.dailytrack_mobile.data.vault.VaultStore,
+    private val vaultEngine: com.example.dailytrack_mobile.data.vault.VaultEngine
 ) {
     private val prefs by lazy { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
 
@@ -67,6 +69,9 @@ class PersonalDataReset @Inject constructor(
 
     /** Signed out: the home-screen widgets stop showing anything of theirs. */
     suspend fun signedOut() {
+        // The vault's key goes with them: the next person (or they, again) unlocks afresh.
+        vault.reset(signedOut = true)
+        vaultEngine.forget()
         WidgetCache.clear(context)
         DailyTrackWidgets.refreshAll(context)
     }
@@ -74,6 +79,7 @@ class PersonalDataReset @Inject constructor(
     private fun forgetCaches() {
         moneyRepository.forgetPerson()
         investmentsRepository.clearCache()
+        vault.reset()
         sabdekhoRepository.forgetPerson()
         activitiesRepository.clearCache()
         WidgetCache.clear(context)

@@ -80,6 +80,8 @@ internal fun PrivacySecuritySettingsSubScreen(
     val dims = Dimens.current
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     var showTimeoutDialog by remember { mutableStateOf(false) }
+    val access = com.example.dailytrack_mobile.presentation.access.LocalAccess.current
+    val showVault = access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST) && access.viewing == null
 
     if (showTimeoutDialog) {
         AutoLockTimeoutDialog(
@@ -174,6 +176,11 @@ internal fun PrivacySecuritySettingsSubScreen(
                         }
                     }
                 }
+            }
+            // Investments locked with a passphrase only you know (data/vault). Your
+            // own, so not while viewing someone else's data.
+            if (showVault) {
+                item { com.example.dailytrack_mobile.presentation.screens.vault.VaultSettingsCard() }
             }
         }
     }
