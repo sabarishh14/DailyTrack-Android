@@ -421,6 +421,29 @@ interface DailyTrackApi {
     @POST("/api/routines/checkins")
     suspend fun saveRoutineCheckIns(@Body body: SaveRoutineCheckInsRequestDto): Response<SaveRoutineCheckInsResponseDto>
 
+    // ── Stocks and ETFs added by hand ───────────────────────────────────────
+
+    @GET("/api/stocks")
+    suspend fun getStocks(): Response<com.example.dailytrack_mobile.data.remote.dto.StocksResponseDto>
+
+    @GET("/api/stocks/search")
+    suspend fun searchStocks(@Query("q") query: String): Response<com.example.dailytrack_mobile.data.remote.dto.StockSearchResponseDto>
+
+    @POST("/api/stocks")
+    suspend fun addStock(@Body body: com.example.dailytrack_mobile.data.remote.dto.StockTradeRequestDto): Response<com.example.dailytrack_mobile.data.remote.dto.StocksResponseDto>
+
+    @POST("/api/stocks/{symbol}/trades")
+    suspend fun addStockTrade(
+        @Path("symbol") symbol: String,
+        @Body body: com.example.dailytrack_mobile.data.remote.dto.StockTradeRequestDto
+    ): Response<com.example.dailytrack_mobile.data.remote.dto.StocksResponseDto>
+
+    @DELETE("/api/stocks/{symbol}/trades/{id}")
+    suspend fun removeStockTrade(@Path("symbol") symbol: String, @Path("id") id: Long): Response<com.example.dailytrack_mobile.data.remote.dto.StocksResponseDto>
+
+    @DELETE("/api/stocks/{symbol}")
+    suspend fun removeStock(@Path("symbol") symbol: String): Response<com.example.dailytrack_mobile.data.remote.dto.StocksResponseDto>
+
     // ── Mutual funds held outside Kite ──────────────────────────────────────
 
     @GET("/api/funds")

@@ -106,6 +106,7 @@ internal fun VaultSettingsCard(vm: VaultVM = hiltViewModel()) {
             subtitle = when {
                 ui.state == "unknown" -> "Checking…"
                 ui.state == "on" && ui.open -> "On · unlocked on this phone"
+                ui.state == "on" && ui.opening -> "On · opening…"
                 ui.state == "on" -> "On · locked on this phone"
                 else -> "Only you can read your investments"
             },
@@ -150,8 +151,6 @@ private fun VaultPage(vm: VaultVM, onDismiss: () -> Unit) {
             when {
                 ui.state == "on" && ui.open -> {
                     SettingsCard {
-                        SettingsClickItem(Icons.Default.Lock, "Lock on this phone", "The next open asks for your passphrase", enabled = busy == null) { vm.lock() }
-                        SettingsDivider()
                         SettingsClickItem(Icons.Default.Key, "Change passphrase", "Nothing is locked again", enabled = busy == null) { dialog = "passphrase" }
                         SettingsDivider()
                         SettingsClickItem(Icons.Default.Receipt, "New recovery key", "Opens the vault if you forget the passphrase", enabled = busy == null) { dialog = "recovery" }
@@ -165,10 +164,13 @@ private fun VaultPage(vm: VaultVM, onDismiss: () -> Unit) {
                         }
                     }
                     SettingsCard {
-                        SettingsClickItem(Icons.Default.LockOpen, "Turn off", "Store your investments readable on the server again", enabled = busy == null) { dialog = "off" }
+                        SettingsClickItem(Icons.Default.Lock, "Lock this phone", "They stay encrypted. This phone asks for the passphrase next time", enabled = busy == null) { vm.lock() }
+                        SettingsDivider()
+                        SettingsClickItem(Icons.Default.LockOpen, "Turn off encryption", "Decrypts your investments and stores them readable on the server again, for every device", enabled = busy == null) { dialog = "off" }
                     }
                     busy?.let { Progress(it) }
                 }
+                ui.state == "on" && ui.opening -> Progress("Opening…")
                 ui.state == "on" -> Panel {
                     Text("Locked on this phone", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     UnlockForm(vm)
@@ -193,8 +195,8 @@ private fun VaultPage(vm: VaultVM, onDismiss: () -> Unit) {
         "recovery" -> RecoveryDialog(vm, ui.email.orEmpty()) { dialog = null }
         "off" -> AlertDialog(
             onDismissRequest = { dialog = null },
-            title = { Text("Turn off the private vault?") },
-            text = { Text("Your investments go back to being stored readable on the server.") },
+            title = { Text("Turn off encryption?") },
+            text = { Text("Your investments are decrypted and stored readable on the server again, for every device. You can turn it on again any time.") },
             confirmButton = { TextButton(onClick = { dialog = null; vm.turnOff {} }) { Text("Turn off") } },
             dismissButton = { TextButton(onClick = { dialog = null }) { Text("Cancel") } }
         )

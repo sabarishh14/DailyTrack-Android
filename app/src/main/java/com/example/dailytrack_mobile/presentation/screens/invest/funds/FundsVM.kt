@@ -57,8 +57,12 @@ data class FundsUiState(
     val query: String = "",
     val results: List<FundSearchResultDto>? = null,
     val picked: FundSearchResultDto? = null,
+    /** A fund held already is added as the fund app shows it (units at an average NAV); an amount on a day is a purchase then. */
+    val holding: Boolean = true,
+    val units: String = "",
+    val avgNav: String = "",
     val amount: String = "",
-    val date: LocalDate = LocalDate.now(),
+    val date: LocalDate = LocalDate.now().minusDays(1),
     val withSip: Boolean = false,
     val sip: SipForm = SipForm(),
     val adding: Boolean = false,
@@ -69,9 +73,13 @@ data class FundsUiState(
     val value: Double get() = held.sumOf { it.value ?: 0.0 }
     val invested: Double get() = held.sumOf { it.invested }
 
+    val unitsValue: Double? get() = units.toDoubleOrNull()?.takeIf { it > 0 }
+    val avgNavValue: Double? get() = avgNav.toDoubleOrNull()?.takeIf { it > 0 }
+    val holdingReady: Boolean get() = holding && unitsValue != null && avgNavValue != null
+    val buyingReady: Boolean get() = !holding && (amount.toDoubleOrNull() ?: 0.0) > 0
+
     val canAdd: Boolean
-        get() = picked != null && !adding &&
-            ((amount.toDoubleOrNull() ?: 0.0) > 0 || (withSip && sip.amountValue != null))
+        get() = picked != null && !adding && (holdingReady || buyingReady || (withSip && sip.amountValue != null))
 }
 
 /** The mutual funds sheet (FundsSheet): what's held outside Kite, importing a statement, adding one. */
@@ -114,8 +122,8 @@ class FundsVM @Inject constructor(
         when (view) {
             FundsView.IMPORT -> it.copy(view = view, importError = null)
             FundsView.ADD -> it.copy(
-                view = view, query = "", results = null, picked = null, amount = "", date = LocalDate.now(),
-                withSip = false, sip = SipForm(), addError = null
+                view = view, query = "", results = null, picked = null, holding = true, units = "", avgNav = "",
+                amount = "", date = LocalDate.now().minusDays(1), withSip = false, sip = SipForm(), addError = null
             )
             FundsView.LIST -> it.copy(view = view)
         }
@@ -171,9 +179,17 @@ class FundsVM @Inject constructor(
         }
     }
 
+    // The day's NAV is out in the evening: a purchase defaults to the latest one published.
     fun pick(result: FundSearchResultDto?) = _state.update {
-        if (result == null) it.copy(picked = null, query = "", results = null) else it.copy(picked = result)
+        if (result == null) it.copy(picked = null, query = "", results = null)
+        else it.copy(picked = result, date = result.navDate?.let { d -> runCatching { LocalDate.parse(d) }.getOrNull() } ?: LocalDate.now().minusDays(1))
     }
+
+    fun setHolding(on: Boolean) = _state.update { it.copy(holding = on, addError = null) }
+
+    fun setUnits(units: String) = _state.update { it.copy(units = units.filter { c -> c.isDigit() || c == '.' }) }
+
+    fun setAvgNav(nav: String) = _state.update { it.copy(avgNav = nav.filter { c -> c.isDigit() || c == '.' }) }
 
     fun setAmount(amount: String) = _state.update { it.copy(amount = amount.filter { c -> c.isDigit() || c == '.' }) }
 
@@ -187,12 +203,17 @@ class FundsVM @Inject constructor(
         val current = _state.value
         val fund = current.picked ?: return
         if (!current.canAdd) return
-        val amount = current.amount.toDoubleOrNull()?.takeIf { it > 0 }
+        val amount = current.amount.toDoubleOrNull()?.takeIf { it > 0 && current.buyingReady }
+        // A holding already counts the past instalments: its SIP carries on from today.
+        val sip = current.sip.takeIf { current.withSip && it.amountValue != null }
+            ?.let { if (current.holding) it.copy(since = LocalDate.now()) else it }
         val request = AddFundRequestDto(
             code = fund.code,
+            units = current.unitsValue.takeIf { current.holdingReady },
+            avgNav = current.avgNavValue.takeIf { current.holdingReady },
             amount = amount,
             date = amount?.let { current.date.toString() },
-            sip = current.sip.takeIf { current.withSip && it.amountValue != null }?.request()
+            sip = sip?.request()
         )
         _state.update { it.copy(adding = true, addError = null) }
         viewModelScope.launch {

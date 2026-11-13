@@ -294,6 +294,10 @@ private fun Summary(state: FundsUiState, onImport: () -> Unit, onAdd: () -> Unit
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                     color = colors.onSurface
                 )
+                // The latest NAV the funds held are at: AMFI publishes a day's that evening.
+                state.held.mapNotNull { it.navDate }.maxOrNull()
+                    ?.let { runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)) }.getOrNull() }
+                    ?.let { Muted("NAV as of $it") }
             }
             Row {
                 Stat("Invested", money(state.invested), colors.onSurface, Modifier.weight(1f))
@@ -694,9 +698,29 @@ private fun AddView(state: FundsUiState, vm: FundsVM, onPickDate: (DateRequest) 
     }
 
     Panel {
-        Text("One-time", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), color = colors.onSurface)
-        AmountField("Amount", state.amount, vm::setAmount)
-        DateField("On", state.date) { onPickDate(DateRequest(state.date, vm::setDate)) }
+        com.example.dailytrack_mobile.presentation.components.ConnectedToggleGroup(
+            options = listOf(true, false),
+            selected = state.holding,
+            onSelect = vm::setHolding,
+            label = { if (it) "I hold it" else "New purchase" },
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (state.holding) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                NumberField("Units", state.units, null, Modifier.weight(1f), vm::setUnits)
+                NumberField("Average NAV", state.avgNav, "₹ ", Modifier.weight(1f), vm::setAvgNav)
+            }
+            val units = state.unitsValue
+            val nav = state.avgNavValue
+            Muted(
+                if (units != null && nav != null) "Invested ${money(units * nav)} · worth ${money(units * picked.nav)} today"
+                else "Both are in your fund app (Groww, Kuvera, Coin…) under this fund."
+            )
+        } else {
+            AmountField("Amount", state.amount, vm::setAmount)
+            DateField("On", state.date) { onPickDate(DateRequest(state.date, vm::setDate)) }
+            Muted("Bought at that day's NAV.")
+        }
     }
 
     Panel {
@@ -708,8 +732,8 @@ private fun AddView(state: FundsUiState, vm: FundsVM, onPickDate: (DateRequest) 
             Switch(checked = state.withSip, onCheckedChange = vm::setWithSip)
         }
         if (state.withSip) {
-            SipFields(sip = state.sip, onChange = vm::setSip, onPickDate = onPickDate) {
-                Muted("Past instalments are filled in at each day's NAV; new ones add themselves.")
+            SipFields(sip = state.sip, onChange = vm::setSip, onPickDate = onPickDate, showSince = !state.holding) {
+                Muted(if (state.holding) "Carries on from your next instalment." else "Past instalments are filled in at each day's NAV; new ones add themselves.")
             }
         }
     }
@@ -738,7 +762,13 @@ private fun SearchResult(result: FundSearchResultDto, onClick: () -> Unit) {
 
 /** A monthly SIP's amount, day and first month, then [footer]. */
 @Composable
-private fun SipFields(sip: SipForm, onChange: (SipForm) -> Unit, onPickDate: (DateRequest) -> Unit, footer: @Composable () -> Unit) {
+private fun SipFields(
+    sip: SipForm,
+    onChange: (SipForm) -> Unit,
+    onPickDate: (DateRequest) -> Unit,
+    showSince: Boolean = true,
+    footer: @Composable () -> Unit
+) {
     val colors = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         AmountField("Every month", sip.amount) { onChange(sip.copy(amount = it.filter { c -> c.isDigit() || c == '.' })) }
@@ -754,7 +784,7 @@ private fun SipFields(sip: SipForm, onChange: (SipForm) -> Unit, onPickDate: (Da
             IconButton(onClick = { onChange(sip.copy(day = if (sip.day <= 1) 31 else sip.day - 1)) }) { Text("−", style = MaterialTheme.typography.titleLarge) }
             IconButton(onClick = { onChange(sip.copy(day = if (sip.day >= 31) 1 else sip.day + 1)) }) { Text("+", style = MaterialTheme.typography.titleLarge) }
         }
-        DateField("Since", sip.since) { onPickDate(DateRequest(sip.since) { onChange(sip.copy(since = it)) }) }
+        if (showSince) DateField("Since", sip.since) { onPickDate(DateRequest(sip.since) { onChange(sip.copy(since = it)) }) }
         footer()
     }
 }
@@ -782,6 +812,20 @@ private fun AmountField(label: String, value: String, onChange: (String) -> Unit
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun NumberField(label: String, value: String, prefix: String?, modifier: Modifier, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        prefix = prefix?.let { { Text(it) } },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        shape = RoundedCornerShape(14.dp),
+        modifier = modifier
     )
 }
 

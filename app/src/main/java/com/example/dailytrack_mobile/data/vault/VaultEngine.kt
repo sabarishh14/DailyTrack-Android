@@ -8,6 +8,9 @@ import com.example.dailytrack_mobile.data.remote.dto.VFundValue
 import com.example.dailytrack_mobile.data.remote.dto.VMf
 import com.example.dailytrack_mobile.data.remote.dto.VSip
 import com.example.dailytrack_mobile.data.remote.dto.VSnapshot
+import com.example.dailytrack_mobile.data.remote.dto.VStock
+import com.example.dailytrack_mobile.data.remote.dto.VStockTrade
+import com.example.dailytrack_mobile.data.remote.dto.VStockValue
 import com.example.dailytrack_mobile.data.remote.dto.VTables
 import com.example.dailytrack_mobile.data.remote.dto.VTask
 import okhttp3.HttpUrl
@@ -194,53 +197,145 @@ class VaultEngine @Inject constructor(
         s.synced = false
     }
 
-    /** funds_service.recompute_snapshot: the day's totals from Kite's latest sync, funds, and manual assets. */
+    /** funds_service.recompute_snapshot: the day's totals from Kite's latest sync, funds and stocks held outside it, and manual assets. */
     private fun recomputeSnapshot(t: VTables, day: String): VSnapshot? {
         val kiteDay = lastKiteDay(t, day)
         val equity = if (kiteDay != null) t.equity.filter { it.date == kiteDay } else emptyList()
         val kiteFunds = if (kiteDay != null) t.mf.filter { it.date == kiteDay } else emptyList()
-        val own = t.fund_values.filter { it.date == day }
+        val fundDay = lastFundDay(t, day)
+        val own = if (fundDay != null) t.fund_values.filter { it.date == fundDay } else emptyList()
+        val stockDay = lastStockDay(t, day)
+        val ownStocks = if (stockDay != null) t.stock_values.filter { it.date == stockDay } else emptyList()
         var snap = t.snapshots.find { it.date == day }
-        if (kiteDay != null && kiteDay != day && own.isEmpty()) {
+        if (kiteDay != null && kiteDay != day && fundDay != day && stockDay != day) {
             if (snap != null && day == today()) t.snapshots.remove(snap)
             return null
         }
         if (snap == null) {
-            if (equity.isEmpty() && kiteFunds.isEmpty() && own.isEmpty() && t.assets.isEmpty()) return null
+            if (equity.isEmpty() && kiteFunds.isEmpty() && own.isEmpty() && ownStocks.isEmpty() && t.assets.isEmpty()) return null
             snap = newSnapshot(day).also { t.snapshots.add(it) }
         }
-        snap.total_equity_inv = equity.sumOf { it.invested_value }
-        snap.total_equity_curr = equity.sumOf { it.current_value }
+        snap.total_equity_inv = equity.sumOf { it.invested_value } + ownStocks.sumOf { it.invested }
+        snap.total_equity_curr = equity.sumOf { it.current_value } + ownStocks.sumOf { it.value }
         snap.total_mf_inv = kiteFunds.sumOf { it.invested_value } + own.sumOf { it.invested.z }
         snap.total_mf_curr = kiteFunds.sumOf { it.current_value } + own.sumOf { it.value.z }
         setManualTotals(snap, t.assets)
         return snap
     }
 
-    private fun valueFunds(t: VTables, today: String) {
+    /** The latest day on or before [day] with values for funds held outside Kite: they stand until the next. */
+    private fun lastFundDay(t: VTables, day: String): String? = t.fund_values.map { it.date }.filter { it <= day }.maxOrNull()
+
+    /** funds_service.value_funds: every fund held at its latest NAV, filed under the day those NAVs are for. */
+    private fun valueFunds(t: VTables, today: String): String {
         val byCode = navs().byCode
         val held = linkedMapOf<String, Triple<String, Double, Double>>()
         for (f in t.funds.filter { it.units.z > 0 }) {
             val row = held[f.amfi_code] ?: Triple(f.name, 0.0, 0.0)
             held[f.amfi_code] = Triple(row.first, row.second + f.units.z, row.third + f.invested.z)
         }
-        t.fund_values.removeAll { it.date == today }
-        for ((code, row) in held) {
+        val priced = linkedMapOf<String, Pair<Double, String?>>()
+        for (code in held.keys) {
             val scheme = byCode[code]
-            val (nav, navDate) = if (scheme != null) scheme.nav to scheme.date else {
-                val last = t.fund_values.filter { it.amfi_code == code }.maxByOrNull { it.date } ?: continue
-                last.nav.z to last.nav_date
-            }
-            t.fund_values.add(VFundValue(newId(), today, code, row.first, r3(row.second), nav, navDate, r2(row.third), r2(row.second * nav)))
+            if (scheme != null) priced[code] = scheme.nav to scheme.date
+            else t.fund_values.filter { it.amfi_code == code }.maxByOrNull { it.date }?.let { priced[code] = it.nav.z to it.nav_date }
         }
-        recomputeSnapshot(t, today)
+        val navDay = minDay(priced.values.mapNotNull { it.second }.maxOrNull() ?: today, today)
+        val last = lastFundDay(t, today)
+        // A later day already filed holds what's held now: the NAVs bring it up to date.
+        val day = if (last != null) (if (navDay > last) navDay else last) else navDay
+        val previous = if (last != null) t.fund_values.filter { it.date == last }.associateBy { it.amfi_code } else emptyMap()
+        t.fund_values.removeAll { it.date == day }
+        for ((code, row) in held) {
+            val (nav, navDate) = priced[code] ?: continue
+            t.fund_values.add(VFundValue(newId(), day, code, row.first, r3(row.second), nav, navDate, r2(row.third), r2(row.second * nav)))
+        }
+        // Sold out since: a zero that day, so the days after don't carry it on.
+        for ((code, before) in previous) {
+            if (before.units.z > 0 && code !in held) {
+                t.fund_values.add(VFundValue(newId(), day, code, before.name, 0.0, before.nav, before.nav_date, 0.0, 0.0))
+            }
+        }
+        recomputeSnapshot(t, day)
+        for (later in t.snapshots.filter { it.date > day }.map { it.date }) {
+            if (lastFundDay(t, later) == day) recomputeSnapshot(t, later)
+        }
+        return day
+    }
+
+    // ---- tidying records filed before values went under their NAV's day ----
+
+    /** A record's stocks and funds from what was held on [day]; its manual assets as recorded (funds_service._held_totals). */
+    private fun heldTotals(t: VTables, snap: VSnapshot, day: String) {
+        val kiteDay = lastKiteDay(t, day)
+        val fundDay = lastFundDay(t, day)
+        val stockDay = lastStockDay(t, day)
+        val equity = if (kiteDay != null) t.equity.filter { it.date == kiteDay } else emptyList()
+        val kiteFunds = if (kiteDay != null) t.mf.filter { it.date == kiteDay } else emptyList()
+        val own = if (fundDay != null) t.fund_values.filter { it.date == fundDay } else emptyList()
+        val stocks = if (stockDay != null) t.stock_values.filter { it.date == stockDay } else emptyList()
+        snap.total_equity_inv = equity.sumOf { it.invested_value } + stocks.sumOf { it.invested }
+        snap.total_equity_curr = equity.sumOf { it.current_value } + stocks.sumOf { it.value }
+        snap.total_mf_inv = kiteFunds.sumOf { it.invested_value } + own.sumOf { it.invested.z }
+        snap.total_mf_curr = kiteFunds.sumOf { it.current_value } + own.sumOf { it.value.z }
+        snap.grand_total_inv = snap.total_equity_inv.z + snap.total_mf_inv.z + snap.total_fixed_income_inv.z + snap.total_provident_inv.z + snap.total_gold_inv.z
+        snap.grand_total_curr = snap.total_equity_curr.z + snap.total_mf_curr.z + snap.total_fixed_income_curr.z + snap.total_provident_curr.z + snap.total_gold_curr.z
+        snap.synced = false
+    }
+
+    /** funds_service.tidy_fund_days: each day's fund values once filed under the day the app was opened go to their NAV's day. */
+    private fun tidyFundDays(t: VTables): Int {
+        val navDayOf = t.fund_values.filter { it.units.z > 0 && it.nav_date != null }.groupBy { it.date }
+            .mapValues { (_, rows) -> rows.mapNotNull { it.nav_date }.max() }
+        val late = navDayOf.filter { (d, n) -> n < d }.keys.sorted()
+        for (day in late) {
+            val moved = t.fund_values.filter { it.date == day }
+            val target = moved.filter { it.units.z > 0 }.mapNotNull { it.nav_date }.max()
+            t.fund_values.removeAll { it.date == target }
+            moved.forEach { it.date = target }
+            val busy = t.equity.any { it.date == day } || t.mf.any { it.date == day } || t.stock_values.any { it.date == day }
+            var left = t.snapshots.find { it.date == day }
+            var there = t.snapshots.find { it.date == target }
+            if (there == null && left != null && !busy) {
+                left.date = target          // the record itself moves to its NAV's day
+                there = left
+                left = null
+            } else if (there == null && left != null) {
+                there = newSnapshot(target).apply {
+                    total_fixed_income_inv = left.total_fixed_income_inv; total_fixed_income_curr = left.total_fixed_income_curr
+                    total_provident_inv = left.total_provident_inv; total_provident_curr = left.total_provident_curr
+                    total_gold_inv = left.total_gold_inv; total_gold_curr = left.total_gold_curr
+                }
+                t.snapshots.add(there)
+            }
+            there?.let { heldTotals(t, it, target) }
+            left?.let { if (busy) heldTotals(t, it, day) else t.snapshots.remove(it) }
+        }
+        return late.size
+    }
+
+    /** Funds held outside Kite as they stood on [day]: their last values on or before it, held ones. */
+    private fun ownFunds(t: VTables, day: String): List<VFundValue> {
+        val d = lastFundDay(t, day) ?: return emptyList()
+        return t.fund_values.filter { it.date == d && it.units.z > 0 }
+    }
+
+    /** The day of the latest NAV the funds held are valued at (kite_daily._funds_nav_day). */
+    private fun fundsNavDay(t: VTables, kiteDay: String?, daily: Boolean, today: String): String? {
+        val days = ownFunds(t, today).mapNotNull { it.nav_date }.toMutableList()
+        val cache = navCache
+        if (kiteDay != null && daily && cache != null) {
+            t.mf.filter { it.date == kiteDay }.forEach { f -> f.isin?.let { cache.byIsin[it] }?.let { days.add(it.date) } }
+        }
+        return days.maxOrNull()
     }
 
     private fun refreshFunds(t: VTables, fresh: Boolean): Boolean {
         if (t.funds.none { it.units.z > 0 } && t.sips.none { it.active == true }) return false
         val today = today()
         val due = t.sips.any { it.active == true && it.next_date <= today }
-        val valued = t.fund_values.filter { it.date == today }
+        val lastDay = lastFundDay(t, today)
+        val valued = if (lastDay != null) t.fund_values.filter { it.date == lastDay && it.units.z > 0 } else emptyList()
         val byCode = navs(fresh).byCode
         if (valued.isNotEmpty() && !due && valued.none { (byCode[it.amfi_code]?.date ?: it.nav_date.orEmpty()) > it.nav_date.orEmpty() }) return false
         processSips(t, today)
@@ -365,13 +460,161 @@ class VaultEngine @Inject constructor(
         val closed = daily && closedToday(quoted, t.state.quotes_seen_at, now)
         val day = lastKiteDay(t, now.take(10))
         val held = day != null && t.equity.any { it.date == day }
+        val fundsAt = fundsNavDay(t, day, daily, now.take(10))
+        val own = t.state.stocks_quoted_at
+        if (synced == null && own != null && t.stocks.any { it.quantity > 0 }) {
+            // No Kite, stocks added by hand: when their prices are from.
+            val shut = closedToday(own, t.state.stocks_priced_at, now)
+            return JSONObject().put("mode", "daily").put("synced", JSONObject.NULL).put("stocks_at", own)
+                .put("checked_at", t.state.stocks_priced_at ?: JSONObject.NULL)
+                .put("stale", marketOpen(now) && !shut && Duration.between(stamp(own), stamp(now)).toMinutes() > 45)
+                .put("closed_today", shut)
+                .put("funds_at", fundsAt ?: JSONObject.NULL)
+        }
         return JSONObject()
+            .put("funds_at", fundsAt ?: JSONObject.NULL)
             .put("mode", mode)
             .put("synced", synced ?: JSONObject.NULL)
             .put("stocks_at", if (quoted != null && daily) quoted else JSONObject.NULL)
             .put("checked_at", if (daily && t.state.priced_at != null) t.state.priced_at else JSONObject.NULL)
             .put("stale", daily && held && marketOpen(now) && !closed && (quoted == null || Duration.between(stamp(quoted), stamp(now)).toMinutes() > 45))
             .put("closed_today", held && closed)
+    }
+
+    // ---- stocks and ETFs added by hand (stocks_service.py) ----
+
+    private class Listed(val symbol: String, val name: String, val isin: String?)
+
+    @Volatile private var stockList: Pair<Long, List<Listed>>? = null
+
+    private fun listedStocks(): List<Listed> {
+        stockList?.let { if (System.currentTimeMillis() - it.first < 60 * 60 * 1000) return it.second }
+        return try {
+            val rows = store.call("GET", "/api/vault/stock-list").getJSONArray("stocks")
+            val list = (0 until rows.length()).map { i ->
+                rows.getJSONArray(i).let { r -> Listed(r.getString(0), r.getString(1), if (r.isNull(2)) null else r.getString(2)) }
+            }
+            stockList = System.currentTimeMillis() to list
+            list
+        } catch (e: Exception) {
+            stockList?.second ?: throw Refused(e.message ?: "Couldn't reach NSE's list of stocks", 503)
+        }
+    }
+
+    private fun lastStockDay(t: VTables, day: String): String? = t.stock_values.map { it.date }.filter { it <= day }.maxOrNull()
+
+    private val longDay = DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.ENGLISH)
+
+    /** Quantity and invested (average cost) from the trades, oldest first; a sale of more than was held then can't be. */
+    private fun replayStock(stock: VStock, trades: List<VStockTrade>) {
+        var quantity = 0.0
+        var invested = 0.0
+        for (x in trades.sortedWith(compareBy<VStockTrade>({ it.date }, { it.id }))) {
+            if (x.kind == "BUY") {
+                quantity += x.quantity
+                invested += x.quantity * x.price
+            } else {
+                if (x.quantity > quantity + 1e-9) {
+                    val held = java.math.BigDecimal(quantity).round(java.math.MathContext(6)).stripTrailingZeros().toPlainString()
+                    throw Refused("You held $held ${stock.symbol} on ${day(x.date).format(longDay)}")
+                }
+                invested -= if (quantity != 0.0) invested / quantity * x.quantity else 0.0
+                quantity -= x.quantity
+                if (quantity <= 1e-9) { quantity = 0.0; invested = 0.0 }
+            }
+        }
+        stock.quantity = Math.round(quantity * 1e6) / 1e6
+        stock.invested = r2(invested)
+    }
+
+    private fun stockTrade(t: VTables, stock: VStock, kind: String, quantity: Double, price: Double, onDay: String) {
+        if (kind != "BUY" && kind != "SELL") throw Refused("Buy or sell?")
+        if (!(quantity > 0 && quantity <= 10_000_000)) throw Refused("Enter how many")
+        if (!(price > 0 && price <= 10_000_000)) throw Refused("Enter the price")
+        if (onDay > today()) throw Refused("That date is in the future")
+        t.stock_trades.add(VStockTrade(newId(), stock.id, onDay, kind, quantity, price))
+        replayStock(stock, t.stock_trades.filter { it.stock_id == stock.id })
+    }
+
+    /** Prices what's held and files it under the day the prices are from (or [on], a day holdings changed). */
+    private fun valueStocks(t: VTables, on: String? = null): Boolean {
+        val now = now()
+        val today = now.take(10)
+        val held = t.stocks.filter { it.quantity > 0 }
+        var prices = emptyMap<String, Double>()
+        var quoted: String? = null
+        if (held.isNotEmpty()) {
+            val symbols = held.map { it.symbol }.toSortedSet().joinToString(",")
+            runCatching { store.call("GET", "/api/vault/quotes?symbols=" + URLEncoder.encode(symbols, "UTF-8")) }.getOrNull()?.let { r ->
+                val p = r.optJSONObject("prices")
+                prices = p?.keys()?.asSequence()?.associate { it to p.getDouble(it) } ?: emptyMap()
+                quoted = r.optString("at").takeIf { !r.isNull("at") && it.isNotEmpty() }
+            }
+        }
+        if (held.isNotEmpty() && prices.isEmpty() && on == null) return false
+        val last = lastStockDay(t, today)
+        val quoteDay = minDay(quoted?.take(10) ?: today, today)
+        // A later day already filed holds what's held now: the prices bring it up to date.
+        val target = on ?: if (last != null) (if (quoteDay > last) quoteDay else last) else quoteDay
+        val previous = if (last != null) t.stock_values.filter { it.date == last }.associateBy { it.symbol } else emptyMap()
+        t.stock_values.removeAll { it.date == target }
+        for (s in held) {
+            val price = prices[s.symbol]?.takeIf { it != 0.0 } ?: previous[s.symbol]?.price?.takeIf { it != 0.0 } ?: (s.invested.z / s.quantity)
+            t.stock_values.add(VStockValue(newId(), target, s.symbol, s.name, s.quantity, price, s.invested.z, r2(s.quantity * price)))
+        }
+        // Sold out since: a zero that day, so the day after doesn't carry it on.
+        val heldNow = held.map { it.symbol }.toSet()
+        for ((symbol, before) in previous) {
+            if (before.quantity > 0 && symbol !in heldNow) {
+                t.stock_values.add(VStockValue(newId(), target, symbol, before.name, 0.0, before.price, 0.0, 0.0))
+            }
+        }
+        recomputeSnapshot(t, target)
+        for (later in t.snapshots.filter { it.date > target }.map { it.date }) {
+            if (lastStockDay(t, later) == target) recomputeSnapshot(t, later)
+        }
+        if (prices.isNotEmpty()) t.state.stocks_priced_at = now
+        quoted?.let { t.state.stocks_quoted_at = it.take(19) }
+        return true
+    }
+
+    private fun refreshStocks(t: VTables, fresh: Boolean): Boolean {
+        if (t.stocks.none { it.quantity > 0 }) return false
+        val now = now()
+        val pricedAt = t.state.stocks_priced_at
+        val asked = fresh && (pricedAt == null || Duration.between(stamp(pricedAt), stamp(now)).seconds >= 60)
+        if (!asked && !isStale(pricedAt, now)) return false
+        return valueStocks(t)
+    }
+
+    private fun stocksOverview(t: VTables): JSONArray {
+        // Each one's latest price, even when its latest day was since deleted.
+        val values = HashMap<String, VStockValue>()
+        for (v in t.stock_values.filter { it.date <= today() }.sortedBy { it.date }) values[v.symbol] = v
+        val trades = t.stock_trades.sortedWith(compareByDescending<VStockTrade> { it.date }.thenByDescending { it.id }).groupBy { it.stock_id }
+        val rows = t.stocks.sortedBy { it.symbol }.map { s ->
+            val price = values[s.symbol]?.price
+            val value = price?.let { r2(s.quantity * it) }
+            JSONObject()
+                .put("symbol", s.symbol).put("name", s.name).put("quantity", s.quantity).put("invested", r2(s.invested.z))
+                .put("avg_price", if (s.quantity != 0.0) r2(s.invested.z / s.quantity) else JSONObject.NULL)
+                .put("price", price ?: JSONObject.NULL).put("value", value ?: JSONObject.NULL)
+                .put("trades", JSONArray(trades[s.id].orEmpty().map { x ->
+                    JSONObject().put("id", x.id).put("date", x.date).put("kind", x.kind).put("quantity", x.quantity).put("price", x.price)
+                })) to (s.quantity to value)
+        }.sortedWith(compareBy<Pair<JSONObject, Pair<Double, Double?>>> { it.second.first <= 0 }.thenByDescending { it.second.second ?: 0.0 })
+        return JSONArray(rows.map { it.first })
+    }
+
+    /** Stocks added by hand as they stood on [day], held ones (invest._own_stocks). */
+    private fun ownStocks(t: VTables, day: String, withReturn: Boolean = true): List<JSONObject> {
+        val d = lastStockDay(t, day) ?: return emptyList()
+        return t.stock_values.filter { it.date == d && it.quantity > 0 }.map { s ->
+            JSONObject().put("symbol", s.symbol).put("quantity", s.quantity)
+                .put("average_price", if (s.quantity != 0.0) (s.invested / s.quantity * 10000).roundToLong() / 10000.0 else 0.0)
+                .put("ltp", s.price).put("invested_value", s.invested).put("current_value", s.value)
+                .also { if (withReturn) it.put("ret_pct", pct(s.value, s.invested)) }
+        }
     }
 
     // ---- manual assets, RDs and automations (invest.py) ----
@@ -549,6 +792,25 @@ class VaultEngine @Inject constructor(
         t.sips.add(VSip(newId(), fund.id, sip.first, sip.second, firstInstalment(sip.second, sip.third), true))
     }
 
+    private fun stocksDone(t: VTables, today: String, extra: JSONObject = JSONObject()): JSONObject {
+        valueStocks(t, today)
+        return extra.put("success", true).put("stocks", stocksOverview(t)).put("quoted_at", t.state.stocks_quoted_at ?: JSONObject.NULL)
+    }
+
+    private fun removeStock(t: VTables, stock: VStock) {
+        t.stock_trades.removeAll { it.stock_id == stock.id }
+        t.stock_values.removeAll { it.symbol == stock.symbol }
+        t.stocks.remove(stock)
+    }
+
+    /** (day, quantity, price) from a trade's request: no day is today; a bad one is refused. */
+    private fun tradeFields(json: JSONObject, today: String): Triple<String, Double, Double> {
+        val raw = if (json.isNull("date")) null else json.opt("date")?.toString()
+        val onDay = if (raw.isNullOrEmpty()) today else raw.takeIf { isDay(it) } ?: throw Refused("That isn't a date")
+        fun num(k: String) = json.opt(k).let { (it as? Number)?.toDouble() ?: (it as? String)?.toDoubleOrNull() }?.takeIf { !it.isNaN() } ?: 0.0
+        return Triple(onDay, num("quantity"), num("price"))
+    }
+
     private fun ok(json: Any) = Answer(200, json.toString())
 
     /**
@@ -572,9 +834,11 @@ class VaultEngine @Inject constructor(
                     if (!readOnly) {
                         val fresh = url.queryParameter("refresh") == "1"
                         // The phone has no separate start-up call, so the web's cron runs here too.
+                        runCatching { store.transact { t -> tidyFundDays(t) } }
                         runCatching { store.transact { t -> processRecurring(t, today) } }
                         runCatching { store.transact { t -> repriceIfDue(t, fresh) } }
                         runCatching { store.transact { t -> refreshFunds(t, fresh) } }
+                        runCatching { store.transact { t -> refreshStocks(t, fresh) } }
                         runCatching { store.transact { t -> if (refreshRDs(t, today) > 0) updateLatestSnapshot(t) } }
                     }
                     ok(JSONArray(read().snapshots.sortedByDescending { it.date }.map { snapshotRow(it) }))
@@ -587,7 +851,9 @@ class VaultEngine @Inject constructor(
                     fun point(date: String, current: Double, invested: Double) = JSONObject().put("date", date).put("Current", current).put("Invested", invested)
                     ok(JSONArray(when {
                         symbol == null || type == null -> emptyList()
-                        type == "EQUITY" -> t.equity.filter { it.symbol == symbol }.sortedBy { it.date }.map { point(it.date, it.current_value, it.invested_value) }
+                        type == "EQUITY" -> (t.equity.filter { it.symbol == symbol }.map { Triple(it.date, it.current_value, it.invested_value) } +
+                            t.stock_values.filter { it.symbol == symbol }.map { Triple(it.date, it.value, it.invested) })
+                            .sortedBy { it.first }.map { point(it.first, it.second, it.third) }
                         type == "MF" -> (t.mf.filter { it.symbol == symbol }.map { Triple(it.date, it.current_value, it.invested_value) } +
                             t.fund_values.filter { it.name == symbol }.map { Triple(it.date, it.value.z, it.invested.z) })
                             .sortedBy { it.first }.map { point(it.first, it.second, it.third) }
@@ -599,10 +865,10 @@ class VaultEngine @Inject constructor(
                 method == "GET" && path == "/equity" -> {
                     val t = read()
                     val day = t.equity.maxOfOrNull { it.date }
-                    ok(JSONArray(if (day == null) emptyList() else t.equity.filter { it.date == day }.map { h ->
+                    ok(JSONArray((if (day == null) emptyList() else t.equity.filter { it.date == day }.map { h ->
                         JSONObject().put("symbol", h.symbol).put("quantity", h.quantity).put("average_price", h.average_price)
                             .put("ltp", h.ltp).put("invested_value", h.invested_value).put("current_value", h.current_value)
-                    }))
+                    }) + ownStocks(t, today, withReturn = false)))
                 }
                 method == "GET" && Regex("^/investments/(\\d{4}-\\d{2}-\\d{2})/(equity_holdings|holdings)$").matches(path) -> {
                     val (d, kind) = Regex("^/investments/(\\d{4}-\\d{2}-\\d{2})/(equity_holdings|holdings)$").find(path)!!.destructured
@@ -613,13 +879,13 @@ class VaultEngine @Inject constructor(
                             JSONObject().put("symbol", h.symbol).put("quantity", h.quantity).put("average_price", h.average_price)
                                 .put("ltp", h.ltp).put("invested_value", h.invested_value).put("current_value", h.current_value)
                                 .put("ret_pct", pct(h.current_value, h.invested_value))
-                        }))
+                        } + ownStocks(t, d)))
                     } else {
                         ok(JSONArray(t.mf.filter { it.date == kiteDay }.map { h ->
                             JSONObject().put("symbol", h.symbol).put("quantity", h.quantity).put("average_price", h.average_price)
                                 .put("nav", h.nav).put("invested_value", h.invested_value).put("current_value", h.current_value)
                                 .put("ret_pct", pct(h.current_value, h.invested_value))
-                        } + t.fund_values.filter { it.date == d }.map { f ->
+                        } + ownFunds(t, d).map { f ->
                             JSONObject().put("symbol", f.name).put("quantity", f.units.z)
                                 .put("average_price", if (f.units.z != 0.0) (f.invested.z / f.units.z * 10000).roundToLong() / 10000.0 else 0.0)
                                 .put("nav", f.nav.z).put("invested_value", f.invested.z).put("current_value", f.value.z)
@@ -633,7 +899,7 @@ class VaultEngine @Inject constructor(
                     ok(store.transact { t ->
                         if (t.snapshots.none { it.date == d }) throw Refused("No snapshot that day", 404)
                         t.snapshots.removeAll { it.date == d }; t.equity.removeAll { it.date == d }
-                        t.mf.removeAll { it.date == d }; t.fund_values.removeAll { it.date == d }
+                        t.mf.removeAll { it.date == d }; t.fund_values.removeAll { it.date == d }; t.stock_values.removeAll { it.date == d }
                         JSONObject().put("success", true)
                     })
                 }
@@ -678,6 +944,72 @@ class VaultEngine @Inject constructor(
                 method == "POST" && path == "/sync/investments-to-sheets" ->
                     ok(JSONObject().put("success", false).put("message", "Your investments are in your private vault, so they aren't sent to Google Sheets."))
 
+                // ---- stocks and ETFs added by hand (stocks.py) ----
+                method == "GET" && path == "/stocks" -> {
+                    if (!readOnly) runCatching { store.transact { t -> refreshStocks(t, false) } }
+                    val t = read()
+                    ok(JSONObject().put("success", true).put("stocks", stocksOverview(t)).put("quoted_at", t.state.stocks_quoted_at ?: JSONObject.NULL))
+                }
+                method == "GET" && path == "/stocks/search" -> {
+                    val q = url.queryParameter("q").orEmpty().trim()
+                    if (q.length < 2) return ok(JSONObject().put("success", true).put("results", JSONArray()))
+                    val words = q.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+                    val upper = q.uppercase()
+                    val hits = listedStocks().filter { r -> words.all { w -> r.symbol.lowercase().contains(w) || r.name.lowercase().contains(w) } }
+                        .sortedWith(compareBy({ it.symbol != upper }, { !it.symbol.startsWith(upper) }, { it.name.lowercase() }))
+                    ok(JSONObject().put("success", true).put("results", JSONArray(hits.take(20).map { r ->
+                        JSONObject().put("symbol", r.symbol).put("name", r.name).put("isin", r.isin ?: JSONObject.NULL)
+                    })))
+                }
+                method == "POST" && path == "/stocks" -> {
+                    val wanted = json.optString("symbol").trim().uppercase()
+                    val listed = listedStocks().find { it.symbol == wanted } ?: throw Refused("Pick a stock from the search")
+                    ok(store.transact { t ->
+                        val kiteDay = t.equity.maxOfOrNull { it.date }
+                        if (kiteDay != null && t.equity.any { it.date == kiteDay && it.symbol.uppercase() == listed.symbol }) throw Refused("Kite already tracks this stock", 409)
+                        val stock = t.stocks.find { it.symbol == listed.symbol }
+                            ?: VStock(newId(), listed.symbol, listed.name, listed.isin, 0.0, 0.0, now()).also { t.stocks.add(it) }
+                        val (onDay, quantity, price) = tradeFields(json, today)
+                        stockTrade(t, stock, "BUY", quantity, price, onDay)
+                        stocksDone(t, today, JSONObject().put("added", stock.symbol))
+                    })
+                }
+                method == "POST" && Regex("^/stocks/[^/]+/trades$").matches(path) -> {
+                    val symbol = java.net.URLDecoder.decode(path.removePrefix("/stocks/").removeSuffix("/trades"), "UTF-8").uppercase()
+                    ok(store.transact { t ->
+                        val stock = t.stocks.find { it.symbol == symbol } ?: throw Refused("No such stock", 404)
+                        val (onDay, quantity, price) = tradeFields(json, today)
+                        stockTrade(t, stock, json.optString("kind").uppercase(), quantity, price, onDay)
+                        stocksDone(t, today)
+                    })
+                }
+                method == "DELETE" && Regex("^/stocks/[^/]+/trades/\\d+$").matches(path) -> {
+                    val parts = path.split("/")
+                    val symbol = java.net.URLDecoder.decode(parts[2], "UTF-8").uppercase()
+                    val id = parts[4].toLong()
+                    ok(store.transact { t ->
+                        val stock = t.stocks.find { it.symbol == symbol }
+                        if (stock == null || t.stock_trades.none { it.id == id && it.stock_id == stock.id }) throw Refused("No such trade", 404)
+                        t.stock_trades.removeAll { it.id == id }
+                        val left = t.stock_trades.filter { it.stock_id == stock.id }
+                        try {
+                            replayStock(stock, left)
+                        } catch (e: Refused) {
+                            throw Refused("${e.message}, so that buy can't go")
+                        }
+                        if (left.isEmpty()) removeStock(t, stock)
+                        stocksDone(t, today)
+                    })
+                }
+                method == "DELETE" && Regex("^/stocks/[^/]+$").matches(path) -> {
+                    val symbol = java.net.URLDecoder.decode(path.removePrefix("/stocks/"), "UTF-8").uppercase()
+                    ok(store.transact { t ->
+                        val stock = t.stocks.find { it.symbol == symbol } ?: throw Refused("No such stock", 404)
+                        removeStock(t, stock)
+                        stocksDone(t, today)
+                    })
+                }
+
                 // ---- funds held outside Kite (funds.py) ----
                 method == "GET" && path == "/funds" -> {
                     if (!readOnly) runCatching { store.transact { t -> refreshFunds(t, false) } }
@@ -700,19 +1032,35 @@ class VaultEngine @Inject constructor(
                     val scheme = navs().byCode[json.optString("code")] ?: throw Refused("Pick a fund from the search")
                     ok(store.transact { t ->
                         if (scheme.name.lowercase() in kiteTrackedNames(t)) throw Refused("Kite already tracks this fund", 409)
+                        // What's held already, as a fund app shows it: units at an average NAV.
+                        fun given(k: String) = json.has(k) && !json.isNull(k) && json.opt(k) != ""
+                        fun positive(k: String, most: Double) = json.opt(k).let { (it as? Number)?.toDouble() ?: (it as? String)?.toDoubleOrNull() }
+                            ?.takeIf { given(k) && !it.isNaN() && it > 0 && it <= most }
+                        val holding = given("units") || given("avg_nav")
+                        val units = positive("units", 1_00_00_00_000.0)
+                        val avgNav = positive("avg_nav", 10_00_000.0)
+                        if (holding && units == null) throw Refused("Enter the units you hold")
+                        if (holding && avgNav == null) throw Refused("Enter the average NAV")
                         val lumpsum = !json.isNull("amount") && json.has("amount") && json.opt("amount") != ""
                         val amount = parseAmount(json.opt("amount"))
                         val d = parseDay(json.opt("date")) ?: today
                         if (lumpsum && amount == null) throw Refused("Enter the amount invested")
                         if (lumpsum && d > today) throw Refused("That date is in the future")
                         val sip = json.optJSONObject("sip")?.let { sipFields(it) }
-                        if (!lumpsum && sip == null) throw Refused("Enter an amount, a SIP, or both")
+                        if (!lumpsum && !holding && sip == null) throw Refused("Enter what you hold, an amount, or a SIP")
                         // A SIP belongs with the statement's folio when there is one.
-                        val fund = (if (sip != null && !lumpsum) t.funds.filter { it.amfi_code == scheme.code && it.folio_ref != manualFolio }
+                        val fund = (if (sip != null && !lumpsum && !holding) t.funds.filter { it.amfi_code == scheme.code && it.folio_ref != manualFolio }
                             .maxByOrNull { it.units.z } else null)
                             ?: t.funds.find { it.amfi_code == scheme.code && it.folio_ref == manualFolio }
                             ?: VFund(newId(), scheme.code, scheme.isins.firstOrNull(), scheme.name, scheme.amc, manualFolio, null, 0.0, 0.0,
                                 "manual", null, now()).also { t.funds.add(it) }
+                        if (holding && units != null && avgNav != null) {
+                            val held = r2(units * avgNav)
+                            t.fund_tx.add(VFundTx(newId(), fund.id, today, "HOLDING", held, units, avgNav, "manual",
+                                fundKey("holding", fund.id, today, pyStr(units), pyStr(avgNav), System.currentTimeMillis() / 1000.0)))
+                            fund.units = r3(fund.units.z + units)
+                            fund.invested = fund.invested.z + held
+                        }
                         if (lumpsum && amount != null) {
                             val priced = navOn(fund.amfi_code, d) ?: throw Refused("That day's NAV isn't out yet", 503)
                             val units = purchaseUnits(amount, priced.second)
@@ -788,7 +1136,8 @@ class VaultEngine @Inject constructor(
         if (method == "GET") return when (path) {
             "/investments/prices" -> Answer(200, """{"mode":"manual","synced":null,"stocks_at":null,"checked_at":null,"stale":false,"closed_today":false}""")
             "/funds" -> Answer(200, """{"success":true,"funds":[]}""")
-            "/funds/search" -> Answer(200, """{"success":true,"results":[]}""")
+            "/funds/search", "/stocks/search" -> Answer(200, """{"success":true,"results":[]}""")
+            "/stocks" -> Answer(200, """{"success":true,"stocks":[],"quoted_at":null}""")
             "/assets/list" -> Answer(200, "{}")
             else -> Answer(200, "[]")
         }
@@ -804,6 +1153,6 @@ class VaultEngine @Inject constructor(
 
     companion object {
         /** The Investments requests the vault answers. */
-        fun isInvestPath(path: String) = Regex("^/api/(investments(/|$)|manual_assets(/|$)|assets/list$|equity$|cron/(process-recurring|tasks)(/|$)|sync/(kite|investments-to-sheets)$|funds(/|$))").containsMatchIn(path)
+        fun isInvestPath(path: String) = Regex("^/api/(investments(/|$)|manual_assets(/|$)|assets/list$|equity$|cron/(process-recurring|tasks)(/|$)|sync/(kite|investments-to-sheets)$|funds(/|$)|stocks(/|$))").containsMatchIn(path)
     }
 }

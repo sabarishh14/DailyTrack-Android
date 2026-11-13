@@ -24,6 +24,8 @@ data class FundDto(
     val invested: Double = 0.0,
     val value: Double? = null,
     val nav: Double? = null,
+    /** The day of [nav]: AMFI publishes a day's NAV that evening. */
+    @Json(name = "nav_date") val navDate: String? = null,
     /** The last 4 of each folio number; the rest is never stored. */
     val folios: List<String> = emptyList(),
     val sips: List<FundSipDto> = emptyList()
@@ -59,10 +61,12 @@ data class FundSipRequestDto(
     val since: String
 )
 
-/** A lump sum on a day, a monthly SIP, or both. */
+/** What's held already (units at an average NAV), a lump sum on a day, a monthly SIP, or a mix. */
 @JsonClass(generateAdapter = true)
 data class AddFundRequestDto(
     val code: String,
+    val units: Double? = null,
+    @Json(name = "avg_nav") val avgNav: Double? = null,
     val amount: Double? = null,
     val date: String? = null,
     val sip: FundSipRequestDto? = null

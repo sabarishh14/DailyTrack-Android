@@ -7,7 +7,7 @@ import com.squareup.moshi.JsonClass
 // The private vault's contents (data/vault): the same tables the server kept
 // readable, row for row, field for field (named as the server names them), so
 // the web and the phone read each other's items. Locked away in items: "assets",
-// "funds", "state", and "day:YYYY-MM" for each month of days.
+// "funds", "stocks", "state", and "day:YYYY-MM" for each month of days.
 
 @JsonClass(generateAdapter = true)
 data class VSnapshot(
@@ -132,12 +132,47 @@ data class VFundValue(
     var value: Double? = 0.0,
 )
 
-/** When Kite's holdings were last repriced, and when the prices traded (IST). */
+@JsonClass(generateAdapter = true)
+data class VStock(
+    var id: Long,
+    var symbol: String,
+    var name: String,
+    var isin: String? = null,
+    var quantity: Double = 0.0,
+    var invested: Double? = 0.0,
+    var updated_at: String? = null,
+)
+
+@JsonClass(generateAdapter = true)
+data class VStockTrade(
+    var id: Long,
+    var stock_id: Long,
+    var date: String,
+    var kind: String,
+    var quantity: Double,
+    var price: Double,
+)
+
+@JsonClass(generateAdapter = true)
+data class VStockValue(
+    var id: Long,
+    var date: String,
+    var symbol: String,
+    var name: String,
+    var quantity: Double,
+    var price: Double,
+    var invested: Double,
+    var value: Double,
+)
+
+/** When Kite's holdings (and stocks added by hand) were last priced, and when the prices traded (IST). */
 @JsonClass(generateAdapter = true)
 data class VState(
     var priced_at: String? = null,
     var quoted_at: String? = null,
     var quotes_seen_at: String? = null,
+    var stocks_priced_at: String? = null,
+    var stocks_quoted_at: String? = null,
 )
 
 /** Everything in the vault, opened. */
@@ -152,6 +187,9 @@ data class VTables(
     var fund_tx: MutableList<VFundTx> = mutableListOf(),
     var sips: MutableList<VSip> = mutableListOf(),
     var fund_values: MutableList<VFundValue> = mutableListOf(),
+    var stocks: MutableList<VStock> = mutableListOf(),
+    var stock_trades: MutableList<VStockTrade> = mutableListOf(),
+    var stock_values: MutableList<VStockValue> = mutableListOf(),
     var state: VState = VState(),
 )
 
@@ -162,9 +200,13 @@ data class VAssetsItem(val assets: List<VAsset> = emptyList(), val tasks: List<V
 data class VFundsItem(val funds: List<VFund> = emptyList(), val fund_tx: List<VFundTx> = emptyList(), val sips: List<VSip> = emptyList())
 
 @JsonClass(generateAdapter = true)
+data class VStocksItem(val stocks: List<VStock> = emptyList(), val stock_trades: List<VStockTrade> = emptyList())
+
+@JsonClass(generateAdapter = true)
 data class VDayItem(
     val snapshots: List<VSnapshot> = emptyList(),
     val equity: List<VEquity> = emptyList(),
     val mf: List<VMf> = emptyList(),
     val fund_values: List<VFundValue> = emptyList(),
+    val stock_values: List<VStockValue> = emptyList(),
 )

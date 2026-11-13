@@ -147,7 +147,8 @@ internal fun formatPointDate(dateStr: String): String {
 @Composable
 fun InvestmentsScreen(
     viewModel: InvestVM = hiltViewModel(),
-    fundsViewModel: FundsVM = hiltViewModel()
+    fundsViewModel: FundsVM = hiltViewModel(),
+    stocksViewModel: com.example.dailytrack_mobile.presentation.screens.invest.stocks.StocksVM = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
     val dims = Dimens.current
@@ -163,7 +164,8 @@ fun InvestmentsScreen(
             viewModel.onAction(InvestAction.Refresh)
         }
     }
-    if (vault.closed) {
+    // Locked: the unlock card. Opening with this phone's key: just the loading, it's a moment.
+    if (vault.closed && !vault.opening) {
         com.example.dailytrack_mobile.presentation.screens.vault.VaultGate(vault, vaultVM)
         return
     }
@@ -171,6 +173,8 @@ fun InvestmentsScreen(
     val canChangeVault = access.viewing == null &&
         access.canEdit(com.example.dailytrack_mobile.data.local.auth.AccessModule.INVEST)
     var showFunds by rememberSaveable { mutableStateOf(false) }
+    val stocksAvailable by stocksViewModel.available.collectAsState()
+    var showStocks by rememberSaveable { mutableStateOf(false) }
 
     var isValueMode by remember { mutableStateOf(true) }
     var selectedChartPoint by remember { mutableStateOf<ChartPoint?>(null) }
@@ -374,6 +378,10 @@ fun InvestmentsScreen(
                         if (state.selectedTab == InvestTab.MUTUAL_FUNDS && fundsAvailable) {
                             item { FundsEntryCard(onClick = { showFunds = true }) }
                         }
+                        // Stocks added by hand, from theirs (StocksPage).
+                        if (state.selectedTab == InvestTab.STOCKS && stocksAvailable) {
+                            item { com.example.dailytrack_mobile.presentation.screens.invest.stocks.StocksEntryCard(onClick = { showStocks = true }) }
+                        }
                         // The day's biggest price moves, above the holdings themselves.
                         val moversType = when (state.selectedTab) {
                             InvestTab.STOCKS -> HoldingsType.EQUITY
@@ -432,6 +440,13 @@ fun InvestmentsScreen(
 
         if (showFunds) {
             FundsSheet(viewModel = fundsViewModel, onDismiss = { showFunds = false })
+        }
+
+        if (showStocks) {
+            com.example.dailytrack_mobile.presentation.screens.invest.stocks.StocksPage(
+                viewModel = stocksViewModel,
+                onDismiss = { showStocks = false }   // each change already reloads the portfolio
+            )
         }
 
         if (state.isCategorySettingsOpen) {

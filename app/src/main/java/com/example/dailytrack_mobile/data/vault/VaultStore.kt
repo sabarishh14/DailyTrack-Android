@@ -9,6 +9,7 @@ import com.example.dailytrack_mobile.data.remote.dto.VAssetsItem
 import com.example.dailytrack_mobile.data.remote.dto.VDayItem
 import com.example.dailytrack_mobile.data.remote.dto.VFundsItem
 import com.example.dailytrack_mobile.data.remote.dto.VState
+import com.example.dailytrack_mobile.data.remote.dto.VStocksItem
 import com.example.dailytrack_mobile.data.remote.dto.VTables
 import com.squareup.moshi.Moshi
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,7 +36,8 @@ data class VaultUi(
     /** unknown | off | moving | on */
     val state: String = "unknown",
     val open: Boolean = false,
-    /** Why it's shut: locked | no-keys (a friend's, and no vault of your own) | no-grant (not opened for you yet) */
+    /** Why it's shut: opening (with this phone's key, a moment) | locked | no-keys (a friend's, and no vault of
+     *  your own) | no-grant (not opened for you yet) */
     val reason: String? = null,
     val owner: String? = null,
     val email: String? = null,
@@ -44,6 +46,7 @@ data class VaultUi(
     val moving: Boolean = false,
 ) {
     val closed get() = state == "on" && !open
+    val opening get() = reason == "opening"
 }
 
 class VaultHttpError(val status: Int, val code: String?, message: String) : Exception(message)
@@ -68,6 +71,7 @@ class VaultStore @Inject constructor(
     private val assetsAdapter = moshi.adapter(VAssetsItem::class.java).serializeNulls()
     private val fundsAdapter = moshi.adapter(VFundsItem::class.java).serializeNulls()
     private val dayAdapter = moshi.adapter(VDayItem::class.java).serializeNulls()
+    private val stocksAdapter = moshi.adapter(VStocksItem::class.java).serializeNulls()
     private val stateAdapter = moshi.adapter(VState::class.java).serializeNulls()
     private val prefs by lazy { context.getSharedPreferences("dt_vault", Context.MODE_PRIVATE) }
 
@@ -87,6 +91,10 @@ class VaultStore @Inject constructor(
     @Volatile private var infoFor: String? = UNREAD
     @Volatile private var session: Session? = null
     @Volatile private var moving = false
+    // Whether this phone has tried its remembered key yet: until it has, the vault
+    // is "opening", not locked, so no passphrase card flashes up meanwhile.
+    @Volatile private var rememberTried = false
+    private val rememberLock = Any()
     private val statusLock = Any()
     private val writeLock = Any()
 
@@ -166,6 +174,7 @@ class VaultStore @Inject constructor(
             state != "on" || open -> null
             !hasKeys -> "no-keys"
             viewing && v.isNull("grant") -> "no-grant"
+            !rememberTried -> "opening"
             else -> "locked"
         }
         _ui.value = VaultUi(state, open, reason, owner, email, viewing, hasKeys, moving)
@@ -176,7 +185,10 @@ class VaultStore @Inject constructor(
         synchronized(statusLock) {
             val view = authManager.getViewAs()
             if (!force && info != null && infoFor == view) return info!!
-            if (infoFor != view) session = null
+            if (infoFor != view) {
+                session = null
+                rememberTried = false
+            }
             val fresh = call("GET", "/api/vault")
             info = fresh
             infoFor = view
@@ -201,8 +213,10 @@ class VaultStore @Inject constructor(
                 id == "state" -> stateAdapter.fromJson(json)!!.also { t.state = it }.let(stateAdapter::toJson)
                 id == "assets" -> assetsAdapter.fromJson(json)!!.also { t.assets.addAll(it.assets); t.tasks.addAll(it.tasks) }.let(assetsAdapter::toJson)
                 id == "funds" -> fundsAdapter.fromJson(json)!!.also { t.funds.addAll(it.funds); t.fund_tx.addAll(it.fund_tx); t.sips.addAll(it.sips) }.let(fundsAdapter::toJson)
+                id == "stocks" -> stocksAdapter.fromJson(json)!!.also { t.stocks.addAll(it.stocks); t.stock_trades.addAll(it.stock_trades) }.let(stocksAdapter::toJson)
                 id.startsWith("day:") -> dayAdapter.fromJson(json)!!.also {
                     t.snapshots.addAll(it.snapshots); t.equity.addAll(it.equity); t.mf.addAll(it.mf); t.fund_values.addAll(it.fund_values)
+                    t.stock_values.addAll(it.stock_values)
                 }.let(dayAdapter::toJson)
                 else -> json   // something newer than this app: kept as it is
             }
@@ -216,15 +230,17 @@ class VaultStore @Inject constructor(
         val items = linkedMapOf(
             "assets" to assetsAdapter.toJson(VAssetsItem(t.assets, t.tasks)),
             "funds" to fundsAdapter.toJson(VFundsItem(t.funds, t.fund_tx, t.sips)),
+            "stocks" to stocksAdapter.toJson(VStocksItem(t.stocks, t.stock_trades)),
             "state" to stateAdapter.toJson(t.state),
         )
         val months = sortedSetOf<String>()
-        listOf(t.snapshots.map { it.date }, t.equity.map { it.date }, t.mf.map { it.date }, t.fund_values.map { it.date })
-            .flatten().forEach { months.add(it.take(7)) }
+        listOf(t.snapshots.map { it.date }, t.equity.map { it.date }, t.mf.map { it.date }, t.fund_values.map { it.date },
+            t.stock_values.map { it.date }).flatten().forEach { months.add(it.take(7)) }
         for (m in months) {
             items["day:$m"] = dayAdapter.toJson(VDayItem(
                 t.snapshots.filter { it.date.startsWith(m) }, t.equity.filter { it.date.startsWith(m) },
-                t.mf.filter { it.date.startsWith(m) }, t.fund_values.filter { it.date.startsWith(m) }))
+                t.mf.filter { it.date.startsWith(m) }, t.fund_values.filter { it.date.startsWith(m) },
+                t.stock_values.filter { it.date.startsWith(m) }))
         }
         return items
     }
@@ -247,13 +263,18 @@ class VaultStore @Inject constructor(
     }
 
     /** Opens it with the key this phone kept, if it kept one. */
-    fun tryRemembered(): Boolean {
+    fun tryRemembered(): Boolean = synchronized(rememberLock) {
         if (session != null) return true
-        val v = runCatching { status() }.getOrNull() ?: return false
-        if (v.optString("state") != "on" || v.isNull("me")) return false
-        if (v.optString("owner") != v.optString("email") && v.isNull("grant")) return false
-        val key = recallKey(v.getString("email")) ?: return false
-        return runCatching { openWith(key, remember = false); true }.getOrDefault(false)
+        try {
+            val v = runCatching { status() }.getOrNull() ?: return false
+            if (v.optString("state") != "on" || v.isNull("me")) return false
+            if (v.optString("owner") != v.optString("email") && v.isNull("grant")) return false
+            val key = recallKey(v.getString("email")) ?: return false
+            runCatching { openWith(key, remember = false); true }.getOrDefault(false)
+        } finally {
+            rememberTried = true
+            emit()
+        }
     }
 
     /** Unlock with the passphrase (or the recovery key). */
@@ -273,6 +294,7 @@ class VaultStore @Inject constructor(
     fun lockNow() {
         forgetKey(info?.optString("email"))
         session = null
+        rememberTried = true
         emit()
     }
 
@@ -311,7 +333,7 @@ class VaultStore @Inject constructor(
                 put.put(JSONObject().put("id", id).put("payload", VaultCrypto.sealItem(s.dataKey, s.owner, id, json)).put("rev", s.saved[id]?.first ?: 0))
             }
         }
-        for ((id, have) in s.saved) if (id !in items && (id == "state" || id == "assets" || id == "funds" || id.startsWith("day:"))) {
+        for ((id, have) in s.saved) if (id !in items && (id == "state" || id == "assets" || id == "funds" || id == "stocks" || id.startsWith("day:"))) {
             del.put(JSONObject().put("id", id).put("rev", have.first))
         }
         if (put.length() > 0 || del.length() > 0) {
@@ -337,7 +359,8 @@ class VaultStore @Inject constructor(
         val out = JSONObject()
         val tables = mapOf("snapshots" to t.snapshots.map { it.id }, "equity" to t.equity.map { it.id }, "mf" to t.mf.map { it.id },
             "assets" to t.assets.map { it.id }, "tasks" to t.tasks.map { it.id }, "funds" to t.funds.map { it.id },
-            "fund_tx" to t.fund_tx.map { it.id }, "sips" to t.sips.map { it.id }, "fund_values" to t.fund_values.map { it.id })
+            "fund_tx" to t.fund_tx.map { it.id }, "sips" to t.sips.map { it.id }, "fund_values" to t.fund_values.map { it.id },
+            "stocks" to t.stocks.map { it.id }, "stock_trades" to t.stock_trades.map { it.id }, "stock_values" to t.stock_values.map { it.id })
         for ((name, ids) in tables) {
             val sorted = ids.map { it.toString() }.sorted()
             out.put(name, JSONObject().put("count", sorted.size).put("ids", VaultCrypto.sha256Hex(sorted.joinToString(","))))
@@ -373,6 +396,7 @@ class VaultStore @Inject constructor(
         fun norm(t: VTables) = copy(t).apply {
             snapshots.sortBy { it.id }; equity.sortBy { it.id }; mf.sortBy { it.id }; assets.sortBy { it.id }; tasks.sortBy { it.id }
             funds.sortBy { it.id }; fund_tx.sortBy { it.id }; sips.sortBy { it.id }; fund_values.sortBy { it.id }
+            stocks.sortBy { it.id }; stock_trades.sortBy { it.id }; stock_values.sortBy { it.id }
         }
         return norm(a) == norm(b)
     }
@@ -520,6 +544,7 @@ class VaultStore @Inject constructor(
         info = null
         infoFor = UNREAD
         session = null
+        rememberTried = false
         emit()
     }
 

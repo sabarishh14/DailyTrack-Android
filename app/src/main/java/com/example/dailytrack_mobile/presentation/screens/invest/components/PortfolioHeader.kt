@@ -374,25 +374,35 @@ internal fun moveDayLabel(date: String, previousDate: String): String? {
     }
 }
 
-/** The web's line: "Stocks as of 3:29 pm" (Daily) or "Kite synced 20 Oct" (Manual);
- *  amber, "not updating", when the market's open and the prices aren't moving. */
+/** The web's line: "Stocks as of 3:29 pm" (Daily) or "Kite synced 20 Oct" (Manual), and
+ *  "NAV 12 Nov", the funds' latest NAV day; amber, "not updating", when the market's
+ *  open and the prices aren't moving. */
 @Composable
 private fun PriceTime(times: com.example.dailytrack_mobile.data.remote.dto.PriceTimesDto) {
     val text = remember(times) {
         val dailyAt = (times.stocksAt ?: times.checkedAt)
             ?.let { runCatching { java.time.LocalDateTime.parse(it) }.getOrNull() }
-        when {
+        val nav = times.fundsAt?.let { runCatching { java.time.LocalDate.parse(it.take(10)).format(priceDay) }.getOrNull() }
+        val prices = when {
             times.mode == "daily" && dailyAt != null -> {
                 val time = dailyAt.format(priceClock).lowercase()
                 val day = if (dailyAt.toLocalDate() == java.time.LocalDate.now()) time else "${dailyAt.format(priceDay)}, $time"
-                "${if (times.stocksAt != null) "Stocks as of" else "Updated"} $day" + when {
-                    times.stale -> " · not updating"
-                    times.closedToday -> " · market closed today"
-                    else -> ""
-                }
+                "${if (times.stocksAt != null) "Stocks as of" else "Updated"} $day"
             }
             times.mode == "manual" && times.synced != null ->
                 runCatching { "Kite synced ${java.time.LocalDate.parse(times.synced).format(priceDay)}" }.getOrNull()
+            else -> null
+        }
+        val status = when {
+            prices == null -> ""
+            times.stale -> " · not updating"
+            times.closedToday -> " · market closed today"
+            else -> ""
+        }
+        when {
+            prices != null && nav != null -> "$prices · NAV $nav$status"
+            prices != null -> prices + status
+            nav != null -> "NAV as of $nav"
             else -> null
         }
     } ?: return

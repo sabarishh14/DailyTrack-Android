@@ -99,5 +99,7 @@ data class PriceTimesDto(
     @Json(name = "checked_at") val checkedAt: String? = null,
     @Json(name = "stale") val stale: Boolean = false,
     // A weekday the market didn't open (a holiday): the last close stands.
-    @Json(name = "closed_today") val closedToday: Boolean = false
+    @Json(name = "closed_today") val closedToday: Boolean = false,
+    // The day of the latest NAV the funds held are at (AMFI publishes a day's that evening).
+    @Json(name = "funds_at") val fundsAt: String? = null
 )
