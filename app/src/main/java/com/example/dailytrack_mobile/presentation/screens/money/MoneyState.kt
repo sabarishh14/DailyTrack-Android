@@ -465,12 +465,12 @@ data class MoneyState(
             return mostUsedCategories.filter { it !in excluded }
         }
 
+    /** Most used first: the server lists accounts that way; until it has, the loaded transactions decide. */
     val allAvailableAccounts: List<String>
-        get() {
-            val raw = if (accounts.isNotEmpty()) accounts.map { it.account }
-                      else transactions.map { it.bank }.distinct()
-            return sortAccountsCanonical(raw)
-        }
+        get() = if (accounts.isNotEmpty()) accounts.map { it.account }
+                else transactions.groupingBy { it.bank }.eachCount().entries
+                    .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.lowercase() })
+                    .map { it.key }
 
     // ── Budgets ──────────────────────────────────────────────────────
 

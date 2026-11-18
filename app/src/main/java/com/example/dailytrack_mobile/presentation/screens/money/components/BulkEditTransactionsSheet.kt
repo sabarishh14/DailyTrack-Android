@@ -38,7 +38,6 @@ import com.example.dailytrack_mobile.presentation.screens.money.CategoryEmojis
 import com.example.dailytrack_mobile.presentation.screens.money.DEFAULT_CANONICAL_ACCOUNTS
 import com.example.dailytrack_mobile.presentation.screens.money.Transaction
 import com.example.dailytrack_mobile.presentation.screens.money.TransactionType
-import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCanonical
 import com.example.dailytrack_mobile.presentation.util.Dimens
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryAmountCard
 import com.example.dailytrack_mobile.presentation.components.transaction.EntryCategoryPills
@@ -93,9 +92,7 @@ fun BulkEditTransactionsSheet(
     // Per-transaction tab: one entry open at a time, the rest folded into cards.
     var expandedItemId by remember { mutableStateOf<Long?>(null) }
 
-    val accountsList = remember(availableAccounts) {
-        sortAccountsCanonical(availableAccounts)
-    }
+    val accountsList = availableAccounts  // most used first
     val allCategories = remember(availableCategories) {
         if (availableCategories.isNotEmpty()) availableCategories else defaultCategories
     }

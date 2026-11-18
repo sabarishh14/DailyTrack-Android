@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,8 +38,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.UploadFile
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -84,8 +81,6 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -107,13 +102,19 @@ import kotlin.math.roundToLong
 // The web's FundsModal on the phone: what's held outside Kite, importing a CAS,
 // adding a fund by hand, and SIPs. The server does the valuing (funds_service.py).
 
-private const val CAMS_CAS = "https://www.camsonline.com/Investors/Statements/Consolidated-Account-Statement"
+private const val MF_CENTRAL = "https://app.mfcentral.com/"
 
-private val CamsSettings = listOf(
-    "Statement type" to "Detailed",
-    "Period" to "Specific · from 01-Jan-1990",
-    "Folio listing" to "With zero balance folios",
-    "Password" to "Set your own; you'll need it below"
+private val MfCentralSteps = listOf(
+    "Log in" to "New? Sign up with your PAN",
+    "Open" to "Statement → Detailed",
+    "Period" to "Specific period, earliest date",
+    "Click" to "Download as Excel"
+)
+
+/** What the picker offers: MF Central's Excel (some file managers don't name its type). */
+private val StatementTypes = arrayOf(
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel",
+    "application/octet-stream"
 )
 
 private val dateText = DateTimeFormatter.ofPattern("EEE, d MMM yyyy", Locale.ENGLISH)
@@ -489,7 +490,7 @@ private fun Welcome(readOnly: Boolean, onImport: () -> Unit, onAdd: () -> Unit) 
         if (!readOnly) Muted("Valued every day at AMFI's NAV, with SIPs that add themselves.", center = true)
     }
     if (readOnly) return
-    Option(Icons.Default.Description, "Import statement", "Every fund and transaction at once, from your CAS.", recommended = true, onClick = onImport)
+    Option(Icons.Default.Description, "Import statement", "Every fund at once, from MF Central.", recommended = true, onClick = onImport)
     Option(Icons.Default.Add, "Add a fund", "Search for one and add what you put in, or its SIP.", recommended = false, onClick = onAdd)
 }
 
@@ -544,11 +545,10 @@ private fun IconTile(icon: ImageVector) {
 private fun ImportView(state: FundsUiState, vm: FundsVM) {
     val colors = MaterialTheme.colorScheme
     val uriHandler = LocalUriHandler.current
-    var showPassword by remember { mutableStateOf(false) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(vm::pickFile) }
 
-    Step(1, "Get your statement from CAMS") {
-        Muted("Tick the disclaimer, enter your email, then choose:")
+    Step(1, "Get your statement from MF Central") {
+        Muted("Every fund under your PAN, from every app you invest through.")
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -557,7 +557,7 @@ private fun ImportView(state: FundsUiState, vm: FundsVM) {
                 .padding(14.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CamsSettings.forEach { (label, value) ->
+                MfCentralSteps.forEach { (label, value) ->
                     Row {
                         Text(label, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.weight(0.42f))
                         Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = colors.onSurface, modifier = Modifier.weight(0.58f))
@@ -565,12 +565,12 @@ private fun ImportView(state: FundsUiState, vm: FundsVM) {
                 }
             }
         }
-        FilledTonalButton(onClick = { uriHandler.openUri(CAMS_CAS) }) {
-            Text("Open CAMS")
+        FilledTonalButton(onClick = { uriHandler.openUri(MF_CENTRAL) }) {
+            Text("Open MF Central")
             Spacer(Modifier.width(6.dp))
             Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
         }
-        Muted("Arrives by email in a few minutes.")
+        Muted("Ready in My Downloads in about 30 min.")
     }
 
     Step(2, "Upload it") {
@@ -591,7 +591,7 @@ private fun ImportView(state: FundsUiState, vm: FundsVM) {
                         )
                     )
                 }
-                .clickable { picker.launch(arrayOf("application/pdf")) }
+                .clickable { picker.launch(StatementTypes) }
                 .padding(vertical = 22.dp, horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -599,7 +599,7 @@ private fun ImportView(state: FundsUiState, vm: FundsVM) {
             IconTile(if (file != null) Icons.Default.Description else Icons.Default.UploadFile)
             Spacer(Modifier.height(8.dp))
             Text(
-                file?.name ?: "Choose your CAS PDF",
+                file?.name ?: "Choose the Excel",
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.onSurface,
                 maxLines = 1,
@@ -607,39 +607,20 @@ private fun ImportView(state: FundsUiState, vm: FundsVM) {
             )
             Muted(
                 if (file != null) listOfNotNull(file.bytes?.let { "${it / 1024} KB" }, "tap to change").joinToString(" · ")
-                else "From your email or Downloads"
+                else "From your Downloads"
             )
         }
-        OutlinedTextField(
-            value = state.password,
-            onValueChange = vm::setPassword,
-            label = { Text("PDF password") },
-            singleLine = true,
-            visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { vm.import() }),
-            trailingIcon = {
-                IconButton(onClick = { showPassword = !showPassword }) {
-                    Icon(
-                        if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (showPassword) "Hide password" else "Show password"
-                    )
-                }
-            },
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth()
-        )
         state.importError?.let { ErrorText(it) }
         WideButton(
             text = if (state.importing) "Reading your statement…" else "Import",
             busy = state.importing,
-            enabled = file != null && state.password.isNotEmpty() && !state.importing,
+            enabled = file != null && !state.importing,
             onClick = vm::import
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Lock, contentDescription = null, tint = colors.onSurfaceVariant, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(6.dp))
-            Text("Read once and never stored: not the PDF, not the password.", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
+            Text("Read once and never stored: only your funds are kept.", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
         }
     }
 }

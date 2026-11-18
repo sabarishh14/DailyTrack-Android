@@ -218,12 +218,9 @@ fun FilterBottomSheet(
                 )
 
                 // 4. Complex Filters: Accounts & Banks (Mode Toggle Pattern)
-                val sortedAccounts = remember(allAccounts) {
-                    sortAccountsCanonical(allAccounts)
-                }
                 AdvancedFilterSection(
                     title = "Accounts & Banks",
-                    items = sortedAccounts,
+                    items = allAccounts,  // most used first
                     selectedStatusMap = draftFilters.accountFilters,
                     onItemStatusChange = { account, newStatus ->
                         val updated = draftFilters.accountFilters.toMutableMap()

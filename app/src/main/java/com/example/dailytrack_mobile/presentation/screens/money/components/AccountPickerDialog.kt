@@ -18,7 +18,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.dailytrack_mobile.domain.search.smartSearch
-import com.example.dailytrack_mobile.presentation.screens.money.sortAccountsCanonical
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Account Picker Dialog (Searchable with Account List & Icons)
@@ -35,15 +34,12 @@ fun AccountPickerDialog(
     var searchQuery by remember { mutableStateOf("") }
     val query = searchQuery.trim()
 
-    val sortedAccounts = remember(accountsList) {
-        sortAccountsCanonical(accountsList)
+    // Already most used first (see MoneyState.allAvailableAccounts).
+    val filteredAccounts = remember(query, accountsList) {
+        accountsList.smartSearch(query)
     }
 
-    val filteredAccounts = remember(query, sortedAccounts) {
-        sortedAccounts.smartSearch(query)
-    }
-
-    val isExactMatch = sortedAccounts.any { it.equals(query, ignoreCase = true) }
+    val isExactMatch = accountsList.any { it.equals(query, ignoreCase = true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

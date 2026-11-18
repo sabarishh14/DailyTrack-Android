@@ -38,7 +38,7 @@ import kotlin.math.roundToLong
  * follows the server (invest.py, funds.py, funds_service.py, kite_daily.py);
  * keep them in step.
  *
- * What only the server can reach (AMFI's NAVs, stock prices, reading a CAS PDF)
+ * What only the server can reach (AMFI's NAVs, stock prices, reading MF Central's Excel)
  * it asks for by name, never with amounts (blueprints/vault.py).
  */
 @Singleton
@@ -707,6 +707,7 @@ class VaultEngine @Inject constructor(
         val kite = kiteTrackedNames(t)
         val nav = navs()
         val added = JSONArray(); val updated = JSONArray(); val closed = JSONArray(); val skipped = JSONArray(); val unknown = JSONArray()
+        val seenFunds = mutableSetOf<Long>()
         val folios = cas.optJSONArray("folios") ?: JSONArray()
         for (fi in 0 until folios.length()) {
             val folio = folios.getJSONObject(fi)
@@ -718,6 +719,15 @@ class VaultEngine @Inject constructor(
                 if (scheme == null) { unknown.put(s.opt("scheme") ?: JSONObject.NULL); continue }
                 if (scheme.name.lowercase() in kite) { skipped.put(scheme.name); continue }
                 var fund = t.funds.find { it.amfi_code == scheme.code && it.folio_ref == ref }
+                val tail = folio.optString("tail").takeIf { !folio.isNull("tail") && it.isNotEmpty() }
+                if (fund == null && tail != null) {
+                    // The same folio, written another way (an earlier import may have
+                    // "12345678 / 0"): the fund and its last 4 digits find it.
+                    fund = t.funds.filter { it.amfi_code == scheme.code && it.folio_tail == tail && it.folio_ref != manualFolio && it.id !in seenFunds }
+                        .minByOrNull { it.id }
+                    fund?.folio_ref = ref
+                }
+                if (fund == null && s.getDouble("close") <= 0) continue   // sold out before it was ever here: nothing to show
                 val isNew = fund == null
                 if (fund == null) {
                     fund = VFund(newId(), scheme.code, null, scheme.name, null, ref, null, 0.0, 0.0, "cas", null, null)
@@ -730,6 +740,7 @@ class VaultEngine @Inject constructor(
                 fund.source = "cas"
                 fund.statement_to = fund.statement_to?.takeIf { it > periodTo } ?: periodTo
                 fund.updated_at = now()
+                seenFunds.add(fund.id)
                 val existing = t.fund_tx.filter { it.fund_id == fund.id }.map { it.key }.toMutableSet()
                 val seen = mutableMapOf<String, Int>()
                 val txs = s.optJSONArray("transactions") ?: JSONArray()
@@ -1097,7 +1108,7 @@ class VaultEngine @Inject constructor(
                     })
                 }
                 method == "POST" && path == "/funds/import" -> {
-                    // The PDF is read on the server and handed straight back (blueprints/vault.py).
+                    // MF Central's Excel is read on the server and handed straight back (blueprints/vault.py).
                     val cas = try {
                         store.call("POST", "/api/vault/cas", body).getJSONObject("cas")
                     } catch (e: VaultHttpError) {

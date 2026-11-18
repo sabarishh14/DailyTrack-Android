@@ -35,6 +35,7 @@ class FundsRepository @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     /** A picked statement: what to call it on screen. */
+    /** A chosen statement: MF Central's Excel. */
     data class PickedFile(val uri: Uri, val name: String, val bytes: Long?)
 
     suspend fun funds(): Result<List<FundDto>> =
@@ -52,7 +53,7 @@ class FundsRepository @Inject constructor(
     suspend fun stopSip(id: Long): Result<List<FundDto>> = change { api.stopFundSip(id) }
 
     fun describe(uri: Uri): PickedFile {
-        var name = "statement.pdf"
+        var name = "statement"
         var size: Long? = null
         runCatching {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
@@ -67,20 +68,20 @@ class FundsRepository @Inject constructor(
     }
 
     /**
-     * Sends the PDF and its password to be read once. Neither is kept here or
-     * there, and the upload never goes to the debug log (NetworkModule).
+     * Sends MF Central's Excel to be read once. It isn't kept here or there, and
+     * the upload never goes to the debug log (NetworkModule).
      */
-    suspend fun import(file: Uri, password: String): Result<FundImportResponseDto> {
+    suspend fun import(file: Uri): Result<FundImportResponseDto> {
         val bytes = withContext(Dispatchers.IO) {
             runCatching { context.contentResolver.openInputStream(file)?.use { it.readBytes() } }.getOrNull()
         } ?: return Result.failure(Exception("Couldn't open that file"))
-        if (bytes.size > MAX_STATEMENT_BYTES) return Result.failure(Exception("That PDF is too large"))
-        if (!bytes.copyOfRange(0, minOf(4, bytes.size)).contentEquals("%PDF".toByteArray())) {
-            return Result.failure(Exception("That isn't a PDF"))
+        if (bytes.size > MAX_STATEMENT_BYTES) return Result.failure(Exception("That file is too large"))
+        if (!bytes.copyOfRange(0, minOf(4, bytes.size)).contentEquals(byteArrayOf(0x50, 0x4B, 0x03, 0x04))) {
+            return Result.failure(Exception("Choose MF Central's Excel"))
         }
-        val part = MultipartBody.Part.createFormData("file", "cas.pdf", bytes.toRequestBody("application/pdf".toMediaType()))
-        val secret = password.toRequestBody("text/plain".toMediaType())
-        return call { api.importFundStatement(part, secret) }.onSuccess { changed() }
+        val type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".toMediaType()
+        val part = MultipartBody.Part.createFormData("file", "statement.xlsx", bytes.toRequestBody(type))
+        return call { api.importFundStatement(part) }.onSuccess { changed() }
     }
 
     private suspend fun change(block: suspend () -> Response<FundsResponseDto>): Result<List<FundDto>> =

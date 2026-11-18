@@ -90,10 +90,6 @@ private val defaultIncomeCategories = listOf(
     "Salary", "Freelance", "Investment", "Gift", "Other"
 )
 
-/** The order accounts are listed in; never offered as accounts themselves. */
-private val defaultAccounts = listOf(
-    "Cash", "KOTAK", "IDBI", "FEDERAL", "CUB", "INDIAN", "ICICI", "HDFC", "SBI", "Axis", "CC-PINNACLE 6360"
-)
 
 private val addTypes = EntryType.entries
 
@@ -174,13 +170,8 @@ fun AddMoneyScreen(
     var accountSearchDialogOpen by remember { mutableStateOf(false) }
     var accountSearchQuery by remember { mutableStateOf("") }
 
-    // Only the person's own accounts; the list below is just the order they're shown in.
-    val accountsList = remember(formState.accounts) {
-        formState.accounts.sortedBy { account ->
-            val index = defaultAccounts.indexOfFirst { it.equals(account, ignoreCase = true) }
-            if (index == -1) Int.MAX_VALUE else index
-        }
-    }
+    // The person's own accounts, most used first (the server lists them that way).
+    val accountsList = formState.accounts
 
     // Entries without an account yet start on the first one.
     LaunchedEffect(accountsList, entries.size) {

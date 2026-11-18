@@ -46,7 +46,6 @@ import com.example.dailytrack_mobile.data.remote.dto.SaveRoutineCheckInsResponse
 import com.example.dailytrack_mobile.data.remote.dto.PortfolioSnapshotDto
 import com.example.dailytrack_mobile.data.remote.dto.TransactionsResponseDto
 import okhttp3.MultipartBody
-import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -464,11 +463,8 @@ interface DailyTrackApi {
     @DELETE("/api/funds/sips/{id}")
     suspend fun stopFundSip(@Path("id") id: Long): Response<FundsResponseDto>
 
-    /** A CAS PDF and its password, read once on the server and never kept. */
+    /** MF Central's Excel, read once on the server and never kept. */
     @Multipart
     @POST("/api/funds/import")
-    suspend fun importFundStatement(
-        @Part file: MultipartBody.Part,
-        @Part("password") password: RequestBody
-    ): Response<FundImportResponseDto>
+    suspend fun importFundStatement(@Part file: MultipartBody.Part): Response<FundImportResponseDto>
 }

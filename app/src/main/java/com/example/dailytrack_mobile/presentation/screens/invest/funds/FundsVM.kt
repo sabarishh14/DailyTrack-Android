@@ -50,7 +50,6 @@ data class FundsUiState(
     val rowError: String? = null,
     // Import
     val file: FundsRepository.PickedFile? = null,
-    val password: String = "",
     val importing: Boolean = false,
     val importError: String? = null,
     // Add
@@ -135,15 +134,14 @@ class FundsVM @Inject constructor(
 
     fun pickFile(uri: Uri) = _state.update { it.copy(file = repository.describe(uri), importError = null) }
 
-    fun setPassword(password: String) = _state.update { it.copy(password = password, importError = null) }
 
     fun import() {
         val current = _state.value
         val file = current.file ?: return
-        if (current.password.isEmpty() || current.importing) return
+        if (current.importing) return
         _state.update { it.copy(importing = true, importError = null) }
         viewModelScope.launch {
-            repository.import(file.uri, current.password)
+            repository.import(file.uri)
                 .onSuccess { r ->
                     val parts = listOfNotNull(
                         r.added.size.takeIf { it > 0 }?.let { "$it added" },
@@ -153,7 +151,7 @@ class FundsVM @Inject constructor(
                     )
                     _state.update {
                         it.copy(
-                            importing = false, password = "", file = null, funds = r.funds, view = FundsView.LIST,
+                            importing = false, file = null, funds = r.funds, view = FundsView.LIST,
                             note = parts.joinToString(" · ").ifEmpty { "Nothing new in that statement" }
                         )
                     }
